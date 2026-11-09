@@ -10,7 +10,6 @@ import {
   Video,
   User as UserIcon,
   Users,
-  CheckCircle2,
   ExternalLink,
   Search,
   X,
@@ -19,6 +18,10 @@ import {
   FileText,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import {
+  Dialog, EmptyState, GroupLabel, PageHeader, PillTabs, Skeleton, StatusPill, Tag,
+  BTN_PRIMARY, BTN_SM, CARD_STYLE, CONTROL, CONTROL_STYLE, FOCUS, PAGE, PRIMARY_STYLE, SECONDARY_STYLE, SUBTLE_BG,
+} from '@/components/hub/ui'
 
 interface Certificate {
   seminarId: string
@@ -292,7 +295,7 @@ export default function SeminarsPage() {
   // 3. Completed / cancelled / past-confirmed, most recent first
   // Bucket assignment is stable: a single pass classifies each row
   // and we sort within each bucket independently, then concatenate.
-  const filtered = (() => {
+  const buckets = (() => {
     const now = new Date()
     const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate())
 
@@ -352,141 +355,326 @@ export default function SeminarsPage() {
       const db = endDate(b)?.getTime() ?? 0
       return db - da
     })
-    return [...b1, ...b2, ...b3]
+    return { b1, b2, b3 }
   })()
+  const filtered = [...buckets.b1, ...buckets.b2, ...buckets.b3]
+
+  // One seminar card. Same content and handlers as before; kit styling.
+  const renderCard = (s: Seminar) => {
+    const isVirtual = s.format === 'virtual' || s.format === 'hybrid'
+    const isHybrid = s.format === 'hybrid'
+    const isFaceToFace = s.format === 'face-to-face'
+    const isFull = s.hasParticipantLimit && s.registeredCount >= s.maxParticipants
+    const registered = s.myRegistration.registered
+
+    // Speakers to render. HR's multi-speaker form populates speakers[]
+    // (each with name/title/headshot/aboutSpeaker/bio). For legacy
+    // single-speaker seminars we fall back to the top-level
+    // speakerName/Title/Headshot.
+    const displaySpeakers: Speaker[] = (s.speakers && s.speakers.length > 0)
+      ? s.speakers
+      : (s.speakerName || s.speakerHeadshot
+          ? [{ name: s.speakerName, title: s.speakerTitle, headshot: s.speakerHeadshot, aboutSpeaker: s.aboutSpeaker ?? null }]
+          : [])
+    const speakerNamesLine = displaySpeakers.map((sp) => {
+      const name = (sp.name || '').trim()
+      const title = (sp.title || '').trim()
+      return title ? `${name} · ${title}` : name
+    }).filter(Boolean).join(' / ')
+    // Does any speaker have a bio to show in the modal? If not, hide the
+    // About Speaker button — pointless to open an empty modal.
+    const hasAnyBio = displaySpeakers.some((sp) => (sp.aboutSpeaker || sp.bio || '').trim() !== '')
+                  || (s.aboutSpeaker || '').trim() !== ''
+    const openAbout = () => setAboutSpeaker({
+      seminarTitle: s.title,
+      fallbackBio: s.aboutSpeaker || '',
+      speakers: displaySpeakers,
+    })
+    const cls = (s.classification || s.classificationOther || '').trim()
+
+    return (
+      <article
+        key={s.id}
+        className="rounded-xl relative min-w-0"
+        style={{ ...CARD_STYLE, ...(registered ? { borderColor: 'var(--moss)', boxShadow: '0 0 0 2px rgba(74,128,115,0.16)' } : null) }}
+      >
+        <div className="p-4 sm:p-5">
+          {/* Speaker block — absolute in the upper-right on lg+ so it
+              doesn't dictate the title row's height. */}
+          {displaySpeakers.length > 0 && (
+            <div className="hidden lg:flex absolute top-4 right-5 flex-col items-end gap-2 z-[1]">
+              <div className="flex flex-row items-start gap-3">
+                {displaySpeakers.slice(0, 3).map((sp, idx) => (
+                  <div key={sp.id || idx} className="flex flex-col items-center gap-1 w-[72px]">
+                    <SpeakerAvatar
+                      src={sp.headshot}
+                      name={sp.name || ''}
+                      size={displaySpeakers.length > 1 ? 56 : 68}
+                    />
+                    {displaySpeakers.length > 1 && sp.name && (
+                      <p className="text-[10px] text-center leading-tight w-full truncate" style={{ color: 'var(--mid-gray)' }} title={sp.name}>
+                        {sp.name.split(',')[0]}
+                      </p>
+                    )}
+                  </div>
+                ))}
+                {displaySpeakers.length > 3 && (
+                  <p className="text-[10px] italic self-center" style={{ color: 'var(--mid-gray)' }}>
+                    +{displaySpeakers.length - 3} more
+                  </p>
+                )}
+              </div>
+              {hasAnyBio && (
+                <button type="button" onClick={openAbout} className={`text-[11.5px] font-semibold rounded hover:underline whitespace-nowrap ${FOCUS}`} style={{ color: 'var(--teal)' }}>
+                  About Speaker{displaySpeakers.length > 1 ? 's' : ''}
+                </button>
+              )}
+            </div>
+          )}
+
+          {/* Reserve right-side space on lg+ so the tags / title don't run
+              under the absolute avatar block. */}
+          <div className={cn(
+            'mb-3',
+            displaySpeakers.length === 1 && 'lg:pr-[100px]',
+            displaySpeakers.length === 2 && 'lg:pr-[180px]',
+            displaySpeakers.length >= 3 && 'lg:pr-[260px]'
+          )}>
+            <div className="flex items-center gap-1.5 mb-2 flex-wrap">
+              {cls && <span className="capitalize"><Tag tone="warn">{cls}</Tag></span>}
+              <Tag tone="brand">{FORMAT_LABEL[s.format] ?? s.format}</Tag>
+              {(s.disciplineFocus ?? []).map((d) => (
+                <Tag key={d} tone="neutral">{d}</Tag>
+              ))}
+              {registered && <StatusPill tone="success">Registered</StatusPill>}
+            </div>
+            <h2 className="font-bold text-[16px] leading-snug" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>
+              {s.title}
+            </h2>
+          </div>
+
+          {/* Small screens: speakers stacked under the title. */}
+          {displaySpeakers.length > 0 && (
+            <div className="lg:hidden mb-3 pb-3 space-y-2" style={{ borderBottom: '1px solid var(--light-gray)' }}>
+              {displaySpeakers.map((sp, idx) => (
+                <div key={sp.id || idx} className="flex items-center gap-3">
+                  <SpeakerAvatar src={sp.headshot} name={sp.name || ''} size={displaySpeakers.length > 1 ? 40 : 48} />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[12.5px] font-semibold truncate" style={{ color: 'var(--charcoal)' }}>{sp.name}</p>
+                    {sp.title && <p className="text-[11.5px] truncate" style={{ color: 'var(--mid-gray)' }}>{sp.title}</p>}
+                  </div>
+                </div>
+              ))}
+              {hasAnyBio && (
+                <button type="button" onClick={openAbout} className={`text-[11.5px] font-semibold rounded hover:underline ${FOCUS}`} style={{ color: 'var(--teal)' }}>
+                  About Speaker{displaySpeakers.length > 1 ? 's' : ''}
+                </button>
+              )}
+            </div>
+          )}
+
+          <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-2 text-[12.5px] mb-3" style={{ color: 'var(--mid-gray)' }}>
+            <Fact icon={<Calendar size={13} />} label="Date">{formatDate(s.date || s.scheduledMonth)}</Fact>
+            <Fact icon={<Clock size={13} />} label="Time">{formatTimeRange(s.timeStart, s.timeEnd)}</Fact>
+            {speakerNamesLine && <Fact icon={<UserIcon size={13} />} label="Speaker"><span title={speakerNamesLine}>{speakerNamesLine}</span></Fact>}
+            {/* Location / format: face-to-face shows the venue; virtual shows
+                Online; hybrid shows the venue here and the link below. */}
+            {isFaceToFace && <Fact icon={<MapPin size={13} />} label="Location">{s.location || 'Location TBA'}</Fact>}
+            {s.format === 'virtual' && <Fact icon={<Video size={13} />} label="Format">Online</Fact>}
+            {isHybrid && <Fact icon={<MapPin size={13} />} label="Location">{s.location || 'Location TBA'} <span className="opacity-60">(in-person)</span></Fact>}
+            {s.hasParticipantLimit && (
+              <Fact icon={<Users size={13} />} label="Seats">
+                <span className="tabular-nums">{s.registeredCount} / {s.maxParticipants} registered</span>
+                {isFull && <span className="ml-1.5"><StatusPill tone="warn">Full</StatusPill></span>}
+              </Fact>
+            )}
+          </dl>
+
+          {s.description && (
+            <p className="text-[13px] leading-relaxed mb-3 line-clamp-3" style={{ color: 'var(--charcoal)' }}>
+              {s.description}
+            </p>
+          )}
+
+          {/* Objectives — opens a modal with the full learning objectives. */}
+          {s.objectives && s.objectives.trim() && (
+            <button
+              type="button"
+              onClick={() => setObjectivesSeminar(s)}
+              className={`${BTN_SM} mb-3`}
+              style={{ ...SECONDARY_STYLE, color: 'var(--teal)' }}
+              title="View learning objectives"
+            >
+              <Target size={13} />
+              Objectives
+            </button>
+          )}
+
+          {/* Meeting link — for virtual AND hybrid seminars, only once the
+              clinician is registered. */}
+          {registered && isVirtual && s.meetingLink && (
+            <div className="mb-1 p-3 rounded-xl" style={{ background: SUBTLE_BG, border: '1px solid var(--light-gray)' }}>
+              <p className="text-[10.5px] font-semibold uppercase tracking-wider mb-2 flex items-center gap-1.5" style={{ color: 'var(--deep-teal)', fontFamily: 'var(--font-display)' }}>
+                <Video size={11} />
+                {isHybrid ? 'Online Option' : 'Meeting Link'}
+              </p>
+              <a href={s.meetingLink} target="_blank" rel="noopener noreferrer" className={`${BTN_PRIMARY} w-full`} style={PRIMARY_STYLE}>
+                <Video size={15} />
+                Join Meeting
+                <ExternalLink size={13} />
+              </a>
+              <p className="text-[11px] mt-1.5 break-all" style={{ color: 'var(--mid-gray)' }}>
+                {s.meetingLink}
+              </p>
+            </div>
+          )}
+        </div>
+
+        <div className="px-4 sm:px-5 py-3 flex flex-wrap items-center justify-between gap-3 rounded-b-xl" style={{ borderTop: '1px solid var(--light-gray)', background: SUBTLE_BG }}>
+          <p className="text-[11.5px]" style={{ color: 'var(--mid-gray)' }}>
+            Free for in-house clinicians {s.feeAmount > 0 ? `(Public fee: ₱${s.feeAmount.toLocaleString()})` : ''}
+          </p>
+          {registered ? (
+            <div className="flex flex-wrap items-center gap-2">
+              <StatusPill tone="success">You&rsquo;re in</StatusPill>
+              {/* Unregister is hidden once a certificate has been issued — the
+                  cert is signed proof of attendance and removing the
+                  registration would orphan it. HR also rejects this (409). */}
+              {s.myHasCertificate ? (
+                <span className="text-[11.5px] italic inline-flex items-center gap-1.5" style={{ color: 'var(--mid-gray)' }} title="Certificate already issued — contact HR if removal is required">
+                  <Award size={12} style={{ color: 'var(--clay)' }} />
+                  Certificate issued — locked
+                </span>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => handleUnregister(s.id, s.title)}
+                  disabled={unregisteringId === s.id}
+                  className={BTN_SM}
+                  style={{ ...SECONDARY_STYLE, color: '#8A5A3C' }}
+                  title="Unregister from this seminar"
+                >
+                  {unregisteringId === s.id ? (
+                    <><Loader2 size={13} className="animate-spin" /> Unregistering…</>
+                  ) : (
+                    <>Unregister</>
+                  )}
+                </button>
+              )}
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={() => handleRegister(s.id)}
+              disabled={registeringId === s.id || isFull}
+              className={BTN_PRIMARY}
+              style={PRIMARY_STYLE}
+              title={isFull ? 'Seminar is full' : 'Register'}
+            >
+              {registeringId === s.id ? (
+                <><Loader2 size={13} className="animate-spin" /> Registering...</>
+              ) : isFull ? 'Full' : 'Register'}
+            </button>
+          )}
+        </div>
+      </article>
+    )
+  }
+
+  const sections: { key: string; label: string; hint?: string; items: Seminar[] }[] = [
+    { key: 'b1', label: 'Upcoming', items: buckets.b1 },
+    { key: 'b2', label: 'Date to be announced', hint: 'Scheduled month only — date not confirmed yet', items: buckets.b2 },
+    { key: 'b3', label: 'Past & completed', items: buckets.b3 },
+  ].filter(x => x.items.length > 0)
 
   return (
-    <div className="max-w-5xl mx-auto">
-      {toast && <div className="toast">{toast}</div>}
+    <div className={`${PAGE} !max-w-[1000px]`}>
+      {toast && <div className="toast" role="status">{toast}</div>}
 
-      {/* Hero */}
-      <div className="hero-gradient rounded-2xl px-8 py-8 mb-8 animate-fade-up">
-        <div className="relative z-10 flex items-center gap-4">
-          <div className="w-12 h-12 rounded-xl bg-white/15 flex items-center justify-center backdrop-blur-sm border border-white/20">
-            <GraduationCap className="w-6 h-6 text-white" />
-          </div>
-          <div>
-            <h1 className="text-xl font-bold text-white tracking-tight" style={{ fontFamily: 'var(--font-display)' }}>
-              Seminars &amp; Trainings
-            </h1>
-            <p className="text-white/60 text-sm mt-1">
-              Continuing education from Sapphire Clinics East &mdash; free for all clinicians.
-            </p>
-          </div>
-        </div>
-      </div>
-
-      {/* Tabs */}
-      <div className="flex gap-1 p-1 rounded-xl bg-[var(--light-gray)] mb-5 animate-fade-up stagger-1">
-        <button
-          onClick={() => handleTabChange('upcoming')}
-          className={cn(
-            'flex-1 flex items-center justify-center gap-2 py-2 px-4 rounded-lg text-[13px] font-semibold transition-all',
-            activeTab === 'upcoming'
-              ? 'bg-white text-[var(--charcoal)] shadow-sm'
-              : 'text-[var(--mid-gray)] hover:text-[var(--charcoal)]'
-          )}
-        >
-          <GraduationCap size={14} />
-          Upcoming
-        </button>
-        <button
-          onClick={() => handleTabChange('certificates')}
-          className={cn(
-            'flex-1 flex items-center justify-center gap-2 py-2 px-4 rounded-lg text-[13px] font-semibold transition-all',
-            activeTab === 'certificates'
-              ? 'bg-white text-[var(--charcoal)] shadow-sm'
-              : 'text-[var(--mid-gray)] hover:text-[var(--charcoal)]'
-          )}
-        >
-          <Award size={14} />
-          My Certificates
-        </button>
-      </div>
+      <PageHeader
+        eyebrow="Resources"
+        title="Seminars & Trainings"
+        description="Continuing education from Sapphire Clinics East — free for all clinicians."
+        actions={
+          <PillTabs
+            label="Seminars view"
+            value={activeTab}
+            onChange={(id) => handleTabChange(id as 'upcoming' | 'certificates')}
+            tabs={[
+              { id: 'upcoming', label: <span className="inline-flex items-center gap-1.5"><GraduationCap size={13} /> Seminars</span> },
+              { id: 'certificates', label: <span className="inline-flex items-center gap-1.5"><Award size={13} /> My Certificates</span> },
+            ]}
+          />
+        }
+      />
 
       {/* ── Certificates tab ── */}
       {activeTab === 'certificates' && (
-        certsLoading ? (
-          <div className="flex flex-col items-center justify-center py-20 gap-3">
-            <Loader2 className="w-8 h-8 text-[var(--teal)] animate-spin" />
-            <p className="text-sm text-[var(--mid-gray)]">Loading your certificates...</p>
-          </div>
-        ) : certificates.length === 0 ? (
-          <div className="card-static text-center py-16 animate-fade-up">
-            <div className="w-14 h-14 rounded-2xl bg-[var(--pale-teal)] flex items-center justify-center mx-auto mb-3">
-              <Award size={24} className="text-[var(--teal)]" />
+        <section className="rounded-xl" style={CARD_STYLE}>
+          {certsLoading ? (
+            <div className="p-4 space-y-3" role="status" aria-label="Loading your certificates">
+              {[0, 1, 2].map(i => <Skeleton key={i} className="h-14 w-full" />)}
             </div>
-            <p className="text-[var(--mid-gray)] text-sm font-medium">
-              No certificates yet. They will appear here once uploaded by HR.
-            </p>
-          </div>
-        ) : (
-          <div className="space-y-3 animate-fade-up">
-            {certificates.map((cert, i) => (
-              <div
-                key={`${cert.seminarId}-${cert.certificateFile}`}
-                className={cn('card-static flex items-start gap-4', `stagger-${Math.min(i + 1, 10)}`)}
-              >
-                <div className="w-10 h-10 rounded-xl bg-[var(--pale-teal)] flex items-center justify-center shrink-0">
-                  <FileText size={18} className="text-[var(--teal)]" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <h3 className="font-bold text-[14px] text-[var(--charcoal)] leading-snug mb-1" style={{ fontFamily: 'var(--font-display)' }}>
-                    {cert.seminarTitle}
-                  </h3>
-                  <div className="flex items-center gap-3 text-[11px] text-[var(--mid-gray)] flex-wrap">
-                    {cert.seminarDate && (
-                      <span className="flex items-center gap-1">
-                        <Calendar size={11} className="text-[var(--teal)]" />
-                        {formatDate(cert.seminarDate)}
-                      </span>
-                    )}
-                    {cert.uploadedAt && (
-                      <span className="flex items-center gap-1">
-                        <Clock size={11} className="text-[var(--teal)]" />
-                        Issued {new Date(cert.uploadedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
-                      </span>
-                    )}
-                    <span className="badge !text-[10px] bg-green-50 text-green-700 border border-green-200 flex items-center gap-1">
-                      <CheckCircle2 size={10} />
-                      Certificate Ready
-                    </span>
+          ) : certificates.length === 0 ? (
+            <EmptyState icon="award" title="No certificates yet" hint="They will appear here once uploaded by HR." />
+          ) : (
+            <ul>
+              {certificates.map((cert, i) => (
+                <li key={`${cert.seminarId}-${cert.certificateFile}`} className="px-4 sm:px-5 py-3.5 flex items-center gap-3.5" style={{ borderTop: i ? '1px solid var(--light-gray)' : undefined }}>
+                  <span className="w-10 h-10 rounded-lg flex items-center justify-center shrink-0" style={{ background: 'var(--pale-teal)', color: 'var(--teal)' }}>
+                    <FileText size={18} />
+                  </span>
+                  <div className="flex-1 min-w-0">
+                    <h3 className="font-semibold text-[14px] leading-snug" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>
+                      {cert.seminarTitle}
+                    </h3>
+                    <div className="flex items-center gap-x-3 gap-y-1 mt-1 text-[11.5px] flex-wrap" style={{ color: 'var(--mid-gray)' }}>
+                      {cert.seminarDate && (
+                        <span className="inline-flex items-center gap-1"><Calendar size={11} /> {formatDate(cert.seminarDate)}</span>
+                      )}
+                      {cert.uploadedAt && (
+                        <span className="inline-flex items-center gap-1">
+                          <Clock size={11} />
+                          Issued {new Date(cert.uploadedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                        </span>
+                      )}
+                      <StatusPill tone="success">Certificate ready</StatusPill>
+                    </div>
                   </div>
-                </div>
-                <a
-                  href={cert.certificateUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="btn-primary !py-2 !px-3 !text-[12px] !rounded-lg flex items-center gap-1.5 shrink-0"
-                >
-                  View
-                  <ExternalLink size={12} />
-                </a>
-              </div>
-            ))}
-          </div>
-        )
+                  <a href={cert.certificateUrl} target="_blank" rel="noopener noreferrer" className={`${BTN_PRIMARY} shrink-0`} style={PRIMARY_STYLE}>
+                    View
+                    <ExternalLink size={12} />
+                  </a>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
       )}
 
-      {/* ── Upcoming seminars tab ── */}
+      {/* ── Seminars tab ── */}
       {activeTab === 'upcoming' && <>
 
       {/* Search */}
-      <div className="relative mb-5 animate-fade-up stagger-1">
-        <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--mid-gray)]" />
+      <div className="relative">
+        <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: 'var(--mid-gray)' }} />
         <input
           type="text"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Search by title, speaker, discipline, or location..."
-          className="input !pl-9 text-[13px]"
+          aria-label="Search seminars"
+          className={`${CONTROL} w-full h-10 pl-9 pr-9`}
+          style={CONTROL_STYLE}
         />
         {search && (
           <button
             type="button"
             onClick={() => setSearch('')}
-            className="absolute right-3 top-1/2 -translate-y-1/2 text-[var(--mid-gray)] hover:text-[var(--charcoal)]"
+            className={`absolute right-2 top-1/2 -translate-y-1/2 w-7 h-7 rounded-md flex items-center justify-center hover:bg-[var(--off-white)] ${FOCUS}`}
+            style={{ color: 'var(--mid-gray)' }}
             title="Clear search"
+            aria-label="Clear search"
           >
             <X size={14} />
           </button>
@@ -494,350 +682,25 @@ export default function SeminarsPage() {
       </div>
 
       {loading ? (
-        <div className="flex flex-col items-center justify-center py-20 gap-3">
-          <Loader2 className="w-8 h-8 text-[var(--teal)] animate-spin" />
-          <p className="text-sm text-[var(--mid-gray)]">Loading seminars...</p>
+        <div className="space-y-4" role="status" aria-label="Loading seminars">
+          {[0, 1].map(i => <Skeleton key={i} className="h-52 rounded-xl" />)}
         </div>
       ) : filtered.length === 0 ? (
-        <div className="card-static text-center py-16 animate-fade-up stagger-2">
-          <div className="w-14 h-14 rounded-2xl bg-[var(--pale-teal)] flex items-center justify-center mx-auto mb-3">
-            <GraduationCap size={24} className="text-[var(--teal)]" />
-          </div>
-          <p className="text-[var(--mid-gray)] text-sm font-medium">
-            {q ? `No seminars match "${search}".` : 'No upcoming seminars right now. Check back soon!'}
-          </p>
+        <div className="rounded-xl" style={CARD_STYLE}>
+          <EmptyState
+            icon={q ? 'search' : 'calendar'}
+            title={q ? `No seminars match "${search}".` : 'No upcoming seminars right now.'}
+            hint={q ? 'Try a different title, speaker or discipline.' : 'Check back soon!'}
+          />
         </div>
       ) : (
-        <div className="space-y-4">
-          {filtered.map((s, i) => {
-            const isVirtual = s.format === 'virtual' || s.format === 'hybrid'
-            const isHybrid = s.format === 'hybrid'
-            const isFaceToFace = s.format === 'face-to-face'
-            const isFull = s.hasParticipantLimit && s.registeredCount >= s.maxParticipants
-            const registered = s.myRegistration.registered
-
-            // Speakers to render. HR's multi-speaker form populates
-            // speakers[] (each with name/title/headshot/aboutSpeaker/
-            // bio). For legacy single-speaker seminars we fall back
-            // to the top-level speakerName/Title/Headshot. We prefer
-            // speakers[] whenever it has at least one entry so we
-            // pick up multi-speaker setups (e.g. "Interprofessional
-            // Collaboration in Dysphagia Management" with 2 speakers).
-            const displaySpeakers: Speaker[] = (s.speakers && s.speakers.length > 0)
-              ? s.speakers
-              : (s.speakerName || s.speakerHeadshot
-                  ? [{ name: s.speakerName, title: s.speakerTitle, headshot: s.speakerHeadshot, aboutSpeaker: s.aboutSpeaker ?? null }]
-                  : [])
-            const speakerNamesLine = displaySpeakers.map((sp) => {
-              const name = (sp.name || '').trim()
-              const title = (sp.title || '').trim()
-              return title ? `${name} · ${title}` : name
-            }).filter(Boolean).join(' / ')
-            // Does any speaker have a bio to show in the modal? If
-            // not, we hide the About Speaker button — pointless to
-            // open an empty modal.
-            const hasAnyBio = displaySpeakers.some((sp) => (sp.aboutSpeaker || sp.bio || '').trim() !== '')
-                          || (s.aboutSpeaker || '').trim() !== ''
-            return (
-              <div
-                key={s.id}
-                className={cn(
-                  'card-static animate-fade-up relative',
-                  `stagger-${Math.min(i + 2, 10)}`,
-                  registered && 'border-2 border-[var(--teal)]/30'
-                )}
-              >
-                {/* Speaker block — floated in the upper-right via
-                    absolute positioning so it doesn't dictate flex
-                    row height. Previously the 88px avatar + button
-                    (~107px tall) made the title row much taller than
-                    the title needed, leaving a big gap before the
-                    date/time row. With absolute positioning the title
-                    and details flow tight and the avatar just sits
-                    in the corner. The card body gets right-padding
-                    on lg+ screens to clear the avatar; on small
-                    screens the avatar drops below (handled via the
-                    no-pr / static positioning below).
-                    The About Speaker button only renders when
-                    aboutSpeaker is non-empty; opening a modal with
-                    no bio would be pointless. */}
-                {displaySpeakers.length > 0 && (
-                  <div className="hidden lg:flex absolute top-4 right-4 flex-col items-end gap-2 z-[1]">
-                    {/* Speakers are laid out horizontally so multi-speaker
-                        rows don't extend down and overlap the Register
-                        button. Each avatar gets a fixed-width column with
-                        the (first-name) label centered underneath. */}
-                    <div className="flex flex-row items-start gap-3">
-                      {displaySpeakers.slice(0, 3).map((sp, idx) => (
-                        <div key={sp.id || idx} className="flex flex-col items-center gap-1 w-[72px]">
-                          <SpeakerAvatar
-                            src={sp.headshot}
-                            name={sp.name || ''}
-                            size={displaySpeakers.length > 1 ? 56 : 72}
-                          />
-                          {displaySpeakers.length > 1 && sp.name && (
-                            <p
-                              className="text-[10px] text-[var(--mid-gray)] text-center leading-tight w-full truncate"
-                              title={sp.name}
-                            >
-                              {sp.name.split(',')[0]}
-                            </p>
-                          )}
-                        </div>
-                      ))}
-                      {displaySpeakers.length > 3 && (
-                        <p className="text-[10px] text-[var(--mid-gray)] italic self-center">
-                          +{displaySpeakers.length - 3} more
-                        </p>
-                      )}
-                    </div>
-                    {hasAnyBio && (
-                      <button
-                        type="button"
-                        onClick={() => setAboutSpeaker({
-                          seminarTitle: s.title,
-                          fallbackBio: s.aboutSpeaker || '',
-                          speakers: displaySpeakers,
-                        })}
-                        className="text-[11px] font-semibold text-[var(--teal)] hover:underline whitespace-nowrap"
-                      >
-                        About Speaker{displaySpeakers.length > 1 ? 's' : ''}
-                      </button>
-                    )}
-                  </div>
-                )}
-
-                {/* Reserve right-side space on lg+ so the badges /
-                    title don't run under the absolute avatar block.
-                    Width depends on speaker count since avatars now
-                    sit horizontally: ~96px per avatar column + slack. */}
-                <div
-                  className={cn(
-                    'mb-2',
-                    displaySpeakers.length === 1 && 'lg:pr-[100px]',
-                    displaySpeakers.length === 2 && 'lg:pr-[180px]',
-                    displaySpeakers.length >= 3 && 'lg:pr-[260px]'
-                  )}
-                >
-                  <div className="flex items-center gap-2 mb-1.5 flex-wrap">
-                    {/* Classification (Workshop / Webinar / etc.).
-                        Prefer the preset; fall back to the freeform
-                        classificationOther if the curator picked
-                        "Other" on the HR side. Sand palette so it
-                        reads distinctly from the format badge. */}
-                    {(() => {
-                      const cls = (s.classification || s.classificationOther || '').trim()
-                      if (!cls) return null
-                      return (
-                        <span className="badge !text-[10px] bg-[var(--clay)]/10 text-[var(--clay)] border border-[var(--clay)]/30 capitalize">
-                          {cls}
-                        </span>
-                      )
-                    })()}
-                    <span className="badge badge-teal !text-[10px]">{FORMAT_LABEL[s.format] ?? s.format}</span>
-                    {(s.disciplineFocus ?? []).map((d) => (
-                      <span key={d} className="badge !text-[10px] bg-[var(--sand-light)] text-[var(--sand-dark)] border border-[var(--sand-dark)]/20">
-                        {d}
-                      </span>
-                    ))}
-                    {registered && (
-                      <span className="badge !text-[10px] bg-green-50 text-green-700 border border-green-200 flex items-center gap-1">
-                        <CheckCircle2 size={11} />
-                        Registered
-                      </span>
-                    )}
-                  </div>
-                  <h2
-                    className="font-bold text-[16px] text-[var(--charcoal)] leading-snug"
-                    style={{ fontFamily: 'var(--font-display)' }}
-                  >
-                    {s.title}
-                  </h2>
-                </div>
-
-                {/* Mobile / small-screen speaker block — visible only
-                    when the absolute desktop block is hidden. Stacks
-                    all speakers vertically so each name + title is
-                    readable; on multi-speaker the headshots size
-                    down so the block doesn't dominate the card. */}
-                {displaySpeakers.length > 0 && (
-                  <div className="lg:hidden mb-3 pb-3 border-b border-[var(--light-gray)] space-y-2">
-                    {displaySpeakers.map((sp, idx) => (
-                      <div key={sp.id || idx} className="flex items-center gap-3">
-                        <SpeakerAvatar
-                          src={sp.headshot}
-                          name={sp.name || ''}
-                          size={displaySpeakers.length > 1 ? 44 : 56}
-                        />
-                        <div className="flex-1 min-w-0">
-                          <p className="text-[12px] font-semibold text-[var(--charcoal)] truncate">{sp.name}</p>
-                          {sp.title && <p className="text-[11px] text-[var(--mid-gray)] truncate">{sp.title}</p>}
-                        </div>
-                      </div>
-                    ))}
-                    {hasAnyBio && (
-                      <button
-                        type="button"
-                        onClick={() => setAboutSpeaker({
-                          seminarTitle: s.title,
-                          fallbackBio: s.aboutSpeaker || '',
-                          speakers: displaySpeakers,
-                        })}
-                        className="text-[11px] font-semibold text-[var(--teal)] hover:underline"
-                      >
-                        About Speaker{displaySpeakers.length > 1 ? 's' : ''}
-                      </button>
-                    )}
-                  </div>
-                )}
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[12px] text-[var(--mid-gray)] mb-3">
-                  <div className="flex items-center gap-2">
-                    <Calendar size={13} className="text-[var(--teal)] shrink-0" />
-                    <span>{formatDate(s.date || s.scheduledMonth)}</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Clock size={13} className="text-[var(--teal)] shrink-0" />
-                    <span>{formatTimeRange(s.timeStart, s.timeEnd)}</span>
-                  </div>
-                  {speakerNamesLine && (
-                    <div className="flex items-center gap-2">
-                      <UserIcon size={13} className="text-[var(--teal)] shrink-0" />
-                      <span title={speakerNamesLine}>{speakerNamesLine}</span>
-                    </div>
-                  )}
-                  {/* Location / format row.
-                      • face-to-face: show physical location (or "Location TBA")
-                      • virtual:     show "Online" with the Video icon
-                      • hybrid:      show physical location here; the meeting
-                                     link gets its own dedicated section below
-                  */}
-                  {isFaceToFace && (
-                    <div className="flex items-center gap-2">
-                      <MapPin size={13} className="text-[var(--teal)] shrink-0" />
-                      <span>{s.location || 'Location TBA'}</span>
-                    </div>
-                  )}
-                  {s.format === 'virtual' && (
-                    <div className="flex items-center gap-2">
-                      <Video size={13} className="text-[var(--teal)] shrink-0" />
-                      <span>Online</span>
-                    </div>
-                  )}
-                  {isHybrid && (
-                    <div className="flex items-center gap-2">
-                      <MapPin size={13} className="text-[var(--teal)] shrink-0" />
-                      <span>{s.location || 'Location TBA'} <span className="opacity-60">(in-person)</span></span>
-                    </div>
-                  )}
-                  {s.hasParticipantLimit && (
-                    <div className="flex items-center gap-2">
-                      <Users size={13} className="text-[var(--teal)] shrink-0" />
-                      <span>{s.registeredCount} / {s.maxParticipants} registered</span>
-                    </div>
-                  )}
-                </div>
-
-                {s.description && (
-                  <p className="text-[12.5px] text-[var(--charcoal)]/80 leading-relaxed mb-3 line-clamp-3">
-                    {s.description}
-                  </p>
-                )}
-
-                {/* Objectives button — opens a modal with the full
-                    learning objectives list when present. */}
-                {s.objectives && s.objectives.trim() && (
-                  <button
-                    onClick={() => setObjectivesSeminar(s)}
-                    className="inline-flex items-center gap-1.5 mb-4 text-[12px] font-semibold px-3 py-1.5 rounded-lg border border-[var(--teal)]/30 text-[var(--teal)] hover:bg-[var(--pale-teal)] hover:border-[var(--teal)]/60 transition-colors"
-                    title="View learning objectives"
-                  >
-                    <Target size={13} />
-                    Objectives
-                  </button>
-                )}
-
-                {/* Dedicated meeting-link section — for both pure-virtual
-                    AND hybrid seminars. Only revealed once the clinician
-                    is registered. For hybrid, this sits below the in-person
-                    location so attendees see both options clearly. */}
-                {registered && isVirtual && s.meetingLink && (
-                  <div className="mb-3 p-3 rounded-xl border border-[var(--teal)]/20 bg-[var(--pale-teal)]/30">
-                    <p className="text-[10px] font-bold uppercase tracking-wider text-[var(--teal)] mb-1.5 flex items-center gap-1.5">
-                      <Video size={11} />
-                      {isHybrid ? 'Online Option' : 'Meeting Link'}
-                    </p>
-                    <a
-                      href={s.meetingLink}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="flex items-center justify-center gap-2 py-2.5 rounded-lg text-[13px] font-semibold bg-[var(--teal)] text-white hover:bg-[var(--deep-teal)] transition-colors"
-                    >
-                      <Video size={15} />
-                      Join Meeting
-                      <ExternalLink size={13} />
-                    </a>
-                    <p className="text-[10.5px] text-[var(--mid-gray)] mt-1.5 break-all">
-                      {s.meetingLink}
-                    </p>
-                  </div>
-                )}
-
-                <div className="flex items-center justify-between gap-3 pt-3 border-t border-[var(--light-gray)]">
-                  <p className="text-[11px] text-[var(--mid-gray)]">
-                    Free for in-house clinicians {s.feeAmount > 0 ? `(Public fee: ₱${s.feeAmount.toLocaleString()})` : ''}
-                  </p>
-                  {registered ? (
-                    <div className="flex items-center gap-2">
-                      <span className="text-[12px] font-semibold text-green-700 flex items-center gap-1.5">
-                        <CheckCircle2 size={14} />
-                        You&rsquo;re in
-                      </span>
-                      {/* Unregister is hidden once a certificate has
-                          been issued for this user — the cert is
-                          signed proof of attendance and removing the
-                          registration would orphan it. Server-side
-                          the HR handler also rejects this with 409,
-                          so a stale client can't bypass the rule. */}
-                      {s.myHasCertificate ? (
-                        <span
-                          className="text-[11px] text-[var(--mid-gray)] italic inline-flex items-center gap-1.5"
-                          title="Certificate already issued — contact HR if removal is required"
-                        >
-                          <Award size={12} className="text-[var(--clay)]" />
-                          Certificate issued — locked
-                        </span>
-                      ) : (
-                        <button
-                          onClick={() => handleUnregister(s.id, s.title)}
-                          disabled={unregisteringId === s.id}
-                          className="text-[12px] font-semibold px-3 py-1.5 rounded-lg border border-[var(--clay)]/40 text-[var(--clay)] hover:bg-[var(--clay)] hover:text-white hover:border-[var(--clay)] transition-colors disabled:opacity-50 inline-flex items-center gap-1.5"
-                          title="Unregister from this seminar"
-                        >
-                          {unregisteringId === s.id ? (
-                            <><Loader2 size={13} className="animate-spin" /> Unregistering…</>
-                          ) : (
-                            <>Unregister</>
-                          )}
-                        </button>
-                      )}
-                    </div>
-                  ) : (
-                    <button
-                      onClick={() => handleRegister(s.id)}
-                      disabled={registeringId === s.id || isFull}
-                      className="btn-primary !py-2 !px-4 !text-[12px] !rounded-lg disabled:opacity-50"
-                      title={isFull ? 'Seminar is full' : 'Register'}
-                    >
-                      {registeringId === s.id ? (
-                        <><Loader2 size={13} className="animate-spin" /> Registering...</>
-                      ) : isFull ? 'Full' : 'Register'}
-                    </button>
-                  )}
-                </div>
-              </div>
-            )
-          })}
+        <div className="space-y-6">
+          {sections.map((sec) => (
+            <section key={sec.key} className="space-y-3">
+              <GroupLabel hint={sec.hint}>{sec.label} · {sec.items.length}</GroupLabel>
+              <div className="space-y-4">{sec.items.map(renderCard)}</div>
+            </section>
+          ))}
         </div>
       )}
 
@@ -855,6 +718,18 @@ export default function SeminarsPage() {
         />
       )}
       </>}
+    </div>
+  )
+}
+
+// One fact in the seminar details grid: icon + value, with a hidden label
+// for screen readers.
+function Fact({ icon, label, children }: { icon: React.ReactNode; label: string; children: React.ReactNode }) {
+  return (
+    <div className="flex items-center gap-2 min-w-0">
+      <span className="shrink-0" style={{ color: 'var(--teal)' }} aria-hidden>{icon}</span>
+      <dt className="sr-only">{label}</dt>
+      <dd className="min-w-0 break-words">{children}</dd>
     </div>
   )
 }
@@ -929,55 +804,39 @@ function AboutSpeakerModal({ speaker, onClose }: {
     return ''
   }
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm animate-fade-in"
-      onClick={onClose}
+    <Dialog
+      labelId="seminar-about-speaker"
+      eyebrow={speaker.seminarTitle}
+      title={list.length > 1 ? 'About the Speakers' : 'About the Speaker'}
+      onClose={onClose}
+      size="lg"
     >
-      <div
-        className="bg-white rounded-2xl shadow-2xl max-w-lg w-full max-h-[85vh] overflow-y-auto animate-gate"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="p-5 border-b border-[var(--light-gray)] flex items-center justify-between gap-4">
-          <h3 className="font-bold text-[15px] text-[var(--charcoal)] leading-snug" style={{ fontFamily: 'var(--font-display)' }}>
-            {list.length > 1 ? 'About the Speakers' : 'About the Speaker'}
-          </h3>
-          <button
-            onClick={onClose}
-            className="p-1.5 text-[var(--mid-gray)] hover:text-[var(--charcoal)] transition-colors shrink-0"
-            aria-label="Close"
-          >
-            <X size={18} />
-          </button>
-        </div>
-        <div className="divide-y divide-[var(--light-gray)]">
-          {list.length === 0 ? (
-            <div className="p-5">
-              <p className="text-[13px] text-[var(--mid-gray)] italic">No speaker information.</p>
-            </div>
-          ) : list.map((sp, idx) => {
+      {list.length === 0 ? (
+        <p className="text-[13px] italic" style={{ color: 'var(--mid-gray)' }}>No speaker information.</p>
+      ) : (
+        <div className="space-y-5">
+          {list.map((sp, idx) => {
             const bio = bioFor(sp, idx)
             return (
-              <div key={sp.id || idx} className="p-5">
+              <div key={sp.id || idx} style={{ borderTop: idx ? '1px solid var(--light-gray)' : undefined, paddingTop: idx ? 20 : 0 }}>
                 <div className="flex items-center gap-4 mb-3">
-                  <SpeakerAvatar src={sp.headshot} name={sp.name || ''} size={64} />
+                  <SpeakerAvatar src={sp.headshot} name={sp.name || ''} size={60} />
                   <div className="flex-1 min-w-0">
-                    <h4 className="font-bold text-[15px] text-[var(--charcoal)] leading-snug" style={{ fontFamily: 'var(--font-display)' }}>
+                    <h4 className="font-bold text-[15px] leading-snug" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>
                       {sp.name || 'Speaker'}
                     </h4>
-                    {sp.title && (
-                      <p className="text-[12px] text-[var(--mid-gray)] leading-snug">{sp.title}</p>
-                    )}
+                    {sp.title && <p className="text-[12.5px] leading-snug" style={{ color: 'var(--mid-gray)' }}>{sp.title}</p>}
                   </div>
                 </div>
-                <p className="text-[13px] text-[var(--charcoal)] leading-relaxed whitespace-pre-line">
+                <p className="text-[13.5px] leading-relaxed whitespace-pre-line" style={{ color: 'var(--charcoal)' }}>
                   {bio || 'No biography provided.'}
                 </p>
               </div>
             )
           })}
         </div>
-      </div>
-    </div>
+      )}
+    </Dialog>
   )
 }
 
@@ -989,45 +848,14 @@ function ObjectivesModal({ seminar, onClose }: {
   // and replace tabs with two spaces so numbered lists indent cleanly.
   const text = (seminar.objectives ?? '').replace(/\t/g, '  ')
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm animate-fade-in"
-      onClick={onClose}
-    >
-      <div
-        className="relative bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[85vh] overflow-hidden flex flex-col animate-gate"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="hero-gradient px-5 py-4 flex items-center gap-3 shrink-0">
-          <Target size={18} className="text-white shrink-0" />
-          <div className="flex-1 min-w-0">
-            <h2 className="text-[15px] font-bold text-white tracking-tight" style={{ fontFamily: 'var(--font-display)' }}>
-              Learning Objectives
-            </h2>
-            <p className="text-white/70 text-[11px] truncate">{seminar.title}</p>
-          </div>
-          <button
-            onClick={onClose}
-            className="text-white/70 hover:text-white p-1 rounded-md hover:bg-white/10 transition-colors"
-            title="Close"
-          >
-            <X size={18} />
-          </button>
-        </div>
-        <div className="p-5 overflow-y-auto">
-          {text.trim() ? (
-            <p
-              className="text-[13.5px] text-[var(--charcoal)] leading-relaxed whitespace-pre-line"
-              style={{ fontFamily: 'var(--font-body)' }}
-            >
-              {text}
-            </p>
-          ) : (
-            <p className="text-[12px] text-[var(--mid-gray)] italic text-center py-6">
-              No objectives recorded for this seminar yet.
-            </p>
-          )}
-        </div>
-      </div>
-    </div>
+    <Dialog labelId="seminar-objectives" eyebrow="Learning objectives" title={seminar.title} onClose={onClose} size="lg">
+      {text.trim() ? (
+        <p className="text-[13.5px] leading-relaxed whitespace-pre-line" style={{ fontFamily: 'var(--font-body)', color: 'var(--charcoal)' }}>
+          {text}
+        </p>
+      ) : (
+        <EmptyState icon="file" title="No objectives recorded for this seminar yet." />
+      )}
+    </Dialog>
   )
 }
