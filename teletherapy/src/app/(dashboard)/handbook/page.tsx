@@ -5,6 +5,7 @@
 export const dynamic = 'force-dynamic'
 
 import { useMemo, useRef, useState, type ReactNode } from 'react'
+import { Download, FileText, Search } from 'lucide-react'
 
 /**
  * Staff Portal — User Handbook, shown IN the staff portal at /handbook.
@@ -24,14 +25,14 @@ import { useMemo, useRef, useState, type ReactNode } from 'react'
 /** Concrete hex for every CSS custom property, baked into the Word export
  *  (Word can't resolve `var(--…)`). Kept in sync with the <style> tokens. */
 const EXPORT_PALETTE: Record<string, string> = {
-  '--ink': '#16302E', '--body': '#31403D', '--muted': '#6A7B78',
-  '--teal': '#157A72', '--teal-deep': '#0E4A46', '--teal-soft': '#E4EFEC',
-  '--line': '#D6E2DE', '--line-soft': '#E8F0ED', '--paper': '#F3F6F4', '--card': '#FFFFFF',
+  '--ink': '#1A2A2E', '--body': '#37403F', '--muted': '#6B6357',
+  '--teal': '#4A8073', '--teal-deep': '#244952', '--teal-soft': '#EAF1EC',
+  '--line': '#D2DEBA', '--line-soft': '#E0E8CD', '--paper': '#F6F8EE', '--card': '#FFFFFF',
   '--mgr': '#7E4CC4', '--mgr-bg': '#F1EAFB',
   '--cln': '#2E8B57', '--cln-bg': '#E6F3EC',
   '--off': '#1F6FB2', '--off-bg': '#E7F0F9',
   '--int': '#B7791F', '--int-bg': '#FBF4E4',
-  '--warn': '#B7791F', '--warn-bg': '#FBF4E4',
+  '--warn': '#8A5A1F', '--warn-bg': '#FBF3E6',
 }
 
 /** Word-export palette applied as an inline `--x:hex` block on the clone root,
@@ -131,66 +132,76 @@ export default function StaffPortalHandbookPage() {
     <div ref={rootRef} className="sph-hb">
       <style>{`
         .sph-hb{
-          --ink:#16302E; --body:#31403D; --muted:#6A7B78;
-          --teal:#157A72; --teal-deep:#0E4A46; --teal-soft:#E4EFEC;
-          --line:#D6E2DE; --line-soft:#E8F0ED; --paper:#F3F6F4; --card:#FFFFFF;
+          /* Staff-portal brand tokens (globals.css narra / moss / sage /
+             paper), as hex so the Word export keeps them. Keep in sync
+             with EXPORT_PALETTE above. */
+          --ink:#1A2A2E; --body:#37403F; --muted:#6B6357;
+          --teal:#4A8073; --teal-deep:#244952; --teal-soft:#EAF1EC;
+          --line:#D2DEBA; --line-soft:#E0E8CD; --paper:#F6F8EE; --card:#FFFFFF;
           --mgr:#7E4CC4; --mgr-bg:#F1EAFB; --cln:#2E8B57; --cln-bg:#E6F3EC;
           --off:#1F6FB2; --off-bg:#E7F0F9; --int:#B7791F; --int-bg:#FBF4E4;
-          --warn:#B7791F; --warn-bg:#FBF4E4;
-          --sans:system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+          --warn:#8A5A1F; --warn-bg:#FBF3E6;
+          --sans:var(--font-body, system-ui),system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+          --display:var(--font-display, system-ui),system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
           --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace; --measure:68ch;
           background:var(--paper); color:var(--body); font-family:var(--sans);
-          font-size:15.5px; line-height:1.62; border-radius:16px; overflow:hidden;
+          font-size:15.5px; line-height:1.62; border-radius:16px; overflow:clip;
+          border:1px solid var(--line);
+          box-shadow:0 1px 2px rgba(36,73,82,.05), 0 12px 32px -22px rgba(36,73,82,.25);
           -webkit-font-smoothing:antialiased;
         }
         .sph-hb *{box-sizing:border-box;}
         .sph-hb a{color:var(--teal); text-underline-offset:2px;}
-        .sph-hb h1,.sph-hb h2,.sph-hb h3,.sph-hb h4{color:var(--ink); text-wrap:balance; line-height:1.2; margin:0;}
+        .sph-hb h1,.sph-hb h2,.sph-hb h3,.sph-hb h4{color:var(--ink); text-wrap:balance; line-height:1.2; margin:0; font-family:var(--display);}
+        .sph-hb a:focus-visible,.sph-hb button:focus-visible,.sph-hb summary:focus-visible{outline:2px solid var(--teal); outline-offset:2px; border-radius:6px;}
         .sph-hb code{font-family:var(--mono); font-size:.86em; background:var(--teal-soft);
           color:var(--teal-deep); padding:.08em .4em; border-radius:4px; white-space:nowrap;}
         .sph-hb kbd{font-family:var(--sans); font-size:.88em; font-weight:600; color:var(--ink);
           background:#fff; border:1px solid var(--line); border-bottom-width:2px; border-radius:6px;
           padding:.05em .45em; white-space:nowrap;}
-        .sph-hb mark{background:#FFF1A8; color:inherit; padding:0 .1em; border-radius:3px;}
+        .sph-hb mark{background:#F2E2BF; color:inherit; padding:0 .1em; border-radius:3px;}
         .sph-hb .wrap{max-width:920px; margin:0 auto; padding:0 22px;}
 
         /* Masthead */
         .sph-hb header.mast{background:
-          radial-gradient(120% 140% at 100% 0%, rgba(21,122,114,.16), transparent 60%),
-          linear-gradient(180deg,#0E4A46,#12645C); color:#DCEBE8; padding:40px 0 38px;}
+          radial-gradient(60% 120% at 100% 0%, rgba(138,169,157,.45), transparent 60%),
+          linear-gradient(135deg,#244952 0%,#4A8073 75%,#6A9688 100%); color:#E6EEEA; padding:38px 0 34px;}
         .sph-hb .mast .wrap{display:flex; flex-direction:column; gap:15px;}
-        .sph-hb .kicker{font-family:var(--mono); font-size:12px; letter-spacing:.22em;
-          text-transform:uppercase; color:#7FC3B9;}
-        .sph-hb .mast h1{color:#fff; font-size:clamp(26px,4vw,40px); font-weight:800; letter-spacing:-.02em; max-width:22ch;}
-        .sph-hb .mast p.lede{margin:0; max-width:62ch; color:#CDE3DE; font-size:16px;}
-        .sph-hb .mast .meta{display:flex; flex-wrap:wrap; gap:8px 20px; margin-top:4px; font-size:13px; color:#A9D0C9;}
-        .sph-hb .mast .meta b{color:#EAF5F2; font-weight:600;}
-        .sph-hb .mast .meta code{background:rgba(255,255,255,.12); color:#EAF5F2;}
+        .sph-hb .kicker{font-family:var(--display); font-size:11px; font-weight:700; letter-spacing:.16em;
+          text-transform:uppercase; color:#fff; align-self:flex-start;
+          background:rgba(255,255,255,.14); padding:4px 11px; border-radius:999px;}
+        .sph-hb .mast h1{color:#fff; font-size:clamp(26px,4vw,38px); font-weight:700; letter-spacing:-.02em; max-width:22ch;}
+        .sph-hb .mast p.lede{margin:0; max-width:64ch; color:rgba(255,255,255,.88); font-size:15.5px;}
+        .sph-hb .mast .meta{display:flex; flex-wrap:wrap; gap:8px 20px; margin-top:4px; font-size:13px; color:rgba(255,255,255,.72);}
+        .sph-hb .mast .meta b{color:#fff; font-weight:600;}
+        .sph-hb .mast .meta code{background:rgba(255,255,255,.14); color:#fff;}
         .sph-hb .mast-actions{display:flex; flex-wrap:wrap; gap:10px; margin-top:4px;}
         .sph-hb .hb-btn{font-family:var(--sans); font-size:13px; font-weight:600; cursor:pointer;
-          display:inline-flex; align-items:center; gap:7px; padding:9px 15px; border-radius:9px;
-          border:1px solid transparent; background:#EAF5F2; color:#0E4A46; transition:transform .12s,background .15s; text-decoration:none;}
-        .sph-hb .hb-btn:hover{background:#fff; transform:translateY(-1px);}
-        .sph-hb .hb-btn.ghost{background:rgba(255,255,255,.10); color:#EAF5F2; border-color:rgba(255,255,255,.35);}
+          display:inline-flex; align-items:center; gap:7px; height:36px; padding:0 14px; border-radius:8px;
+          border:1px solid transparent; background:#fff; color:#244952; transition:opacity .15s,background .15s; text-decoration:none;}
+        .sph-hb .hb-btn:hover{opacity:.92;}
+        .sph-hb .hb-btn.ghost{background:rgba(255,255,255,.10); color:#fff; border-color:rgba(255,255,255,.35);}
         .sph-hb .hb-btn.ghost:hover{background:rgba(255,255,255,.18);}
 
-        .sph-hb main{padding:34px 0 60px;}
+        /* main.wrap, not main: .wrap's padding (higher specificity) used to wipe
+           this out, so Contents sat flush against the masthead. */
+        .sph-hb main.wrap{padding-top:28px; padding-bottom:56px;}
         .sph-hb section{margin-bottom:46px; scroll-margin-top:16px;}
-        .sph-hb .eyebrow{font-family:var(--mono); font-size:11.5px; letter-spacing:.16em;
+        .sph-hb .eyebrow{font-family:var(--display); font-weight:700; font-size:11.5px; letter-spacing:.14em;
           text-transform:uppercase; color:var(--teal); margin-bottom:8px;}
-        .sph-hb section>h2{font-size:24px; font-weight:800; letter-spacing:-.015em;
-          padding-bottom:11px; border-bottom:2px solid var(--line); margin-bottom:18px;}
+        .sph-hb section>h2{font-size:24px; font-weight:700; letter-spacing:-.015em;
+          padding-bottom:11px; border-bottom:1px solid var(--line); margin-bottom:18px;}
         .sph-hb section p{max-width:var(--measure);}
         .sph-hb h3.blockh{font-size:17px; font-weight:700; margin:24px 0 8px;}
 
         /* TOC card */
         .sph-hb .toc{border:1px solid var(--line); border-radius:12px; background:var(--card); padding:14px 18px; margin:0 0 30px;}
-        .sph-hb .toc .toc-h{font-family:var(--mono); font-size:11px; letter-spacing:.18em; text-transform:uppercase; color:var(--muted); margin:0 0 8px;}
+        .sph-hb .toc .toc-h{font-family:var(--display); font-weight:700; font-size:11px; letter-spacing:.12em; text-transform:uppercase; color:var(--muted); margin:0 0 8px;}
         .sph-hb .toc ol{list-style:none; margin:0; padding:0; display:grid; grid-template-columns:1fr 1fr; gap:2px 18px;}
         @media(max-width:620px){.sph-hb .toc ol{grid-template-columns:1fr;}}
         .sph-hb .toc a{display:block; padding:5px 9px; border-radius:7px; color:var(--body); text-decoration:none;}
         .sph-hb .toc a:hover{background:var(--teal-soft); color:var(--teal-deep);}
-        .sph-hb .toc a b{color:var(--muted); font-family:var(--mono); font-size:11px; margin-right:7px;}
+        .sph-hb .toc a b{color:var(--teal); font-family:var(--display); font-size:11px; font-weight:700; margin-right:8px; font-variant-numeric:tabular-nums;}
 
         /* Badges */
         .sph-hb .badge{display:inline-flex; align-items:center; gap:6px; font-size:11.5px; font-weight:600;
@@ -211,7 +222,7 @@ export default function StaffPortalHandbookPage() {
         .sph-hb .legend .rc p{font-size:13px; margin:0; color:var(--body);}
 
         /* Group divider */
-        .sph-hb .grouphead{font-size:12.5px; font-family:var(--mono); letter-spacing:.12em; text-transform:uppercase;
+        .sph-hb .grouphead{font-size:11.5px; font-family:var(--display); font-weight:700; letter-spacing:.12em; text-transform:uppercase;
           color:var(--muted); margin:28px 0 12px; display:flex; align-items:center; gap:12px; scroll-margin-top:16px;}
         .sph-hb .grouphead::after{content:""; flex:1; height:1px; background:var(--line);}
 
@@ -248,7 +259,7 @@ export default function StaffPortalHandbookPage() {
         .sph-hb .flowcol{border-radius:10px; padding:12px 14px; border:1px solid var(--line-soft);}
         .sph-hb .flowcol.supplies{background:#EAF4EF; border-color:#CBE5D8;}
         .sph-hb .flowcol.receives{background:#EAF0F8; border-color:#CFDDF0;}
-        .sph-hb .flow-lbl{font-family:var(--mono); font-size:10.5px; letter-spacing:.06em; text-transform:uppercase; font-weight:700; margin-bottom:8px;}
+        .sph-hb .flow-lbl{font-family:var(--display); font-size:10.5px; letter-spacing:.08em; text-transform:uppercase; font-weight:700; margin-bottom:8px;}
         .sph-hb .flowcol.supplies .flow-lbl{color:#1F6340;}
         .sph-hb .flowcol.receives .flow-lbl{color:#154C7E;}
         .sph-hb .flowcol ul{margin:0; padding-left:0; list-style:none; display:flex; flex-direction:column; gap:8px;}
@@ -261,11 +272,11 @@ export default function StaffPortalHandbookPage() {
         /* Callouts */
         .sph-hb .call{border-radius:12px; padding:14px 17px; margin:16px 0; max-width:var(--measure); font-size:14px; border:1px solid var(--line-soft);}
         .sph-hb .call b{color:var(--ink);}
-        .sph-hb .call.rule{background:var(--warn-bg); border-color:#EAD9AE;}
+        .sph-hb .call.rule{background:var(--warn-bg); border-color:#EBD6B4;}
         .sph-hb .call.rule .lbl{color:var(--warn);}
-        .sph-hb .call.tip{background:var(--teal-soft); border-color:#BFDBD5;}
+        .sph-hb .call.tip{background:var(--teal-soft); border-color:#CFDFD4;}
         .sph-hb .call.tip .lbl{color:var(--teal-deep);}
-        .sph-hb .call .lbl{font-family:var(--mono); font-size:10.5px; letter-spacing:.14em; text-transform:uppercase; display:block; margin-bottom:5px; font-weight:700;}
+        .sph-hb .call .lbl{font-family:var(--display); font-size:10.5px; letter-spacing:.12em; text-transform:uppercase; display:block; margin-bottom:5px; font-weight:700;}
 
         /* Playbooks */
         .sph-hb .play{background:var(--card); border:1px solid var(--line); border-radius:14px; padding:19px 21px; margin-bottom:15px; border-left:4px solid var(--pc);}
@@ -291,21 +302,21 @@ export default function StaffPortalHandbookPage() {
         /* Help: FAQ + search */
         .sph-hb .faq{display:flex; flex-direction:column; gap:9px; max-width:var(--measure);}
         .sph-hb .faq details{background:var(--card); border:1px solid var(--line); border-radius:12px; padding:0 18px; scroll-margin-top:16px;}
-        .sph-hb .faq summary{cursor:pointer; font-weight:650; color:var(--ink); padding:13px 0; font-size:14.5px; list-style:none; display:flex; align-items:center; gap:10px;}
+        .sph-hb .faq summary{cursor:pointer; font-weight:600; font-family:var(--display); color:var(--ink); padding:13px 0; font-size:14.5px; list-style:none; display:flex; align-items:center; gap:10px;}
         .sph-hb .faq summary::-webkit-details-marker{display:none;}
-        .sph-hb .faq summary::before{content:"+"; font-family:var(--mono); color:var(--teal); font-weight:700; width:16px; flex:0 0 auto;}
+        .sph-hb .faq summary::before{content:"+"; font-family:var(--display); color:var(--teal); font-weight:700; width:16px; flex:0 0 auto;}
         .sph-hb .faq details[open] summary::before{content:"–";}
         .sph-hb .faq details .a{padding:0 0 15px 26px; font-size:14px;}
         .sph-hb .faq details .a p{margin:0 0 8px;}
-        .sph-hb .hb-search{background:var(--card); border:1px solid var(--line); border-radius:14px; padding:17px 19px; max-width:var(--measure);}
+        .sph-hb .hb-search{scroll-margin-top:16px; background:var(--card); border:1px solid var(--line); border-radius:14px; padding:17px 19px; max-width:var(--measure);}
         .sph-hb .hb-search label{display:block; font-weight:650; color:var(--ink); margin-bottom:8px; font-size:14.5px;}
         .sph-hb .hb-search input{width:100%; font:inherit; font-size:15px; padding:11px 14px; border-radius:10px; border:1.5px solid var(--line); background:#fff; color:var(--ink);}
-        .sph-hb .hb-search input:focus{outline:none; border-color:var(--teal); box-shadow:0 0 0 3px rgba(21,122,114,.15);}
+        .sph-hb .hb-search input:focus{outline:none; border-color:var(--teal); box-shadow:0 0 0 3px rgba(74,128,115,.18);}
         .sph-hb .hb-search .hint{font-size:12px; color:var(--muted); margin:8px 0 0;}
         .sph-hb .sr-list{list-style:none; margin:14px 0 0; padding:0; display:flex; flex-direction:column; gap:6px;}
         .sph-hb .sr-list li a{display:block; padding:10px 12px; border-radius:9px; border:1px solid var(--line-soft); text-decoration:none; color:var(--body); background:var(--paper);}
         .sph-hb .sr-list li a:hover{border-color:var(--teal); background:var(--teal-soft);}
-        .sph-hb .sr-list .where{font-family:var(--mono); font-size:10.5px; letter-spacing:.06em; text-transform:uppercase; color:var(--teal-deep); display:block; margin-bottom:3px;}
+        .sph-hb .sr-list .where{font-family:var(--display); font-weight:700; font-size:10.5px; letter-spacing:.08em; text-transform:uppercase; color:var(--teal-deep); display:block; margin-bottom:3px;}
         .sph-hb .sr-list .snip{font-size:13px; line-height:1.5;}
         .sph-hb .sr-empty{font-size:13px; color:var(--muted); margin-top:12px;}
 
@@ -314,7 +325,7 @@ export default function StaffPortalHandbookPage() {
         @media(prefers-reduced-motion:reduce){.sph-hb *{transition:none!important;}}
         @media print{
           .sph-hb{background:#fff;}
-          .sph-hb header.mast{background:#0E4A46!important; -webkit-print-color-adjust:exact; print-color-adjust:exact;}
+          .sph-hb header.mast{background:#244952!important; -webkit-print-color-adjust:exact; print-color-adjust:exact;}
           .sph-hb .mast-actions,.sph-hb .hb-search,.sph-hb [data-noexport]{display:none!important;}
           .sph-hb .mod,.sph-hb .play,.sph-hb .legend .rc,.sph-hb .conn,.sph-hb .hubwrap,.sph-hb .call,.sph-hb .tablewrap,.sph-hb .faq details{break-inside:avoid;}
           .sph-hb .faq details:not([open]) .a{display:block;}
@@ -336,9 +347,9 @@ export default function StaffPortalHandbookPage() {
             <span>Audience: <b>Clinicians · Office staff · Interns · Manager</b></span>
           </div>
           <div className="mast-actions" data-noexport="">
-            <button type="button" className="hb-btn" onClick={() => window.print()}>🖨&nbsp; Save as PDF</button>
-            <button type="button" className="hb-btn ghost" onClick={downloadWord}>⬇&nbsp; Download as Word</button>
-            <a className="hb-btn ghost" href="#help">🔎&nbsp; Search this handbook</a>
+            <button type="button" className="hb-btn" onClick={() => window.print()}><FileText size={14} aria-hidden /> Save as PDF</button>
+            <button type="button" className="hb-btn ghost" onClick={downloadWord}><Download size={14} aria-hidden /> Download as Word</button>
+            <a className="hb-btn ghost" href="#hb-search"><Search size={14} aria-hidden /> Search this handbook</a>
           </div>
         </div>
       </header>
@@ -911,7 +922,7 @@ export default function StaffPortalHandbookPage() {
           <p className="eyebrow">Section 08</p>
           <h2>Help &amp; FAQ</h2>
 
-          <div className="hb-search" data-noexport="">
+          <div className="hb-search" id="hb-search" data-noexport="">
             <label htmlFor="sph-search">Search this handbook</label>
             <input
               id="sph-search" type="search" value={query} onChange={(e) => setQuery(e.target.value)}

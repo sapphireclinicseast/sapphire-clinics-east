@@ -8,6 +8,19 @@
 import { useEffect, useState } from 'react'
 import { useParams } from 'next/navigation'
 import { backendOrigin } from '@/lib/backend'
+import {
+  Banner, Icon, Skeleton, type IconName,
+  CARD_STYLE, FILE_FOCUS, SUBTLE_BG,
+} from '@/components/hub/ui'
+
+const CARD_SHADOW = '0 1px 2px rgba(30,56,50,0.04), 0 12px 32px -18px rgba(30,56,50,0.25)'
+
+/** Manila wall-clock time, e.g. "3:45 PM". */
+function fmtTime(iso: string): string {
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return ''
+  return d.toLocaleTimeString('en-PH', { timeZone: 'Asia/Manila', hour: 'numeric', minute: '2-digit' })
+}
 
 interface TokenStatus {
   token: string
@@ -86,77 +99,151 @@ export default function MobileUploadPage() {
 
   const docLabel = status ? (DOC_TITLES[status.docKey] ?? status.docKey) : ''
 
+  const expired = loadErr === 'Token expired.'
+
   return (
     <div className="max-w-md mx-auto animate-fade-up">
-      <div className="card-static">
-        <div className="text-[10.5px] font-bold uppercase tracking-[0.14em] text-[color:var(--bright-teal)] mb-1" style={{ fontFamily: 'var(--font-display)' }}>QR upload</div>
-        <h1 className="text-[22px] leading-tight text-[color:var(--deep-teal)] mb-1">Upload from your phone</h1>
+      <section className="rounded-2xl px-5 py-6 sm:px-7 sm:py-7" style={{ ...CARD_STYLE, boxShadow: CARD_SHADOW }}>
+        <div className="flex items-center gap-3">
+          <span className="w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0"
+            style={done ? { background: '#EEF5E8', color: '#2F5A28' } : loadErr ? { background: '#FEF2F2', color: '#991B1B' } : { background: 'var(--pale-teal)', color: 'var(--deep-teal)' }}>
+            <Icon name={done ? 'check' : loadErr ? (expired ? 'clock' : 'alert') : 'upload'} size={20} />
+          </span>
+          <div className="min-w-0">
+            <p className="text-[11px] font-semibold uppercase tracking-wider" style={{ fontFamily: 'var(--font-display)', color: 'var(--teal)' }}>QR upload</p>
+            <h1 className="text-[20px] sm:text-[22px] font-bold leading-tight" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>
+              {done ? 'Uploaded' : expired ? 'This QR has expired' : loadErr ? 'Link not working' : 'Upload from your phone'}
+            </h1>
+          </div>
+        </div>
+
+        {/* Checking the token */}
+        {!status && !loadErr && (
+          <div className="mt-5 space-y-3" role="status" aria-label="Checking the upload link">
+            <Skeleton className="h-16 w-full rounded-xl" />
+            <Skeleton className="h-14 w-full rounded-xl" />
+            <Skeleton className="h-14 w-full rounded-xl" />
+          </div>
+        )}
 
         {loadErr && (
-          <div className="px-4 py-3 rounded-xl bg-rose-50 border border-rose-100 text-sm text-rose-800 mt-4">
-            {loadErr === 'Token expired.' ? 'This QR has expired. Please regenerate one on your computer.' : loadErr}
+          <div className="mt-5 space-y-3">
+            {expired ? (
+              <>
+                <p className="text-sm leading-relaxed" style={{ color: 'var(--mid-gray)' }}>
+                  For your privacy, each QR code only works for a short time.
+                </p>
+                <ol className="space-y-2 text-sm" style={{ color: 'var(--charcoal)' }}>
+                  {['On your computer, close the QR window.', 'Click "QR upload" on the same document again.', 'Scan the new QR code with this phone.'].map((t, i) => (
+                    <li key={t} className="flex items-start gap-2.5">
+                      <span className="w-5 h-5 rounded-full flex items-center justify-center text-[11px] font-bold flex-shrink-0 mt-px"
+                        style={{ background: 'var(--pale-teal)', color: 'var(--deep-teal)', fontFamily: 'var(--font-display)' }}>{i + 1}</span>
+                      <span className="leading-relaxed">{t}</span>
+                    </li>
+                  ))}
+                </ol>
+              </>
+            ) : (
+              <Banner tone="error">{loadErr}</Banner>
+            )}
           </div>
         )}
 
         {status && !done && (
           <>
-            <p className="text-sm text-[color:var(--mid-gray)] mt-1 mb-5">
-              Take a photo or pick a file for: <span className="font-semibold text-[color:var(--narra)]">{docLabel}</span>
-            </p>
-
-            {uploadErr && (
-              <div className="px-4 py-3 rounded-xl bg-rose-50 border border-rose-100 text-sm text-rose-800 mb-4">{uploadErr}</div>
-            )}
-
-            <div className="space-y-3">
-              <label className={`btn-primary w-full inline-flex items-center justify-center cursor-pointer ${uploading ? 'opacity-60 pointer-events-none' : ''}`}>
-                {uploading ? 'Uploading…' : '📷  Take a photo'}
-                <input
-                  type="file"
-                  className="sr-only"
-                  accept="image/*"
-                  capture="environment"
-                  disabled={uploading}
-                  onChange={e => {
-                    const f = e.target.files?.[0]
-                    e.target.value = ''
-                    if (f) void handleFile(f)
-                  }}
-                />
-              </label>
-              <label className={`btn-secondary w-full inline-flex items-center justify-center cursor-pointer ${uploading ? 'opacity-60 pointer-events-none' : ''}`}>
-                {uploading ? 'Uploading…' : 'Pick a file from this phone'}
-                <input
-                  type="file"
-                  className="sr-only"
-                  accept="image/*,application/pdf"
-                  disabled={uploading}
-                  onChange={e => {
-                    const f = e.target.files?.[0]
-                    e.target.value = ''
-                    if (f) void handleFile(f)
-                  }}
-                />
-              </label>
+            <div className="mt-5 rounded-xl px-3.5 py-3 flex items-center gap-3 min-w-0" style={{ background: SUBTLE_BG, border: '1px solid var(--light-gray)' }}>
+              <Icon name="file" size={18} style={{ color: 'var(--teal)' }} />
+              <div className="min-w-0 flex-1">
+                <div className="text-[11px] font-semibold uppercase tracking-wider" style={{ fontFamily: 'var(--font-display)', color: 'var(--mid-gray)' }}>Document</div>
+                <div className="text-[14px] font-semibold leading-tight mt-0.5 break-words" style={{ color: 'var(--charcoal)' }}>{docLabel}</div>
+              </div>
+              {fmtTime(status.expiresAt) && (
+                <span className="flex-shrink-0 inline-flex items-center gap-1 text-[11.5px]" style={{ color: 'var(--mid-gray)' }}>
+                  <Icon name="clock" size={12} /> Until {fmtTime(status.expiresAt)}
+                </span>
+              )}
             </div>
 
-            <p className="text-[11.5px] text-[color:var(--mid-gray)] mt-4">
-              Files are kept on the server for 30 minutes and deleted automatically after your desktop picks them up.
+            {uploadErr && <div className="mt-4"><Banner tone="error">{uploadErr}</Banner></div>}
+
+            {uploading ? (
+              <div className="mt-4 rounded-xl px-4 py-5 flex items-center justify-center gap-3" role="status"
+                style={{ border: '1px solid var(--light-gray)', background: '#fff' }}>
+                <Icon name="refresh" size={18} className="animate-spin" style={{ color: 'var(--teal)' }} />
+                <span className="text-sm font-semibold" style={{ color: 'var(--charcoal)' }}>Uploading… keep this page open</span>
+              </div>
+            ) : (
+              <div className="mt-4 space-y-2.5">
+                <PickTile
+                  icon="image"
+                  title="Take a photo"
+                  hint="Opens your camera. Lay the document flat in good light."
+                  primary
+                  accept="image/*"
+                  capture
+                  onFile={f => void handleFile(f)}
+                />
+                <PickTile
+                  icon="upload"
+                  title="Pick a file from this phone"
+                  hint="A photo or PDF you already have."
+                  accept="image/*,application/pdf"
+                  onFile={f => void handleFile(f)}
+                />
+              </div>
+            )}
+
+            <p className="text-[12px] mt-4 leading-relaxed flex items-start gap-1.5" style={{ color: 'var(--mid-gray)' }}>
+              <Icon name="shield" size={13} className="mt-0.5" />
+              <span>Files are kept on the server for 30 minutes and deleted automatically after your desktop picks them up.</span>
             </p>
           </>
         )}
 
         {done && (
-          <div className="mt-4">
-            <div className="px-4 py-3 rounded-xl bg-emerald-50 border border-emerald-200 text-sm text-emerald-900 mb-3">
-              ✓ Uploaded. You can close this page — the file should appear on your computer in a moment.
-            </div>
-            <p className="text-[12px] text-[color:var(--mid-gray)]">
-              {docLabel ? `For: ${docLabel}` : ''}
-            </p>
+          <div className="mt-5 space-y-3">
+            <Banner tone="success">You can close this page — the file should appear on your computer in a moment.</Banner>
+            {docLabel && (
+              <p className="text-[12.5px] flex items-center gap-1.5" style={{ color: 'var(--mid-gray)' }}>
+                <Icon name="file" size={13} /> For: <span className="font-semibold" style={{ color: 'var(--charcoal)' }}>{docLabel}</span>
+              </p>
+            )}
           </div>
         )}
-      </div>
+      </section>
     </div>
+  )
+}
+
+/** A big tap target that wraps a hidden file input. */
+function PickTile({ icon, title, hint, accept, capture = false, primary = false, onFile }: {
+  icon: IconName; title: string; hint: string; accept: string; capture?: boolean; primary?: boolean; onFile: (f: File) => void
+}) {
+  return (
+    <label className={`flex items-center gap-3 rounded-xl px-4 py-3.5 min-h-[64px] transition-opacity active:opacity-90 ${FILE_FOCUS}`}
+      style={primary
+        ? { background: 'var(--deep-teal)', color: '#fff', border: '1px solid var(--deep-teal)' }
+        : { background: '#fff', color: 'var(--charcoal)', border: '1px solid var(--light-gray)' }}>
+      <span className="w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0"
+        style={primary ? { background: 'rgba(255,255,255,0.16)' } : { background: 'var(--pale-teal)', color: 'var(--deep-teal)' }}>
+        <Icon name={icon} size={20} />
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block text-[15px] font-semibold leading-tight" style={{ fontFamily: 'var(--font-display)' }}>{title}</span>
+        <span className="block text-[12px] mt-0.5 leading-snug" style={{ color: primary ? 'rgba(255,255,255,0.8)' : 'var(--mid-gray)' }}>{hint}</span>
+      </span>
+      <Icon name="chevronRight" size={16} />
+      <input
+        type="file"
+        className="sr-only"
+        accept={accept}
+        {...(capture ? { capture: 'environment' as const } : {})}
+        onChange={e => {
+          const f = e.target.files?.[0]
+          e.target.value = ''
+          if (f) onFile(f)
+        }}
+      />
+    </label>
   )
 }
