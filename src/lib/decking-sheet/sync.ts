@@ -111,11 +111,22 @@ async function loadDepartment(branch: string, department: string) {
   // desk edit from the board; between two of the same kind, the newer wins.
   // The sheet has a tab per DEPARTMENT, not per service, so it cannot show
   // both — and showing the stale one is how this went wrong.
+  // A schedule with NO work days never wins.
+  //
+  // A service-specific row beats the general one, which is right when that row
+  // is real. But an On-site row saved with every day unticked is not a
+  // narrower schedule, it is an empty one — and letting it win meant the
+  // consultant's actual general schedule was never drawn, so their booked
+  // children vanished from the sheet while still sitting in the hub. Front desk
+  // then read those hours as free.
+  const dayCount = (c: { workDays: unknown }) => ((c.workDays as string[]) ?? []).length
   const chosen = new Map<string, (typeof configs)[number]>()
   for (const c of configs) {
     const prev = chosen.get(c.staffId)
     if (!prev) { chosen.set(c.staffId, c); continue }
     const better =
+      (dayCount(c) > 0 && dayCount(prev) === 0) ? true :
+      (dayCount(c) === 0 && dayCount(prev) > 0) ? false :
       (c.deliveryMode !== null && prev.deliveryMode === null) ||
       (((c.deliveryMode === null) === (prev.deliveryMode === null)) && c.updatedAt > prev.updatedAt)
     if (better) chosen.set(c.staffId, c)
@@ -216,11 +227,16 @@ async function loadInterns(branch: string, department: string) {
   const configs = all.filter(c => internWindowCovers(c.staff.dateHired, c.staff.contractExpiry))
   if (configs.length === 0) return null
 
+  // Same rule as loadDepartment: an empty schedule never beats a real one.
+  const dayCount = (c: { workDays: unknown }) => ((c.workDays as string[]) ?? []).length
   const chosen = new Map<string, (typeof configs)[number]>()
   for (const c of configs) {
     const prev = chosen.get(c.staffId)
     if (!prev) { chosen.set(c.staffId, c); continue }
-    const better = (c.deliveryMode !== null && prev.deliveryMode === null)
+    const better =
+      (dayCount(c) > 0 && dayCount(prev) === 0) ? true :
+      (dayCount(c) === 0 && dayCount(prev) > 0) ? false :
+      (c.deliveryMode !== null && prev.deliveryMode === null)
       || (((c.deliveryMode === null) === (prev.deliveryMode === null)) && c.updatedAt > prev.updatedAt)
     if (better) chosen.set(c.staffId, c)
   }

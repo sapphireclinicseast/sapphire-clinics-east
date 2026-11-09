@@ -19,6 +19,25 @@ import {
   uploadInquiryFile, inquiryFileUrl,
   type PortalInquiry, type PortalInquiryMessage,
 } from '@/lib/api'
+import { StatusPill, Icon, TEXTAREA, SUBTLE_BG, FOCUS, DANGER } from '@/components/hub/ui'
+
+// Round launcher; same look as the Concerns launcher one slot below.
+const LAUNCHER = `fixed right-5 z-40 w-14 h-14 rounded-full text-white flex items-center justify-center shadow-[0_8px_24px_rgba(23,50,58,0.28)] hover:shadow-[0_12px_32px_rgba(23,50,58,0.38)] hover:-translate-y-0.5 transition-all ${FOCUS}`
+
+function PaperclipIcon({ size = 16 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden className="flex-shrink-0">
+      <path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" />
+    </svg>
+  )
+}
+function SendIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <line x1="22" y1="2" x2="11" y2="13" /><polygon points="22 2 15 22 11 13 2 9 22 2" />
+    </svg>
+  )
+}
 
 const BRANCH_LABEL: Record<string, string> = {
   SBEA: 'Aura Health Rehab – East',
@@ -71,13 +90,13 @@ function Lightbox({ item, onClose }: { item: Viewable; onClose: () => void }) {
       <div className="flex items-center gap-3.5 pb-3 text-white flex-shrink-0">
         <span className="flex-1 min-w-0 truncate text-[13px] font-semibold">{item.name}</span>
         <a href={item.url} download={item.name} onClick={(e) => e.stopPropagation()}
-          className="flex-shrink-0 text-[12.5px] font-bold text-white no-underline">
-          Download
+          className="flex-shrink-0 inline-flex items-center gap-1 text-[12.5px] font-bold text-white no-underline">
+          <Icon name="download" size={14} /> Download
         </a>
         <button type="button" onClick={onClose} aria-label="Close"
-          className="flex-shrink-0 w-8 h-8 rounded-full text-white flex items-center justify-center"
+          className={`flex-shrink-0 w-8 h-8 rounded-full text-white flex items-center justify-center ${FOCUS}`}
           style={{ background: 'rgba(255,255,255,0.14)' }}>
-          ✕
+          <Icon name="x" size={16} />
         </button>
       </div>
       <div onClick={(e) => e.stopPropagation()} className="flex-1 min-h-0 flex items-center justify-center">
@@ -111,10 +130,11 @@ function Bubble({ m, inquiryId, onOpen }: {
   return (
     <div className={`flex ${mine ? 'justify-end' : 'justify-start'} mb-1.5`}>
       <div
-        className="max-w-[78%] rounded-2xl text-sm leading-relaxed whitespace-pre-wrap break-words"
+        className="max-w-[78%] rounded-xl text-sm leading-relaxed whitespace-pre-wrap break-words"
         style={{
-          background: mine ? 'var(--teal, #1a7b8a)' : '#F1F2F4',
-          color: mine ? '#fff' : '#1f2937',
+          background: mine ? 'var(--deep-teal)' : SUBTLE_BG,
+          border: mine ? '1px solid transparent' : '1px solid var(--light-gray)',
+          color: mine ? '#fff' : 'var(--charcoal)',
           padding: url && !m.body ? 4 : '8px 13px',
         }}
       >
@@ -133,16 +153,16 @@ function Bubble({ m, inquiryId, onOpen }: {
             ) : canView ? (
               <button type="button" onClick={() => onOpen({ url, name, mime: m.fileMime ?? null })}
                 className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold text-left"
-                style={{ background: mine ? 'rgba(255,255,255,0.18)' : '#fff', color: mine ? '#fff' : '#1f2937' }}>
-                📎 <span className="flex-1 min-w-0 truncate">{name}</span>
+                style={{ background: mine ? 'rgba(255,255,255,0.18)' : '#fff', color: mine ? '#fff' : 'var(--charcoal)' }}>
+                <PaperclipIcon size={14} /> <span className="flex-1 min-w-0 truncate">{name}</span>
               </button>
             ) : (
               // A Word document cannot be rendered by the browser, so a
               // download is the only honest action for it.
               <a href={url} download={name}
                 className="flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold no-underline"
-                style={{ background: mine ? 'rgba(255,255,255,0.18)' : '#fff', color: mine ? '#fff' : '#1f2937' }}>
-                📎 <span className="flex-1 min-w-0 truncate">{name}</span>
+                style={{ background: mine ? 'rgba(255,255,255,0.18)' : '#fff', color: mine ? '#fff' : 'var(--charcoal)' }}>
+                <PaperclipIcon size={14} /> <span className="flex-1 min-w-0 truncate">{name}</span>
               </a>
             )}
           </div>
@@ -251,15 +271,15 @@ export default function PortalMessages({ token }: { token: string }) {
     return createPortal(
       <button
         onClick={() => setOpen(true)}
-        className="fixed bottom-24 right-5 z-40 w-14 h-14 rounded-full text-white flex items-center justify-center shadow-[0_8px_32px_rgba(27,63,56,0.3)] hover:shadow-[0_12px_40px_rgba(27,63,56,0.45)] hover:scale-105 transition-all"
-        style={{ background: 'linear-gradient(135deg, var(--teal), var(--deep-teal))' }}
+        className={`${LAUNCHER} bottom-24`}
+        style={{ background: 'var(--deep-teal)' }}
         aria-label="Messages with the clinic"
         title="Messages"
       >
         <ChatIcon size={24} />
         {unread > 0 && (
-          <span className="absolute -top-1 -right-1 rounded-full bg-white text-[11px] font-bold px-1.5 py-0.5 shadow" style={{ color: 'var(--deep-teal)' }}>
-            {unread}
+          <span className="absolute -top-1 -right-1 min-w-5 h-5 rounded-full text-[11px] font-bold px-1.5 flex items-center justify-center tabular-nums" style={{ background: DANGER, color: '#fff', border: '2px solid #fff' }}>
+            <span className="sr-only">Unread replies: </span>{unread}
           </span>
         )}
       </button>,
@@ -269,44 +289,57 @@ export default function PortalMessages({ token }: { token: string }) {
 
   return createPortal(
     <>
-    <div className="fixed bottom-5 right-5 z-50 w-[360px] max-w-[calc(100vw-2.5rem)] h-[480px] max-h-[calc(100vh-6rem)] rounded-2xl bg-white shadow-[0_18px_48px_rgba(16,36,41,0.26)] flex flex-col overflow-hidden">
-      <div className="flex items-center gap-2 px-4 py-3 text-white flex-shrink-0"
-        style={{ background: 'linear-gradient(135deg, var(--teal), var(--deep-teal))' }}>
+    <div role="dialog" aria-label="Messages"
+      className="fixed bottom-5 right-5 z-50 w-[360px] max-w-[calc(100vw-2.5rem)] h-[480px] max-h-[calc(100vh-6rem)] rounded-xl bg-white shadow-2xl flex flex-col overflow-hidden"
+      style={{ border: '1px solid var(--light-gray)' }}>
+      <div className="flex items-center gap-2 px-3.5 py-3 flex-shrink-0" style={{ borderBottom: '1px solid var(--light-gray)' }}>
         {sel && (
-          <button onClick={() => { setSel(null); setThread(null) }} aria-label="Back" className="text-white/90">←</button>
+          <button onClick={() => { setSel(null); setThread(null) }} aria-label="Back"
+            className={`w-8 h-8 inline-flex items-center justify-center rounded-lg hover:bg-[color:var(--paper)] ${FOCUS}`} style={{ color: 'var(--mid-gray)' }}>
+            <Icon name="arrowLeft" size={16} />
+          </button>
         )}
         <div className="flex-1 min-w-0">
-          <p className="font-semibold text-sm truncate" style={{ fontFamily: 'var(--font-display)' }}>
+          <p className="font-bold text-[15px] leading-tight truncate" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>
             {thread ? BRANCH_LABEL[thread.branch] ?? thread.branch : 'Messages'}
           </p>
-          <p className="text-[11px] opacity-85 truncate">
+          <p className="text-[11px] truncate" style={{ color: 'var(--mid-gray)' }}>
             {thread ? thread.ref : 'Your conversations with the clinic'}
           </p>
         </div>
-        <button onClick={() => setOpen(false)} aria-label="Close messages" className="text-white/90">✕</button>
+        <button onClick={() => setOpen(false)} aria-label="Close messages"
+          className={`w-8 h-8 inline-flex items-center justify-center rounded-lg hover:bg-[color:var(--paper)] ${FOCUS}`} style={{ color: 'var(--mid-gray)' }}>
+          <Icon name="x" size={16} />
+        </button>
       </div>
 
       {!sel ? (
         <div className="flex-1 overflow-y-auto">
           {list.length === 0 ? (
-            <p className="text-sm text-center px-5 py-8" style={{ color: '#8a9499' }}>
-              No messages yet. Type below to ask the clinic anything.
-            </p>
+            <div className="text-center px-5 py-10">
+              <span className="inline-flex" style={{ color: 'var(--light-gray)' }}><ChatIcon size={24} /></span>
+              <p className="text-sm mt-2" style={{ color: 'var(--mid-gray)' }}>
+                No messages yet. Type below to ask the clinic anything.
+              </p>
+            </div>
           ) : list.map(i => (
             <button key={i.id} onClick={() => { setSel(i.id); loadThread(i.id) }}
-              className="block w-full text-left px-4 py-3 border-b" style={{ borderColor: '#F1F2F4' }}>
+              className="block w-full text-left px-4 py-3 transition-colors hover:bg-[#F8FAF2] focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[color:var(--teal)]"
+              style={{ borderBottom: '1px solid var(--light-gray)' }}>
               <div className="flex items-baseline gap-2">
-                <span className="text-[13px] font-semibold flex-1 truncate" style={{ color: 'var(--deep-teal)' }}>
+                <span className="text-[13px] font-semibold flex-1 truncate" style={{ color: 'var(--charcoal)' }}>
                   {BRANCH_LABEL[i.branch] ?? i.branch}
                 </span>
-                <span className="text-[10px]" style={{ color: '#9aa5a9' }}>{when(i.lastMessageAt)}</span>
+                <span className="text-[10.5px] tabular-nums" style={{ color: 'var(--mid-gray)' }}>{when(i.lastMessageAt)}</span>
               </div>
-              <p className="text-xs mt-0.5 truncate" style={{ color: '#6b7280' }}>
+              <p className="text-xs mt-0.5 truncate" style={{ color: 'var(--mid-gray)' }}>
                 {i.preview ? `${i.preview.fromStaff ? 'Clinic: ' : 'You: '}${i.preview.body}` : i.subject ?? i.ref}
               </p>
-              <p className="text-[10px] mt-0.5" style={{ color: '#b3bcc0' }}>
-                {i.ref}{i.status === 'CLOSED' ? ' · closed' : i.status === 'ANSWERED' ? ' · replied' : ''}
-              </p>
+              <div className="flex items-center gap-2 mt-1">
+                <span className="text-[10.5px]" style={{ color: 'var(--mid-gray)' }}>{i.ref}</span>
+                {i.status === 'CLOSED' && <StatusPill tone="neutral">Closed</StatusPill>}
+                {i.status === 'ANSWERED' && <StatusPill tone="success">Replied</StatusPill>}
+              </div>
             </button>
           ))}
         </div>
@@ -320,14 +353,14 @@ export default function PortalMessages({ token }: { token: string }) {
       )}
 
       {(!sel || thread?.status !== 'CLOSED') && (
-        <div className="px-3 py-2.5 border-t flex-shrink-0" style={{ borderColor: '#F1F2F4' }}>
-          {error && <p className="text-[11px] mb-1.5" style={{ color: '#B91C1C' }}>{error}</p>}
+        <div className="px-3 py-2.5 flex-shrink-0" style={{ borderTop: '1px solid var(--light-gray)', background: SUBTLE_BG }}>
+          {error && <p role="alert" className="flex items-start gap-1.5 text-[11.5px] mb-1.5" style={{ color: DANGER }}><Icon name="alert" size={13} className="mt-px" />{error}</p>}
           {pending && (
-            <div className="flex items-center gap-2 mb-1.5 rounded-lg px-2.5 py-1.5" style={{ background: '#F1F2F4' }}>
-              <span className="flex-1 min-w-0 truncate text-[12px]" style={{ color: '#1f2937' }}>📎 {pending.name}</span>
-              <span className="text-[11px] flex-shrink-0" style={{ color: '#8a9499' }}>{humanSize(pending.size)}</span>
+            <div className="flex items-center gap-2 mb-1.5 rounded-lg px-2.5 py-1.5 bg-white" style={{ border: '1px solid var(--light-gray)' }}>
+              <span className="flex-1 min-w-0 inline-flex items-center gap-1.5 text-[12px]" style={{ color: 'var(--charcoal)' }}><PaperclipIcon size={13} /><span className="truncate">{pending.name}</span></span>
+              <span className="text-[11px] flex-shrink-0 tabular-nums" style={{ color: 'var(--mid-gray)' }}>{humanSize(pending.size)}</span>
               <button type="button" onClick={() => setPending(null)} aria-label="Remove attachment"
-                className="flex-shrink-0 text-[12px]" style={{ color: '#8a9499' }}>✕</button>
+                className={`flex-shrink-0 w-6 h-6 inline-flex items-center justify-center rounded ${FOCUS}`} style={{ color: 'var(--mid-gray)' }}><Icon name="x" size={12} /></button>
             </div>
           )}
           <div className="flex items-end gap-2">
@@ -335,9 +368,9 @@ export default function PortalMessages({ token }: { token: string }) {
               onChange={(e) => { choose(e.target.files?.[0]); e.target.value = '' }} />
             <button type="button" onClick={() => fileRef.current?.click()} disabled={busy}
               aria-label="Attach a file"
-              className="flex-shrink-0 w-9 h-9 rounded-full text-base disabled:opacity-40"
-              style={{ color: '#6b7280' }}>
-              📎
+              className={`flex-shrink-0 w-9 h-9 rounded-lg inline-flex items-center justify-center hover:bg-white disabled:opacity-40 ${FOCUS}`}
+              style={{ color: 'var(--mid-gray)' }}>
+              <PaperclipIcon />
             </button>
             <textarea
               value={draft}
@@ -345,19 +378,19 @@ export default function PortalMessages({ token }: { token: string }) {
               onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); if (canSend) send() } }}
               rows={1}
               placeholder={pending ? 'Add a caption (optional)…' : sel ? 'Write a reply…' : 'Ask the clinic a question…'}
-              className="flex-1 resize-none rounded-2xl px-3 py-2 text-sm outline-none"
-              style={{ border: '1.5px solid #e5e7eb', maxHeight: 110 }}
+              className={`${TEXTAREA} flex-1 resize-none`}
+              style={{ background: '#fff', border: '1px solid var(--light-gray)', color: 'var(--charcoal)', maxHeight: 110 }}
             />
             <button onClick={send} disabled={!canSend}
-              className="flex-shrink-0 w-9 h-9 rounded-full text-white font-bold disabled:opacity-40"
-              style={{ background: 'var(--teal, #1a7b8a)' }} aria-label="Send">
-              ➤
+              className={`flex-shrink-0 w-9 h-9 rounded-lg text-white inline-flex items-center justify-center hover:opacity-90 disabled:opacity-40 ${FOCUS}`}
+              style={{ background: 'var(--deep-teal)' }} aria-label="Send">
+              <SendIcon />
             </button>
           </div>
         </div>
       )}
       {sel && thread?.status === 'CLOSED' && (
-        <p className="px-4 py-3 text-[11px] border-t flex-shrink-0" style={{ color: '#8a9499', borderColor: '#F1F2F4' }}>
+        <p className="px-4 py-3 text-[11px] flex-shrink-0" style={{ color: 'var(--mid-gray)', borderTop: '1px solid var(--light-gray)', background: SUBTLE_BG }}>
           This conversation is closed. Go back and start a new message if you need anything else.
         </p>
       )}

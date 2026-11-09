@@ -14,6 +14,11 @@ import {
   homeProgressFileUrl,
   type HomeProgressEntryRow,
 } from '@/lib/api'
+import {
+  DashCard, Banner, EmptyState, RowsSkeleton, Tag, Icon,
+  CONTROL, CONTROL_STYLE, TEXTAREA, LABEL, LABEL_STYLE, BTN_PRIMARY, BTN_SECONDARY, BTN_DANGER_GHOST,
+  PRIMARY_STYLE, SECONDARY_STYLE, CARD_STYLE, SUBTLE_BG, MODAL_BACKDROP, DANGER, FOCUS,
+} from '@/components/hub/ui'
 
 type Kind = 'AUDIO' | 'VIDEO' | 'PHOTO'
 interface PendingFile { id: string; kind: Kind; blob: Blob; name: string; url: string }
@@ -49,29 +54,31 @@ export default function HomeProgressSection({ token }: { token: string }) {
   useEffect(() => { load() }, [load])
 
   return (
-    <div className="card-static">
-      <div className="flex items-center justify-between gap-3 flex-wrap">
-        <div>
-          <h3 className="text-[20px] leading-tight text-[color:var(--deep-teal)]">Home Progress</h3>
-          <p className="text-sm text-[color:var(--mid-gray)] mt-1">Record or upload your child&apos;s progress at home — voice, video, or photos. These are shared with your therapist&apos;s portal so they can follow your child&apos;s progress at home between sessions.</p>
+    <DashCard
+      title="Home Progress"
+      description="Record or upload your child's progress at home — voice, video, or photos. These are shared with your therapist's portal so they can follow your child's progress at home between sessions."
+      icon={<Icon name="image" size={16} />}
+      action={
+        <button onClick={() => setShowForm(true)} className={BTN_PRIMARY} style={PRIMARY_STYLE}>
+          <Icon name="plus" size={14} /> Add progress
+        </button>
+      }
+      flush={entries == null || entries.length === 0}
+    >
+      {err && <div className={entries && entries.length ? 'mb-4' : 'px-4 sm:px-5 pt-4'}><Banner tone="error">{err}</Banner></div>}
+
+      {entries == null ? (
+        <RowsSkeleton rows={3} label="Loading home progress" />
+      ) : entries.length === 0 ? (
+        <EmptyState icon="image" title="No entries yet" hint="Tap “Add progress” to upload your first." />
+      ) : (
+        <div className="space-y-3">
+          {entries.map((e) => <EntryCard key={e.id} entry={e} token={token} onDeleted={load} />)}
         </div>
-        <button onClick={() => setShowForm(true)} className="btn-primary shrink-0">+ Add progress</button>
-      </div>
-
-      {err && <div className="mt-4 text-sm text-rose-700 bg-rose-50 border border-rose-100 rounded-lg px-3 py-2">{err}</div>}
-
-      <div className="mt-5 space-y-4">
-        {entries == null ? (
-          <p className="text-sm text-[color:var(--mid-gray)]">Loading…</p>
-        ) : entries.length === 0 ? (
-          <p className="text-sm text-[color:var(--mid-gray)]">No entries yet. Tap “Add progress” to upload your first.</p>
-        ) : (
-          entries.map((e) => <EntryCard key={e.id} entry={e} token={token} onDeleted={load} />)
-        )}
-      </div>
+      )}
 
       {showForm && <AddEntryModal token={token} onClose={() => setShowForm(false)} onSaved={() => { setShowForm(false); load() }} />}
-    </div>
+    </DashCard>
   )
 }
 
@@ -84,17 +91,22 @@ function EntryCard({ entry, token, onDeleted }: { entry: HomeProgressEntryRow; t
     catch { setBusy(false) }
   }
   return (
-    <div className="rounded-2xl border border-[color:var(--light-gray)] p-4">
-      <div className="flex items-start justify-between gap-3">
-        <div className="text-sm font-semibold text-[color:var(--deep-teal)]">{fmtDate(entry.date)}</div>
-        <button onClick={del} disabled={busy} className="text-[12px] text-[color:var(--mid-gray)] hover:text-rose-600">Delete</button>
+    <div className="rounded-xl p-4 min-w-0" style={CARD_STYLE}>
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-2 text-sm font-bold" style={{ color: 'var(--charcoal)', fontFamily: 'var(--font-display)' }}>
+          <Icon name="calendar" size={14} style={{ color: 'var(--teal)' }} />
+          {fmtDate(entry.date)}
+        </div>
+        <button onClick={del} disabled={busy} className={BTN_DANGER_GHOST} style={{ color: DANGER }}>
+          <Icon name="trash" size={12} /> Delete
+        </button>
       </div>
-      {entry.remarks && <p className="text-sm text-[color:var(--mid-gray)] mt-1 whitespace-pre-wrap">{entry.remarks}</p>}
+      {entry.remarks && <p className="text-sm mt-1.5 whitespace-pre-wrap [overflow-wrap:anywhere]" style={{ color: 'var(--mid-gray)' }}>{entry.remarks}</p>}
       <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-3">
         {entry.files.map((f) => {
           const src = homeProgressFileUrl(f.id, token)
           return (
-            <div key={f.id} className="rounded-xl overflow-hidden border border-[color:var(--paper-3)] bg-[color:var(--paper-2)]">
+            <div key={f.id} className="rounded-lg overflow-hidden min-w-0" style={{ border: '1px solid var(--light-gray)', background: SUBTLE_BG }}>
               {f.kind === 'PHOTO' ? (
                 // eslint-disable-next-line @next/next/no-img-element
                 <a href={src} target="_blank" rel="noreferrer"><img src={src} alt={f.fileName} className="w-full max-h-56 object-cover" /></a>
@@ -103,9 +115,9 @@ function EntryCard({ entry, token, onDeleted }: { entry: HomeProgressEntryRow; t
               ) : (
                 <audio src={src} controls className="w-full" />
               )}
-              <div className="px-2.5 py-1.5 text-[11px] text-[color:var(--mid-gray)] flex items-center justify-between" style={{ fontFamily: 'var(--font-display)' }}>
-                <span className="truncate">{f.kind === 'AUDIO' ? '🎙 Voice' : f.kind === 'VIDEO' ? '🎬 Video' : '📷 Photo'}</span>
-                <span className="shrink-0">{fmtSize(f.sizeBytes)}</span>
+              <div className="px-2.5 py-1.5 text-[11px] flex items-center justify-between gap-2" style={{ color: 'var(--mid-gray)' }}>
+                <Tag tone="brand">{f.kind === 'AUDIO' ? 'Voice' : f.kind === 'VIDEO' ? 'Video' : 'Photo'}</Tag>
+                <span className="shrink-0 tabular-nums">{fmtSize(f.sizeBytes)}</span>
               </div>
             </div>
           )
@@ -162,25 +174,30 @@ function AddEntryModal({ token, onClose, onSaved }: { token: string; onClose: ()
   }
 
   return createPortal(
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 sm:p-4" onClick={uploading ? undefined : onClose}>
-      <div className="bg-white w-full sm:max-w-lg max-h-[92vh] rounded-t-2xl sm:rounded-2xl shadow-[0_24px_60px_rgba(27,63,56,0.3)] flex flex-col overflow-hidden animate-fade-up" onClick={(e) => e.stopPropagation()}>
-        <div className="sticky top-0 bg-white border-b border-[color:var(--light-gray)] px-4 py-3 z-10 flex items-center justify-between">
-          <div className="text-[18px] font-semibold text-[color:var(--deep-teal)]">Add Home Progress</div>
-          <button onClick={onClose} disabled={uploading} aria-label="Close" className="text-2xl leading-none text-[color:var(--mid-gray)] hover:text-[color:var(--deep-teal)] disabled:opacity-40">×</button>
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 animate-fade-in" style={MODAL_BACKDROP} onClick={uploading ? undefined : onClose}>
+      <div role="dialog" aria-modal="true" aria-labelledby="add-progress-title" className="bg-white w-full max-w-lg max-h-[calc(100dvh-2rem)] rounded-xl shadow-2xl flex flex-col overflow-hidden" onClick={(e) => e.stopPropagation()}>
+        <div className="px-5 pt-4 pb-3 flex items-start justify-between gap-3" style={{ borderBottom: '1px solid var(--light-gray)' }}>
+          <div className="min-w-0">
+            <p className="text-[10.5px] font-bold uppercase tracking-widest mb-1" style={{ color: 'var(--deep-teal)', fontFamily: 'var(--font-display)' }}>Home Progress</p>
+            <h2 id="add-progress-title" className="text-[15px] font-bold leading-tight tracking-normal" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>Add Home Progress</h2>
+          </div>
+          <button onClick={onClose} disabled={uploading} aria-label="Close" className={`w-8 h-8 -mr-1.5 -mt-1 inline-flex items-center justify-center rounded-lg hover:bg-[color:var(--paper)] disabled:opacity-40 ${FOCUS}`} style={{ color: 'var(--mid-gray)' }}>
+            <Icon name="x" size={16} />
+          </button>
         </div>
 
-        <div className="overflow-y-auto px-4 py-4 space-y-4">
+        <div className="overflow-y-auto p-4 sm:p-5 space-y-4">
           <label className="block">
-            <span className="label">Date</span>
-            <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="input" disabled={uploading} />
+            <span className={LABEL} style={LABEL_STYLE}>Date</span>
+            <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className={`${CONTROL} w-full`} style={CONTROL_STYLE} disabled={uploading} />
           </label>
           <label className="block">
-            <span className="label">Remarks</span>
-            <textarea value={remarks} onChange={(e) => setRemarks(e.target.value)} rows={3} className="input !py-2.5 resize-y" placeholder="e.g. Practiced the /s/ sound at home — much clearer today." disabled={uploading} />
+            <span className={LABEL} style={LABEL_STYLE}>Remarks</span>
+            <textarea value={remarks} onChange={(e) => setRemarks(e.target.value)} rows={3} className={`${TEXTAREA} resize-y`} style={CONTROL_STYLE} placeholder="e.g. Practiced the /s/ sound at home — much clearer today." disabled={uploading} />
           </label>
 
           <div>
-            <span className="label">Attachments</span>
+            <span className={LABEL} style={LABEL_STYLE}>Attachments</span>
             <div className="grid grid-cols-2 gap-2.5">
               <AttachBtn label="Record voice" icon={<IconMic />} onClick={() => setRecorder('AUDIO')} disabled={uploading} />
               <AttachBtn label="Record video" icon={<IconVideo />} onClick={() => setRecorder('VIDEO')} disabled={uploading} />
@@ -188,44 +205,46 @@ function AddEntryModal({ token, onClose, onSaved }: { token: string; onClose: ()
               <AttachBtn label="Upload files" icon={<IconPaperclip />} onClick={() => uploadInput.current?.click()} disabled={uploading} />
               <input ref={uploadInput} type="file" accept="audio/*,video/*,image/*" multiple className="hidden" onChange={onUpload} />
             </div>
-            <p className="text-[11px] text-[color:var(--mid-gray)] mt-1.5" style={{ fontFamily: 'var(--font-display)' }}>Up to 18 MB per file.</p>
+            <p className="text-[11px] mt-1.5" style={{ color: 'var(--mid-gray)' }}>Up to 18 MB per file.</p>
           </div>
 
           {files.length > 0 && (
             <div className="space-y-2">
               {files.map((f) => (
-                <div key={f.id} className="flex items-center gap-3 rounded-xl border border-[color:var(--paper-3)] p-2">
-                  <div className="w-14 h-14 rounded-lg overflow-hidden bg-[color:var(--paper-2)] flex items-center justify-center shrink-0">
+                <div key={f.id} className="flex items-center gap-3 rounded-lg p-2" style={CARD_STYLE}>
+                  <div className="w-12 h-12 rounded-lg overflow-hidden flex items-center justify-center shrink-0" style={{ background: 'var(--pale-teal)', color: 'var(--deep-teal)' }}>
                     {f.kind === 'PHOTO' ? (
                       // eslint-disable-next-line @next/next/no-img-element
                       <img src={f.url} alt="" className="w-full h-full object-cover" />
-                    ) : (
-                      <span className="text-xl">{f.kind === 'AUDIO' ? '🎙' : '🎬'}</span>
-                    )}
+                    ) : f.kind === 'AUDIO' ? <IconMic /> : <IconVideo />}
                   </div>
                   <div className="min-w-0 flex-1">
-                    <div className="text-[13px] font-medium text-[color:var(--deep-teal)] truncate">{f.name}</div>
-                    <div className="text-[11px] text-[color:var(--mid-gray)]">{f.kind.toLowerCase()} · {fmtSize(f.blob.size)}</div>
+                    <div className="text-[13px] font-medium truncate" style={{ color: 'var(--charcoal)' }}>{f.name}</div>
+                    <div className="text-[11px]" style={{ color: 'var(--mid-gray)' }}>{f.kind.toLowerCase()} · {fmtSize(f.blob.size)}</div>
                   </div>
-                  {!uploading && <button onClick={() => removeFile(f.id)} className="text-[color:var(--mid-gray)] hover:text-rose-600 text-lg shrink-0" aria-label="Remove">×</button>}
+                  {!uploading && (
+                    <button onClick={() => removeFile(f.id)} className={`w-8 h-8 inline-flex items-center justify-center rounded-lg hover:bg-red-50 shrink-0 ${FOCUS}`} style={{ color: 'var(--mid-gray)' }} aria-label="Remove">
+                      <Icon name="x" size={14} />
+                    </button>
+                  )}
                 </div>
               ))}
             </div>
           )}
 
-          {err && <div className="text-[12.5px] text-rose-700 bg-rose-50 border border-rose-100 rounded-lg px-3 py-2">{err}</div>}
+          {err && <Banner tone="error">{err}</Banner>}
 
           {uploading ? (
-            <div>
-              <div className="flex items-center justify-between text-[12px] text-[color:var(--deep-teal)] font-semibold mb-1" style={{ fontFamily: 'var(--font-display)' }}>
+            <div role="status">
+              <div className="flex items-center justify-between text-xs font-semibold mb-1 tabular-nums" style={{ color: 'var(--deep-teal)', fontFamily: 'var(--font-display)' }}>
                 <span>Uploading…</span><span>{progress}%</span>
               </div>
-              <div className="h-2.5 rounded-full bg-[color:var(--pale-teal)] overflow-hidden">
-                <div className="h-full bg-[color:var(--teal)] transition-[width] duration-200" style={{ width: `${progress}%` }} />
+              <div className="h-2 rounded-full overflow-hidden" style={{ background: 'var(--pale-teal)' }}>
+                <div className="h-full transition-[width] duration-200" style={{ width: `${progress}%`, background: 'var(--teal)' }} />
               </div>
             </div>
           ) : (
-            <button onClick={submit} className="btn-primary w-full">Save progress</button>
+            <button onClick={submit} className={`${BTN_PRIMARY} w-full`} style={PRIMARY_STYLE}>Save progress</button>
           )}
         </div>
       </div>
@@ -244,8 +263,8 @@ function IconPaperclip() { return <svg {...svgProps}><path d="m21.44 11.05-9.19 
 
 function AttachBtn({ label, icon, onClick, disabled }: { label: string; icon: ReactNode; onClick: () => void; disabled?: boolean }) {
   return (
-    <button onClick={onClick} disabled={disabled} className="btn-secondary !py-2.5 text-sm inline-flex items-center justify-center gap-1.5 disabled:opacity-40">
-      {icon}<span>{label}</span>
+    <button onClick={onClick} disabled={disabled} className={BTN_SECONDARY} style={SECONDARY_STYLE}>
+      {icon}<span className="truncate">{label}</span>
     </button>
   )
 }
@@ -338,35 +357,44 @@ function RecorderOverlay({ mode, onCancel, onDone }: { mode: Kind; onCancel: () 
 
   return createPortal(
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 p-4" onClick={() => { stopStream(); onCancel() }}>
-      <div className="bg-white w-full max-w-md rounded-2xl overflow-hidden shadow-2xl" onClick={(e) => e.stopPropagation()}>
-        <div className="px-4 py-3 border-b border-[color:var(--light-gray)] flex items-center justify-between">
-          <div className="font-semibold text-[color:var(--deep-teal)]">{mode === 'AUDIO' ? 'Record voice' : mode === 'VIDEO' ? 'Record video' : 'Take photo'}</div>
-          <button onClick={() => { stopStream(); onCancel() }} aria-label="Close" className="text-2xl leading-none text-[color:var(--mid-gray)]">×</button>
+      <div role="dialog" aria-modal="true" aria-labelledby="recorder-title" className="bg-white w-full max-w-md rounded-xl overflow-hidden shadow-2xl" onClick={(e) => e.stopPropagation()}>
+        <div className="px-5 pt-4 pb-3 flex items-center justify-between gap-3" style={{ borderBottom: '1px solid var(--light-gray)' }}>
+          <h2 id="recorder-title" className="text-[15px] font-bold leading-tight tracking-normal" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>{mode === 'AUDIO' ? 'Record voice' : mode === 'VIDEO' ? 'Record video' : 'Take photo'}</h2>
+          <button onClick={() => { stopStream(); onCancel() }} aria-label="Close" className={`w-8 h-8 -mr-1.5 inline-flex items-center justify-center rounded-lg hover:bg-[color:var(--paper)] ${FOCUS}`} style={{ color: 'var(--mid-gray)' }}>
+            <Icon name="x" size={16} />
+          </button>
         </div>
-        <div className="p-4">
+        <div className="p-4 sm:p-5">
           {err ? (
-            <p className="text-sm text-rose-700">{err}</p>
+            <Banner tone="error">{err}</Banner>
           ) : (
             <>
               {mode === 'AUDIO' ? (
                 <div className="py-8 text-center">
-                  <div className={`text-5xl ${recording ? 'animate-pulse' : ''}`}>🎙</div>
-                  <div className="mt-3 text-2xl font-semibold text-[color:var(--deep-teal)] tabular-nums">{mm}:{ss}</div>
+                  <div className={`mx-auto w-16 h-16 rounded-full flex items-center justify-center ${recording ? 'animate-pulse' : ''}`} style={{ background: recording ? '#FEF2F2' : 'var(--pale-teal)', color: recording ? DANGER : 'var(--deep-teal)' }}>
+                    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M19 10v1a7 7 0 0 1-14 0v-1"/><line x1="12" y1="19" x2="12" y2="22"/></svg>
+                  </div>
+                  <div className="mt-3 text-2xl font-bold tabular-nums" style={{ color: 'var(--charcoal)', fontFamily: 'var(--font-display)' }}>{mm}:{ss}</div>
+                  {recording && <p className="text-xs mt-1" style={{ color: DANGER }}>Recording…</p>}
                 </div>
               ) : (
                 <div className="relative rounded-xl overflow-hidden bg-black">
                   <video ref={videoRef} muted playsInline className="w-full max-h-[50vh]" />
-                  {recording && <div className="absolute top-2 left-2 flex items-center gap-1.5 bg-black/50 text-white text-[12px] px-2 py-0.5 rounded-full"><span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />{mm}:{ss}</div>}
+                  {recording && <div className="absolute top-2 left-2 flex items-center gap-1.5 bg-black/50 text-white text-[12px] px-2 py-0.5 rounded-full tabular-nums"><span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />Recording · {mm}:{ss}</div>}
                 </div>
               )}
 
               <div className="mt-4 flex items-center justify-center gap-3">
                 {mode === 'PHOTO' ? (
-                  <button onClick={capturePhoto} disabled={!ready} className="btn-primary disabled:opacity-40">Capture</button>
+                  <button onClick={capturePhoto} disabled={!ready} className={BTN_PRIMARY} style={PRIMARY_STYLE}><IconCamera /> Capture</button>
                 ) : !recording ? (
-                  <button onClick={start} disabled={!ready} className="btn-primary disabled:opacity-40">● Start recording</button>
+                  <button onClick={start} disabled={!ready} className={BTN_PRIMARY} style={PRIMARY_STYLE}>
+                    <span aria-hidden className="w-2.5 h-2.5 rounded-full bg-red-400" /> Start recording
+                  </button>
                 ) : (
-                  <button onClick={stop} className="px-5 py-2.5 rounded-xl bg-rose-600 text-white font-semibold">■ Stop</button>
+                  <button onClick={stop} className={BTN_PRIMARY} style={{ background: DANGER }}>
+                    <span aria-hidden className="w-2.5 h-2.5 rounded-sm bg-white" /> Stop
+                  </button>
                 )}
               </div>
             </>

@@ -149,7 +149,8 @@ export default function StaffShell({ children }: { children: React.ReactNode }) 
         className={`fixed lg:static inset-y-0 left-0 z-40 w-[248px] flex-shrink-0 flex flex-col transition-transform duration-300 lg:translate-x-0 ${
           sidebarOpen ? 'translate-x-0' : '-translate-x-full'
         }`}
-        style={{ background: 'var(--near-black)' }}
+        // Shared SCEI sidebar: the Class Portal's dark teal with mint accents.
+        style={{ background: '#17323A' }}
         aria-label="Staff Portal navigation"
       >
         {/* Brand */}
@@ -159,10 +160,10 @@ export default function StaffShell({ children }: { children: React.ReactNode }) 
             <img src="/brand/scei-mark.png" alt="" className="w-7 h-7 object-contain" />
           </span>
           <div className="flex-1 min-w-0 leading-tight">
-            <div className="text-[13px] font-extrabold text-white tracking-[0.05em]" style={{ fontFamily: 'var(--font-display)' }}>
-              SAPPHIRE
+            <div className="text-white" style={{ fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: '0.9rem', letterSpacing: '0.05em' }}>
+              SCEI
             </div>
-            <div className="text-[9.5px] font-semibold uppercase tracking-[0.2em]" style={{ fontFamily: 'var(--font-display)', color: '#8aa99d' }}>
+            <div className="uppercase" style={{ fontFamily: 'var(--font-display)', fontWeight: 600, fontSize: '0.6rem', letterSpacing: '0.2em', color: '#CBDAB5' }}>
               Staff Portal
             </div>
           </div>
@@ -181,7 +182,7 @@ export default function StaffShell({ children }: { children: React.ReactNode }) 
         <nav className="flex-1 overflow-y-auto py-4 px-3 space-y-5 [scrollbar-width:thin] [scrollbar-color:rgba(255,255,255,0.18)_transparent]">
           {groups.map((group) => (
             <div key={group.label}>
-              <p className="px-2 mb-1.5 text-[10.5px] font-semibold uppercase tracking-widest" style={{ color: 'rgba(255,255,255,0.3)', fontFamily: 'var(--font-display)' }}>
+              <p className="px-2 mb-1.5 text-xs font-semibold uppercase tracking-widest" style={{ color: 'rgba(255,255,255,0.55)', fontFamily: 'var(--font-body)' }}>
                 {group.label}
               </p>
               <ul className="space-y-0.5">
@@ -195,14 +196,14 @@ export default function StaffShell({ children }: { children: React.ReactNode }) 
                         onClick={() => setSidebarOpen(false)}
                         aria-current={active ? 'page' : undefined}
                         title={item.label}
-                        className={`flex items-center gap-3 px-3 py-2 rounded-lg text-[13px] font-medium transition-colors ${FOCUS} ${
-                          active ? 'text-white' : 'text-white/60 hover:text-white hover:bg-white/5'
+                        className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${FOCUS} ${
+                          active ? 'text-white' : 'text-white/75 hover:text-white hover:bg-white/[0.06]'
                         }`}
-                        style={active ? { background: 'rgba(138,169,157,0.18)' } : undefined}
+                        style={active ? { background: 'rgba(125,162,146,0.22)', fontFamily: 'var(--font-body)' } : { fontFamily: 'var(--font-body)' }}
                       >
-                        <Icon size={16} className="flex-shrink-0" style={active ? { color: '#a9c6b9' } : undefined} />
+                        <Icon size={16} className="flex-shrink-0" style={active ? { color: '#CBDAB5' } : undefined} />
                         <span className="min-w-0 truncate">{item.label}</span>
-                        {active && <ChevronRight size={12} className="ml-auto flex-shrink-0" style={{ color: '#a9c6b9' }} />}
+                        {active && <ChevronRight size={12} className="ml-auto flex-shrink-0" style={{ color: '#CBDAB5' }} />}
                       </Link>
                     </li>
                   )
@@ -266,7 +267,7 @@ export default function StaffShell({ children }: { children: React.ReactNode }) 
               <Menu size={18} />
             </button>
             <span className="hidden sm:flex flex-col leading-tight min-w-0">
-              <span className="text-[13px] font-bold truncate" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>SAPPHIRE</span>
+              <span className="text-[13px] font-bold truncate" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>SCEI</span>
               <span className="text-[9.5px] font-semibold uppercase tracking-[0.18em]" style={{ fontFamily: 'var(--font-display)', color: 'var(--deep-teal)' }}>Staff Portal</span>
             </span>
           </div>

@@ -2,6 +2,7 @@
 // Used by the header "Contact Us" menu and the signed-in portal "Directory" tab.
 
 import type { ReactNode } from 'react'
+import { DashCard, Icon, LABEL, LABEL_STYLE } from '@/components/hub/ui'
 
 export interface Branch {
   name: string
@@ -134,43 +135,88 @@ export function AuraHeading() {
   )
 }
 
-// Full directory card for the signed-in portal section (Aura + Verdana).
+// Full directory for the signed-in portal section (Aura + Verdana), in the
+// hub card style. The header "Contact Us" menu keeps using BranchBlock /
+// AuraHeading above, unchanged.
 export function DirectorySection() {
   return (
-    <div className="card-static">
-      <h3 className="text-[20px] leading-tight text-[color:var(--deep-teal)]">Directory</h3>
-      <p className="text-sm text-[color:var(--mid-gray)] mt-1">Reach us anytime — clinic and partner store.</p>
-
-      <div className="mt-5">
-        <AuraHeading />
-        <div className="mt-4 grid sm:grid-cols-2 gap-x-6 gap-y-5">
-          {AURA_BRANCHES.map((b) => (
-            <BranchBlock key={b.name} b={b} />
+    <div className="space-y-5">
+      <DashCard
+        title="Aura Health Rehab"
+        description="Reach us anytime — clinic and partner store."
+        icon={
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src="/aura-mark.png" alt="" width={32} height={16} className="h-4 w-auto" />
+        }
+        action={
+          <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs">
+            <a href={AURA_WEBSITE} target="_blank" rel="noreferrer" className={kitLinkCls} style={{ color: 'var(--teal)' }}>
+              www.sapphireclinicseast.org <Icon name="external" size={11} />
+            </a>
+            <a href={AURA_TIKTOK_URL} target="_blank" rel="noreferrer" className={kitLinkCls} style={{ color: 'var(--teal)' }}>
+              TikTok {AURA_TIKTOK}
+            </a>
+          </div>
+        }
+        flush
+      >
+        <div className="grid sm:grid-cols-2">
+          {AURA_BRANCHES.map((b, i) => (
+            <div
+              key={b.name}
+              className={`p-4 sm:p-5 min-w-0 ${i ? 'border-t sm:border-t-0 sm:border-l' : ''}`}
+              style={{ borderColor: 'var(--light-gray)' }}
+            >
+              <div className="flex items-center gap-2">
+                <Icon name="building" size={15} style={{ color: 'var(--teal)' }} />
+                <h3 className="text-sm font-bold tracking-normal" style={{ color: 'var(--charcoal)', fontFamily: 'var(--font-display)' }}>{b.name}</h3>
+              </div>
+              <dl className="mt-3 space-y-2.5">
+                <KitRow label="Address">{b.address}</KitRow>
+                <KitRow label="Email"><a href={b.emailHref} className={kitLinkCls} style={{ color: 'var(--teal)' }}>{b.emailLabel}</a></KitRow>
+                <KitRow label="Phone">{b.phones}</KitRow>
+                <KitRow label="Social">{b.social}</KitRow>
+              </dl>
+              <ChatButtons b={b} />
+            </div>
           ))}
         </div>
-      </div>
+      </DashCard>
 
-      <div className="mt-6 pt-6 border-t border-[color:var(--light-gray)]">
-        <div className="flex items-center gap-2.5">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/verdana-icon.png" alt="" width={36} height={32} className="h-9 w-auto" />
-          <div className="text-[15px] font-semibold text-[color:var(--narra)]">Verdana Rehab Solutions</div>
-        </div>
-        <div className="mt-3 space-y-1.5">
-          <Row icon="🌐">
-            <a href={VERDANA.websiteHref} target="_blank" rel="noreferrer" className={linkCls}>{VERDANA.website}</a>
-          </Row>
-          <Row icon="✉️">
-            <a href={`mailto:${VERDANA.email}`} className={linkCls}>{VERDANA.email}</a>
-          </Row>
-          <Row icon="📞">{VERDANA.phone}</Row>
-          <Row icon="📍">{VERDANA.address}</Row>
-          <Row icon="💬">{VERDANA.social}</Row>
-          <Row icon="🎵">
-            <a href={VERDANA.tiktokHref} target="_blank" rel="noreferrer" className={linkCls}>TikTok @verdanarehab</a>
-          </Row>
-        </div>
-      </div>
+      <DashCard
+        title="Verdana Rehab Solutions"
+        description="Our partner store for therapy toys and rehab supplies."
+        icon={
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src="/verdana-icon.png" alt="" width={18} height={16} className="h-4 w-auto" />
+        }
+      >
+        <dl className="grid sm:grid-cols-2 gap-x-6 gap-y-3">
+          <KitRow label="Website">
+            <a href={VERDANA.websiteHref} target="_blank" rel="noreferrer" className={kitLinkCls} style={{ color: 'var(--teal)' }}>{VERDANA.website}</a>
+          </KitRow>
+          <KitRow label="Email">
+            <a href={`mailto:${VERDANA.email}`} className={kitLinkCls} style={{ color: 'var(--teal)' }}>{VERDANA.email}</a>
+          </KitRow>
+          <KitRow label="Phone">{VERDANA.phone}</KitRow>
+          <KitRow label="Social">{VERDANA.social}</KitRow>
+          <KitRow label="Address">{VERDANA.address}</KitRow>
+          <KitRow label="TikTok">
+            <a href={VERDANA.tiktokHref} target="_blank" rel="noreferrer" className={kitLinkCls} style={{ color: 'var(--teal)' }}>@verdanarehab</a>
+          </KitRow>
+        </dl>
+      </DashCard>
+    </div>
+  )
+}
+
+const kitLinkCls = 'inline-flex items-center gap-1 font-semibold hover:underline underline-offset-2 [overflow-wrap:anywhere]'
+
+function KitRow({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div className="min-w-0">
+      <dt className={LABEL} style={LABEL_STYLE}>{label}</dt>
+      <dd className="text-[13px] leading-snug [overflow-wrap:anywhere]" style={{ color: 'var(--charcoal)' }}>{children}</dd>
     </div>
   )
 }

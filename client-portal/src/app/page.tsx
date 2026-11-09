@@ -3,6 +3,7 @@
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useSearchParams } from 'next/navigation'
+import Link from 'next/link'
 import { QRCodeSVG } from 'qrcode.react'
 import {
   loginPatient,
@@ -32,6 +33,13 @@ import PortalConcerns from '@/components/PortalConcerns'
 import PortalMessages from '@/components/PortalMessages'
 import HomeProgressSection from '@/components/HomeProgress'
 import CertificatesSection from '@/components/Certificates'
+import PortalShell, { type ShellNavItem } from '@/components/PortalShell'
+import {
+  PAGE, PageHeader, DashCard, KpiCard, StatusPill, Tag, Banner, EmptyState, Skeleton, RowsSkeleton,
+  PillTabs, Dialog, Avatar, GroupLabel, Icon, displayName, type Tone,
+  CONTROL, CONTROL_STYLE, LABEL, LABEL_STYLE, BTN_PRIMARY, BTN_SECONDARY, BTN_SM, BTN_DANGER_GHOST,
+  PRIMARY_STYLE, SECONDARY_STYLE, TH, TH_STYLE, TD, TR, TR_STYLE, CARD_STYLE, DANGER, FOCUS,
+} from '@/components/hub/ui'
 
 type Tab = 'returning' | 'new'
 
@@ -445,7 +453,7 @@ function AuthCard({
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Signed-in portal — sidebar with Profile / Sessions / Feedback sections
+// Signed-in portal — app shell (sidebar) with Profile / Sessions / … sections
 // ─────────────────────────────────────────────────────────────────────────────
 
 const SURVEY_BASE = 'https://survey.sapphireclinicseast.org'
@@ -457,15 +465,20 @@ const FRONTDESK_SURVEYS = new Set(['HR12'])
 
 type Section = 'profile' | 'sessions' | 'homeprogress' | 'certificates' | 'feedback' | 'rewards' | 'directory'
 
-const SECTIONS: { key: Section; label: string }[] = [
-  { key: 'profile', label: 'Profile' },
-  { key: 'sessions', label: 'Sessions' },
-  { key: 'homeprogress', label: 'Home Progress' },
-  { key: 'certificates', label: 'Certificates' },
-  { key: 'feedback', label: 'Feedback' },
-  { key: 'rewards', label: 'Reward Points' },
-  { key: 'directory', label: 'Directory' },
+// Sidebar nav, in order. Consecutive items sharing a group sit under one heading.
+const SECTIONS: ShellNavItem<Section>[] = [
+  { key: 'profile', label: 'Profile', icon: 'user', group: 'Overview' },
+  { key: 'sessions', label: 'Sessions', icon: 'clock', group: 'My care' },
+  { key: 'homeprogress', label: 'Home Progress', icon: 'home', group: 'My care' },
+  { key: 'certificates', label: 'Certificates', icon: 'award', group: 'My care' },
+  { key: 'feedback', label: 'Feedback', icon: 'heart', group: 'Clinic' },
+  { key: 'rewards', label: 'Reward Points', icon: 'star', group: 'Clinic' },
+  { key: 'directory', label: 'Directory', icon: 'phone', group: 'Clinic' },
 ]
+
+function nameInitials(name: string): string {
+  return name.split(/\s+/).filter(Boolean).slice(0, 2).map((s) => s[0]).join('').toUpperCase()
+}
 
 function PortalDashboard({
   token,
@@ -503,33 +516,46 @@ function PortalDashboard({
     return () => { cancelled = true }
   }, [token, firstName, onSignOut])
 
+  const current = SECTIONS.find((s) => s.key === section)
+  const shownName = displayName(data?.profile.fullName || firstName) || 'Patient'
+  const username = data?.profile.username
+
   return (
-    <section className="max-w-5xl mx-auto animate-fade-up stagger-2 space-y-6">
+    <>
+      <PortalShell
+        items={SECTIONS}
+        active={section}
+        onSelect={setSection}
+        userName={shownName}
+        userSub={username ? `@${username}` : 'Patient'}
+        avatarText={nameInitials(shownName) || '?'}
+        onSignOut={onSignOut}
+      />
       <PortalConcerns token={token} />
       {/* Stacked above Concerns, which sits above the chatbot bubble. */}
       <PortalMessages token={token} />
-      <div className="flex items-center justify-between flex-wrap gap-3">
-        <div>
-          <h2 className="text-[26px] leading-tight text-[color:var(--deep-teal)]">Welcome back, {firstName}</h2>
-          <p className="text-sm text-[color:var(--mid-gray)] mt-1">Your profile, sessions, and feedback in one place.</p>
-        </div>
-        <div className="flex items-center gap-2">
-          <a href="/book" className="btn-primary inline-flex items-center justify-center">Book a session →</a>
-          <button onClick={onSignOut} className="btn-secondary">Sign out</button>
-        </div>
-      </div>
 
-      {loading && (
-        <div className="card-static text-sm text-[color:var(--mid-gray)]">Loading your details…</div>
-      )}
-      {err && (
-        <div className="px-4 py-3 rounded-xl bg-rose-50 border border-rose-100 text-sm text-rose-800">{err}</div>
-      )}
+      <section className={`${PAGE} animate-fade-up stagger-2`}>
+        <PageHeader
+          eyebrow={current?.label}
+          title={`Welcome back, ${displayName(firstName)}`}
+          description="Your profile, sessions, and feedback in one place."
+          actions={
+            <Link href="/book" className={BTN_PRIMARY} style={PRIMARY_STYLE}>
+              <Icon name="calendar" size={15} /> Book a session
+            </Link>
+          }
+        />
 
-      {data && (
-        <div className="grid gap-6 lg:grid-cols-[200px_minmax(0,1fr)] items-start">
-          <SidebarNav section={section} onChange={setSection} />
-          <div className="min-w-0">
+        {loading && (
+          <div className="rounded-xl overflow-hidden" style={CARD_STYLE}>
+            <RowsSkeleton rows={4} label="Loading your details…" />
+          </div>
+        )}
+        {err && <Banner tone="error">{err}</Banner>}
+
+        {data && (
+          <div className="min-w-0" aria-label={current?.label} role="region">
             {section === 'profile' && (
               <ProfileSection
                 data={data}
@@ -544,50 +570,16 @@ function PortalDashboard({
             {section === 'certificates' && <CertificatesSection token={token} />}
             {section === 'feedback' && <FeedbackSection surveys={data.surveys} />}
             {section === 'rewards' && (
-              <div>
-                <div className="card-static mb-5">
-                  <h3 className="text-[20px] leading-tight text-[color:var(--deep-teal)]">Reward Points</h3>
-                  <p className="text-sm text-[color:var(--mid-gray)] mt-1">
-                    Look up your VIP or Prepaid card to see your points and balance.
-                  </p>
-                </div>
+              <div className="space-y-3">
+                <GroupLabel hint="Look up your VIP or Prepaid card to see your points and balance.">Reward Points</GroupLabel>
                 <RewardsPanel />
               </div>
             )}
             {section === 'directory' && <DirectorySection />}
           </div>
-        </div>
-      )}
-    </section>
-  )
-}
-
-function SidebarNav({ section, onChange }: { section: Section; onChange: (s: Section) => void }) {
-  return (
-    <nav className="card-static !p-2 lg:sticky lg:top-6">
-      <div
-        className="px-2 pt-1.5 pb-2 text-[10.5px] font-bold uppercase tracking-[0.14em] text-[color:var(--bright-teal)]"
-        style={{ fontFamily: 'var(--font-display)' }}
-      >
-        Sections
-      </div>
-      <div className="flex flex-wrap lg:flex-col gap-1">
-        {SECTIONS.map((s) => (
-          <button
-            key={s.key}
-            onClick={() => onChange(s.key)}
-            className={`lg:w-full text-left px-3 py-2.5 rounded-lg text-[13px] lg:text-sm font-semibold whitespace-nowrap transition-colors ${
-              section === s.key
-                ? 'bg-[color:var(--pale-teal)] text-[color:var(--deep-teal)]'
-                : 'text-[color:var(--mid-gray)] hover:text-[color:var(--teal)] hover:bg-[color:var(--pale-teal)]/50'
-            }`}
-            style={{ fontFamily: 'var(--font-display)' }}
-          >
-            {s.label}
-          </button>
-        ))}
-      </div>
-    </nav>
+        )}
+      </section>
+    </>
   )
 }
 
@@ -604,7 +596,7 @@ function ProfileSection({
 }) {
   const p = data.profile
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
       <ProfileHeaderCard
         token={token}
         photo={p.profilePhoto}
@@ -614,10 +606,13 @@ function ProfileSection({
       />
 
       {/* Demographics (read-only — edited by the front desk in the CRM) */}
-      <div className="card-static">
-        <h3 className="text-[20px] leading-tight text-[color:var(--deep-teal)]">Patient Profile</h3>
-        <p className="text-sm text-[color:var(--mid-gray)] mt-1">Your demographics as recorded in our Patient CRM.</p>
-        <dl className="mt-5 grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-4">
+      <DashCard
+        title="Patient Profile"
+        description="Your demographics as recorded in our Patient CRM."
+        icon={<Icon name="file" size={16} />}
+        footer="To update your Patient Profile, please inform the front desk so they can edit your details in the Operations Hub."
+      >
+        <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-4">
           <Detail label="Full Name" value={p.fullName} />
           <Detail label="Date of Birth" value={p.dob ? `${fmtDate(p.dob)}${p.age != null ? ` (${p.age} yrs)` : ''}` : null} />
           <Detail label="Cellphone No." value={p.phone} />
@@ -628,10 +623,7 @@ function ProfileSection({
           <Detail label="PWD / Senior ID No." value={p.pwdSeniorId} />
           <Detail label="Branch" value={p.branch} />
         </dl>
-        <p className="mt-5 text-[12px] text-[color:var(--mid-gray)] leading-relaxed border-t border-[color:var(--light-gray)] pt-3">
-          To update your Patient Profile, please inform the front desk so they can edit your details in the Operations Hub.
-        </p>
-      </div>
+      </DashCard>
 
       <MyDocumentsCard profile={p} token={token} onUploaded={onUpdated} />
 
@@ -657,8 +649,7 @@ function ProfileHeaderCard({
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
 
-  const initials =
-    fullName.split(/\s+/).filter(Boolean).slice(0, 2).map((s) => s[0]).join('').toUpperCase() || '🙂'
+  const initials = nameInitials(fullName) || '🙂'
 
   async function onFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
@@ -687,31 +678,35 @@ function ProfileHeaderCard({
   }
 
   return (
-    <div className="card-static">
-      <div className="flex items-center gap-5">
-        <div className="w-20 h-20 shrink-0 rounded-full overflow-hidden bg-[color:var(--pale-teal)] flex items-center justify-center border border-[color:var(--light-gray)]">
+    <div className="rounded-xl px-4 sm:px-5 py-4 min-w-0" style={CARD_STYLE}>
+      <div className="flex items-center gap-4 min-w-0">
+        <div
+          className="w-[72px] h-[72px] shrink-0 rounded-full overflow-hidden flex items-center justify-center"
+          style={{ background: 'var(--pale-teal)', border: '1px solid var(--light-gray)' }}
+        >
           {photo ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img src={photo} alt="Profile" className="w-full h-full object-cover" />
           ) : (
-            <span className="text-[22px] font-semibold text-[color:var(--teal)]" style={{ fontFamily: 'var(--font-display)' }}>{initials}</span>
+            <span className="text-[22px] font-bold" style={{ color: 'var(--deep-teal)', fontFamily: 'var(--font-display)' }}>{initials}</span>
           )}
         </div>
         <div className="flex-1 min-w-0">
-          <div className="text-[18px] font-semibold text-[color:var(--deep-teal)] truncate">{fullName}</div>
-          <div className="text-sm text-[color:var(--mid-gray)] truncate">{username ? `@${username}` : 'No username set'}</div>
+          <p className="text-xs font-semibold uppercase tracking-widest" style={{ color: 'var(--deep-teal)', fontFamily: 'var(--font-display)' }}>Patient</p>
+          <div className="text-lg sm:text-xl font-bold leading-tight truncate" style={{ color: 'var(--charcoal)', fontFamily: 'var(--font-display)' }}>{displayName(fullName)}</div>
+          <div className="text-sm truncate" style={{ color: 'var(--mid-gray)' }}>{username ? `@${username}` : 'No username set'}</div>
           <input ref={fileRef} type="file" accept="image/*" onChange={onFile} className="hidden" />
           <div className="mt-2.5 flex flex-wrap items-center gap-2">
-            <button type="button" onClick={() => fileRef.current?.click()} disabled={busy} className="btn-secondary text-sm py-1.5">
-              {busy ? 'Saving…' : photo ? 'Change photo' : 'Upload photo'}
+            <button type="button" onClick={() => fileRef.current?.click()} disabled={busy} className={BTN_SM} style={SECONDARY_STYLE}>
+              <Icon name="image" size={13} /> {busy ? 'Saving…' : photo ? 'Change photo' : 'Upload photo'}
             </button>
             {photo && !busy && (
-              <button type="button" onClick={removePhoto} className="text-sm text-[color:var(--mid-gray)] hover:text-rose-600 px-2">Remove</button>
+              <button type="button" onClick={removePhoto} className={BTN_DANGER_GHOST} style={{ color: DANGER }}>Remove</button>
             )}
           </div>
         </div>
       </div>
-      {err && <p className="text-[12px] text-rose-600 mt-3">{err}</p>}
+      {err && <div className="mt-3"><Banner tone="error">{err}</Banner></div>}
     </div>
   )
 }
@@ -763,50 +758,66 @@ function AccountSettings({
   }
 
   return (
-    <div className="card-static">
-      <h3 className="text-[20px] leading-tight text-[color:var(--deep-teal)]">Account &amp; security</h3>
-      <p className="text-sm text-[color:var(--mid-gray)] mt-1">Change your login username and password.</p>
-
-      <form onSubmit={saveUsername} className="mt-5">
-        <span className="label">Username</span>
+    <DashCard
+      title="Account & security"
+      description="Change your login username and password."
+      icon={<Icon name="shield" size={16} />}
+    >
+      <form onSubmit={saveUsername}>
+        <label className={LABEL} style={LABEL_STYLE} htmlFor="acct-username">Username</label>
         <div className="flex gap-2">
           <input
+            id="acct-username"
             required
             value={username}
             onChange={(e) => setUsername(e.target.value)}
             autoCapitalize="none"
             autoCorrect="off"
-            className="input flex-1"
+            className={`${CONTROL} flex-1 min-w-0`}
+            style={CONTROL_STYLE}
             placeholder="your username"
           />
-          <button type="submit" disabled={uBusy} className="btn-secondary">{uBusy ? 'Saving…' : 'Save'}</button>
+          <button type="submit" disabled={uBusy} className={BTN_SECONDARY} style={SECONDARY_STYLE}>{uBusy ? 'Saving…' : 'Save'}</button>
         </div>
         {uMsg && <SettingMsg m={uMsg} />}
       </form>
 
-      <form onSubmit={savePassword} className="mt-6 border-t border-[color:var(--light-gray)] pt-5 space-y-3.5">
-        <div className="text-[13px] font-semibold text-[color:var(--deep-teal)]">Change password</div>
-        <Field label="Current password">
-          <input required type="password" value={cur} onChange={(e) => setCur(e.target.value)} className="input" placeholder="••••••••" />
-        </Field>
-        <div className="grid grid-cols-2 gap-3">
-          <Field label="New password">
-            <input required type="password" value={nw} onChange={(e) => setNw(e.target.value)} className="input" placeholder="At least 8 characters" />
-          </Field>
-          <Field label="Confirm new password">
-            <input required type="password" value={conf} onChange={(e) => setConf(e.target.value)} className="input" placeholder="Re-enter password" />
-          </Field>
+      <form onSubmit={savePassword} className="mt-5 pt-5 space-y-3.5" style={{ borderTop: '1px solid var(--light-gray)' }}>
+        <h3 className="text-[13px] font-bold tracking-normal" style={{ color: 'var(--charcoal)', fontFamily: 'var(--font-display)' }}>Change password</h3>
+        <KitField label="Current password">
+          <input required type="password" value={cur} onChange={(e) => setCur(e.target.value)} className={`${CONTROL} w-full`} style={CONTROL_STYLE} placeholder="••••••••" />
+        </KitField>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <KitField label="New password">
+            <input required type="password" value={nw} onChange={(e) => setNw(e.target.value)} className={`${CONTROL} w-full`} style={CONTROL_STYLE} placeholder="At least 8 characters" />
+          </KitField>
+          <KitField label="Confirm new password">
+            <input required type="password" value={conf} onChange={(e) => setConf(e.target.value)} className={`${CONTROL} w-full`} style={CONTROL_STYLE} placeholder="Re-enter password" />
+          </KitField>
         </div>
-        <button type="submit" disabled={pBusy} className="btn-primary">{pBusy ? 'Saving…' : 'Change password'}</button>
+        <button type="submit" disabled={pBusy} className={BTN_PRIMARY} style={PRIMARY_STYLE}>{pBusy ? 'Saving…' : 'Change password'}</button>
         {pMsg && <SettingMsg m={pMsg} />}
       </form>
-    </div>
+    </DashCard>
+  )
+}
+
+/** Signed-in form field: kit label over a kit control. (The public forms keep
+ *  their own Field below.) */
+function KitField({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <label className="block">
+      <span className={LABEL} style={LABEL_STYLE}>{label}</span>
+      {children}
+    </label>
   )
 }
 
 function SettingMsg({ m }: { m: { ok: boolean; text: string } }) {
   return (
-    <p className={`text-[12px] mt-2 ${m.ok ? 'text-emerald-700' : 'text-rose-600'}`}>{m.text}</p>
+    <div className="mt-2.5">
+      <Banner tone={m.ok ? 'success' : 'error'}>{m.text}</Banner>
+    </div>
   )
 }
 
@@ -831,6 +842,105 @@ function resizeToDataUrl(file: File, size: number): Promise<string> {
     img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('Could not read that image.')) }
     img.src = url
   })
+}
+
+// Patient-facing copies of the docs they uploaded at sign-up (or that the front
+// desk attached in the CRM). Links open the file served from the Operations Hub.
+function MyDocumentsCard({ profile, token, onUploaded }: {
+  profile: MeResult['profile']
+  token: string
+  onUploaded: (patch: Partial<MeResult['profile']>) => void
+}) {
+  const items: { label: string; url: string | null; docType: 'referral' | 'pwd-id'; field: 'referralUrl' | 'pwdIdUrl' }[] = [
+    { label: "Doctor's Referral", url: profile.referralUrl ?? null, docType: 'referral', field: 'referralUrl' },
+    { label: 'PWD ID / Senior ID', url: profile.pwdIdUrl ?? null, docType: 'pwd-id', field: 'pwdIdUrl' },
+  ]
+  const [busy, setBusy] = useState<string | null>(null)
+  const [pct, setPct] = useState(0)
+  const [err, setErr] = useState<string | null>(null)
+
+  function pick(docType: 'referral' | 'pwd-id', field: 'referralUrl' | 'pwdIdUrl') {
+    const input = document.createElement('input')
+    input.type = 'file'
+    input.accept = 'image/*,application/pdf'
+    input.onchange = async () => {
+      const file = input.files?.[0]
+      if (!file) return
+      if (file.size > 20 * 1024 * 1024) { setErr(`"${file.name}" is too large. Please keep it under 20 MB.`); return }
+      setErr(null); setPct(0); setBusy(docType)
+      try {
+        const res = await uploadPatientDocument(token, docType, file, setPct)
+        onUploaded({ [field]: res.url } as Partial<MeResult['profile']>)
+      } catch (e) {
+        setErr((e as Error).message || 'Upload failed.')
+      } finally {
+        setBusy(null)
+      }
+    }
+    input.click()
+  }
+
+  return (
+    <DashCard
+      title="My Documents"
+      icon={<Icon name="upload" size={16} />}
+      flush
+      footer="Upload a clear photo or PDF of your Doctor's Referral or PWD / Senior ID (max 20 MB). It's saved to your patient record so the clinic can see it — no need to visit the front desk."
+    >
+      <ul>
+        {items.map((it, i) => (
+          <li
+            key={it.label}
+            className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 px-4 sm:px-5 py-3"
+            style={i ? TR_STYLE : undefined}
+          >
+            <span className="flex items-center gap-2.5 min-w-0">
+              <Icon name="file" size={16} style={{ color: 'var(--teal)' }} />
+              <span className="text-sm font-semibold truncate" style={{ color: 'var(--charcoal)' }}>{it.label}</span>
+              {it.url
+                ? <StatusPill tone="success">On file</StatusPill>
+                : <StatusPill tone="neutral">Not uploaded</StatusPill>}
+            </span>
+            <span className="flex items-center gap-2 shrink-0">
+              {it.url && (
+                <a
+                  href={it.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className={BTN_SM}
+                  style={{ color: 'var(--teal)' }}
+                >
+                  View <Icon name="external" size={12} />
+                </a>
+              )}
+              {busy === it.docType ? (
+                <span className="text-[13px] tabular-nums" style={{ color: 'var(--mid-gray)', fontFamily: 'var(--font-display)' }}>{pct}%…</span>
+              ) : (
+                <button
+                  onClick={() => pick(it.docType, it.field)}
+                  disabled={!!busy}
+                  className={BTN_SM}
+                  style={SECONDARY_STYLE}
+                >
+                  <Icon name="upload" size={12} /> {it.url ? 'Replace' : 'Upload'}
+                </button>
+              )}
+            </span>
+          </li>
+        ))}
+      </ul>
+      {err && <div className="px-4 sm:px-5 pb-4"><Banner tone="error">{err}</Banner></div>}
+    </DashCard>
+  )
+}
+
+function Detail({ label, value }: { label: string; value: string | null }) {
+  return (
+    <div className="min-w-0">
+      <dt className={LABEL} style={LABEL_STYLE}>{label}</dt>
+      <dd className="text-sm leading-snug [overflow-wrap:anywhere]" style={{ color: 'var(--charcoal)' }}>{value || '—'}</dd>
+    </div>
+  )
 }
 
 // ── Sessions ─────────────────────────────────────────────────────────────────
@@ -870,97 +980,104 @@ function SessionsSection({ sessions, stats, token }: { sessions: MeResult['sessi
   }
 
   return (
-    <div className="card-static">
-      <h3 className="text-[20px] leading-tight text-[color:var(--deep-teal)]">Session History</h3>
-
+    <div className="space-y-5">
       {/* Attendance summary */}
       {stats && (
-        <div className="mt-4 grid grid-cols-3 gap-2.5">
-          <StatTile label="Total Sessions" value={stats.total} tone="teal" />
-          <StatTile label="Confirmed" value={stats.confirmed} pct={stats.confirmedPct} tone="green" />
-          <StatTile label="Cancelled / Resched." value={stats.cancelledRescheduled} pct={stats.cancelledRescheduledPct} tone="rose" />
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <KpiCard label="Total Sessions" value={stats.total} icon={<Icon name="calendar" size={16} />} />
+          <KpiCard label="Confirmed" value={stats.confirmed} sub={`${stats.confirmedPct}% of sessions`} accent="var(--sage)" icon={<Icon name="check" size={16} />} />
+          <KpiCard label="Cancelled / Resched." value={stats.cancelledRescheduled} sub={`${stats.cancelledRescheduledPct}% of sessions`} accent={DANGER} icon={<Icon name="refresh" size={16} />} />
         </div>
       )}
 
-      {sessions.length === 0 ? (
-        <p className="mt-4 text-sm text-[color:var(--mid-gray)]">No sessions recorded yet.</p>
-      ) : (
-        <>
-          {/* Frozen bar: department tabs stay put on scroll + one Documents card */}
-          <div className="sticky top-[60px] z-20 -mx-7 mt-4 px-7 py-3 bg-white/95 backdrop-blur-sm border-b border-[color:var(--light-gray)]">
-            <div className="flex items-center justify-between gap-3 flex-wrap">
-              <div className="flex flex-wrap gap-2">
-                {departments.map((d) => (
-                  <button
-                    key={d}
-                    onClick={() => setDept(d)}
-                    className={`px-3 py-1.5 rounded-full text-[13px] font-semibold transition-colors ${
-                      active === d
-                        ? 'bg-[color:var(--teal)] text-white'
-                        : 'bg-[color:var(--pale-teal)] text-[color:var(--deep-teal)] hover:opacity-80'
-                    }`}
-                    style={{ fontFamily: 'var(--font-display)' }}
-                  >
-                    {shortDept(d)}
-                  </button>
-                ))}
-              </div>
+      <DashCard
+        title="Session History"
+        description={sessions.length ? 'Tap a session to view the therapist’s notes.' : undefined}
+        icon={<Icon name="clock" size={16} />}
+        flush
+        footer={SESSIONS_DISCLAIMER}
+      >
+        {sessions.length === 0 ? (
+          <EmptyState icon="calendar" title="No sessions recorded yet." />
+        ) : (
+          <>
+            {/* Frozen bar: department tabs stay put on scroll + one Documents button.
+                top-14 clears the phone top bar; on desktop there's no header. */}
+            <div
+              className="sticky top-14 md:top-0 z-20 px-4 sm:px-5 py-3 flex items-center justify-between gap-3 flex-wrap"
+              style={{ background: 'rgba(255,255,255,0.96)', backdropFilter: 'blur(4px)', borderBottom: '1px solid var(--light-gray)' }}
+            >
+              <PillTabs
+                label="Departments"
+                size="sm"
+                tabs={departments.map((d) => ({ id: d, label: shortDept(d), title: d }))}
+                value={active ?? ''}
+                onChange={(d) => setDept(d)}
+              />
               <button
                 onClick={() => setDocsOpen(true)}
                 title="Initial Evaluation, Progress Reports and other documents"
-                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-[color:var(--paper-3)] bg-[color:var(--paper-2)] text-sm font-semibold text-[color:var(--deep-teal)] hover:border-[color:var(--sage)] transition-colors shrink-0"
+                className={`${BTN_SECONDARY} shrink-0`}
+                style={SECONDARY_STYLE}
               >
                 <FolderIcon /> Documents
               </button>
             </div>
-          </div>
 
-          <p className="mt-3 text-[12px] text-[color:var(--mid-gray)]" style={{ fontFamily: 'var(--font-display)' }}>
-            Tap a session to view the therapist&apos;s notes.
-          </p>
-
-          <div className="mt-3 space-y-6">
-            {[...byProvider.entries()].map(([provider, rows]) => (
-              <div key={provider}>
-                <div className="text-sm font-semibold text-[color:var(--teal)]">{provider}</div>
-                <div className="mt-2 overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="text-left text-[11px] uppercase tracking-[0.1em] text-[color:var(--mid-gray)]" style={{ fontFamily: 'var(--font-display)' }}>
-                        <th className="pb-2 pr-4 font-semibold">Date</th>
-                        <th className="pb-2 pr-4 font-semibold">Type of Service</th>
-                        <th className="pb-2 pr-4 font-semibold">Status</th>
-                        <th className="pb-2 font-semibold"></th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {rows.map((s) => (
-                        <tr
-                          key={`${s.source}-${s.id}`}
-                          onClick={() => setSelected(s)}
-                          className="border-t border-[color:var(--light-gray)] cursor-pointer hover:bg-[color:var(--pale-teal)]/40 transition-colors"
-                        >
-                          <td className="py-2.5 pr-4 whitespace-nowrap text-[color:var(--deep-teal)]">{fmtDate(s.date)}</td>
-                          <td className="py-2.5 pr-4 text-[color:var(--mid-gray)]">
-                            {s.isTeletherapy ? 'Teletherapy' : 'In-clinic'}
-                            {s.branch && (
-                              <span className="ml-2 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-[color:var(--pale-teal)] text-[color:var(--deep-teal)] align-middle">{s.branch}</span>
-                            )}
-                          </td>
-                          <td className="py-2.5 pr-4"><StatusBadge status={s.status} /></td>
-                          <td className="py-2.5 text-right text-[color:var(--teal)]">›</td>
+            <div className="py-2">
+              {[...byProvider.entries()].map(([provider, rows]) => (
+                <div key={provider} className="pt-3 pb-1">
+                  <div className="px-4 sm:px-5 pb-2 flex items-center gap-2">
+                    <Avatar text={nameInitials(provider) || '?'} size={26} />
+                    <span className="text-sm font-semibold truncate" style={{ color: 'var(--charcoal)' }}>{provider}</span>
+                    <span className="text-xs tabular-nums" style={{ color: 'var(--mid-gray)' }}>· {rows.length}</span>
+                  </div>
+                  {/* relative: keeps the header's sr-only label inside the scroller,
+                      so it can't widen the page on phones. */}
+                  <div className="overflow-x-auto" style={{ position: 'relative' }}>
+                    {/* Fixed layout so each provider's table lines up with the next. */}
+                    <table className="w-full text-sm min-w-[440px]" style={{ tableLayout: 'fixed' }}>
+                      <colgroup>
+                        <col style={{ width: '30%' }} /><col /><col style={{ width: '28%' }} /><col style={{ width: 48 }} />
+                      </colgroup>
+                      <thead>
+                        <tr>
+                          <th className={`${TH} pl-4 sm:pl-5`} style={TH_STYLE}>Date</th>
+                          <th className={TH} style={TH_STYLE}>Type of Service</th>
+                          <th className={TH} style={TH_STYLE}>Status</th>
+                          <th className={TH} style={TH_STYLE}><span className="sr-only">Open</span></th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                      </thead>
+                      <tbody>
+                        {rows.map((s) => (
+                          <tr
+                            key={`${s.source}-${s.id}`}
+                            onClick={() => setSelected(s)}
+                            className={`${TR} cursor-pointer`}
+                            style={TR_STYLE}
+                          >
+                            <td className={`${TD} pl-4 sm:pl-5 whitespace-nowrap font-medium`} style={{ color: 'var(--charcoal)' }}>{fmtDate(s.date)}</td>
+                            <td className={TD} style={{ color: 'var(--mid-gray)' }}>
+                              <span className="inline-flex flex-wrap items-center gap-1.5">
+                                {s.isTeletherapy ? 'Teletherapy' : 'In-clinic'}
+                                {s.branch && <Tag tone="brand">{s.branch}</Tag>}
+                              </span>
+                            </td>
+                            <td className={TD}><StatusBadge status={s.status} /></td>
+                            <td className={`${TD} pr-4 sm:pr-5 text-right`} style={{ color: 'var(--teal)' }}>
+                              <Icon name="chevronRight" size={14} className="inline-block" />
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
-              </div>
-            ))}
-          </div>
-        </>
-      )}
-
-      <Disclaimer>{SESSIONS_DISCLAIMER}</Disclaimer>
+              ))}
+            </div>
+          </>
+        )}
+      </DashCard>
 
       {docsOpen && (
         <DocumentsModal
@@ -975,15 +1092,11 @@ function SessionsSection({ sessions, stats, token }: { sessions: MeResult['sessi
   )
 }
 
-function StatTile({ label, value, pct, tone }: { label: string; value: number; pct?: number; tone: 'teal' | 'green' | 'rose' }) {
-  const color = tone === 'green' ? '#166534' : tone === 'rose' ? '#b91c1c' : 'var(--deep-teal)'
-  const bg = tone === 'green' ? '#F0FDF4' : tone === 'rose' ? '#FEF2F2' : 'var(--pale-teal)'
+function ModalHeading({ children, className = '' }: { children: React.ReactNode; className?: string }) {
   return (
-    <div className="rounded-xl px-3 py-3 text-center" style={{ background: bg }}>
-      <div className="text-[22px] font-semibold tabular-nums leading-none" style={{ color }}>{value}</div>
-      {pct != null && <div className="text-[12px] font-semibold mt-0.5" style={{ color }}>{pct}%</div>}
-      <div className="text-[10.5px] uppercase tracking-[0.08em] text-[color:var(--mid-gray)] mt-1 leading-tight" style={{ fontFamily: 'var(--font-display)' }}>{label}</div>
-    </div>
+    <h3 className={`text-[11px] font-bold uppercase tracking-widest ${className}`} style={{ color: 'var(--mid-gray)', fontFamily: 'var(--font-display)' }}>
+      {children}
+    </h3>
   )
 }
 
@@ -994,79 +1107,56 @@ function SessionDetailModal({ session, token, onClose }: { session: PatientSessi
   if (typeof document === 'undefined') return null
 
   return createPortal(
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 sm:p-4" onClick={onClose}>
-      <div
-        className="bg-white w-full sm:max-w-lg max-h-[92vh] rounded-t-2xl sm:rounded-2xl shadow-[0_24px_60px_rgba(27,63,56,0.3)] flex flex-col overflow-hidden animate-fade-up"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="sticky top-0 bg-white border-b border-[color:var(--light-gray)] px-4 pt-4 pb-3 z-10 flex items-start justify-between gap-3">
-          <div className="min-w-0">
-            <span className="inline-block text-[11px] font-bold uppercase tracking-[0.08em] px-2 py-0.5 rounded bg-[color:var(--pale-teal)] text-[color:var(--deep-teal)]">
-              {deptCode || 'Session'}
-            </span>
-            <div className="text-sm text-[color:var(--deep-teal)] font-semibold mt-1.5">{fmtDate(session.date)}</div>
-            <div className="text-[12px] text-[color:var(--mid-gray)]">
-              {session.clinician}{session.isTeletherapy ? ' · Teletherapy' : ' · In-clinic'}{session.branch ? ` · ${session.branch}` : ''} · <StatusInline status={session.status} />
-            </div>
-          </div>
-          <button onClick={onClose} aria-label="Close" className="text-2xl leading-none text-[color:var(--mid-gray)] hover:text-[color:var(--deep-teal)] shrink-0">×</button>
-        </div>
+    <Dialog
+      labelId="session-detail-title"
+      onClose={onClose}
+      eyebrow={deptCode || 'Session'}
+      title={fmtDate(session.date)}
+      description={
+        <span className="inline-flex flex-wrap items-center gap-x-1.5 gap-y-1">
+          {session.clinician}{session.isTeletherapy ? ' · Teletherapy' : ' · In-clinic'}{session.branch ? ` · ${session.branch}` : ''} · <StatusBadge status={session.status} />
+        </span>
+      }
+    >
+      <ModalHeading>Therapist&apos;s Session Notes</ModalHeading>
+      {(() => {
+        const raw = (session.notes ?? '').trim()
+        // Backfilled sessions carry an import marker, not real notes.
+        if (/^\[backfill:/i.test(raw)) {
+          return <p className="mt-2 text-sm italic" style={{ color: 'var(--mid-gray)' }}>Backfilled session history — session notes were not created in the system for this session.</p>
+        }
+        return raw ? (
+          <p className="mt-2 text-sm whitespace-pre-wrap leading-relaxed" style={{ color: 'var(--charcoal)' }}>{raw}</p>
+        ) : (
+          <p className="mt-2 text-sm italic" style={{ color: 'var(--mid-gray)' }}>No notes were recorded for this session.</p>
+        )
+      })()}
 
-        <div className="overflow-y-auto px-4 py-4">
-          <div className="text-[11px] font-bold uppercase tracking-[0.1em] text-[color:var(--bright-teal)]" style={{ fontFamily: 'var(--font-display)' }}>
-            Therapist&apos;s Session Notes
-          </div>
-          {(() => {
-            const raw = (session.notes ?? '').trim()
-            // Backfilled sessions carry an import marker, not real notes.
-            if (/^\[backfill:/i.test(raw)) {
-              return <p className="mt-2 text-sm text-[color:var(--mid-gray)] italic">Backfilled session history — session notes were not created in the system for this session.</p>
-            }
-            return raw ? (
-              <p className="mt-2 text-sm text-[color:var(--deep-teal)] whitespace-pre-wrap leading-relaxed">{raw}</p>
-            ) : (
-              <p className="mt-2 text-sm text-[color:var(--mid-gray)] italic">No notes were recorded for this session.</p>
-            )
-          })()}
+      {/* Attachments the therapist included with this session's note (if any) */}
+      <ModalHeading className="mt-5">Attachments</ModalHeading>
+      <DocumentsPanel token={token} scheduleId={session.id} emptyText="No attachments for this session." />
 
-          {/* Attachments the therapist included with this session's note (if any) */}
-          <div className="mt-5 text-[11px] font-bold uppercase tracking-[0.1em] text-[color:var(--bright-teal)]" style={{ fontFamily: 'var(--font-display)' }}>
-            Attachments
-          </div>
-          <DocumentsPanel token={token} scheduleId={session.id} emptyText="No attachments for this session." />
-
-          <p className="mt-4 text-[11px] text-[color:var(--mid-gray)] border-t border-[color:var(--light-gray)] pt-3" style={{ fontFamily: 'var(--font-display)' }}>
-            Read-only. Notes and attachments are added by your therapist.
-          </p>
-        </div>
-      </div>
-    </div>,
+      <p className="mt-4 pt-3 text-[11px]" style={{ color: 'var(--mid-gray)', borderTop: '1px solid var(--light-gray)' }}>
+        Read-only. Notes and attachments are added by your therapist.
+      </p>
+    </Dialog>,
     document.body,
   )
 }
 
-// Department-level Documents (the single "Documents" card at the top of Sessions):
+// Department-level Documents (the single "Documents" button at the top of Sessions):
 // Initial Evaluation, Progress Reports and other files for the active department.
 function DocumentsModal({ token, department, deptLabel, onClose }: { token: string; department?: string; deptLabel: string; onClose: () => void }) {
   if (typeof document === 'undefined') return null
   return createPortal(
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 sm:p-4" onClick={onClose}>
-      <div
-        className="bg-white w-full sm:max-w-lg max-h-[92vh] rounded-t-2xl sm:rounded-2xl shadow-[0_24px_60px_rgba(27,63,56,0.3)] flex flex-col overflow-hidden animate-fade-up"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="sticky top-0 bg-white border-b border-[color:var(--light-gray)] px-4 pt-4 pb-3 z-10 flex items-center justify-between gap-3">
-          <div className="min-w-0">
-            <div className="text-[18px] font-semibold text-[color:var(--deep-teal)] inline-flex items-center gap-2"><FolderIcon /> Documents</div>
-            <div className="text-[12px] text-[color:var(--mid-gray)] mt-0.5 truncate">{deptLabel}</div>
-          </div>
-          <button onClick={onClose} aria-label="Close" className="text-2xl leading-none text-[color:var(--mid-gray)] hover:text-[color:var(--deep-teal)] shrink-0">×</button>
-        </div>
-        <div className="overflow-y-auto px-4 py-4">
-          <DocumentsPanel token={token} department={department} emptyText="No documents uploaded yet." />
-        </div>
-      </div>
-    </div>,
+    <Dialog
+      labelId="documents-title"
+      onClose={onClose}
+      title={<span className="inline-flex items-center gap-2"><FolderIcon /> Documents</span>}
+      description={deptLabel}
+    >
+      <DocumentsPanel token={token} department={department} emptyText="No documents uploaded yet." />
+    </Dialog>,
     document.body,
   )
 }
@@ -1083,12 +1173,12 @@ function DocumentsPanel({ token, department, scheduleId, emptyText }: { token: s
     return () => { cancelled = true }
   }, [token, department, scheduleId])
 
-  if (err) return <div className="mt-2 text-[12.5px] text-rose-700">{err}</div>
-  if (!docs) return <div className="mt-2 text-[13px] text-[color:var(--mid-gray)]">Loading…</div>
-  if (docs.total === 0) return <div className="mt-2 text-[13px] text-[color:var(--mid-gray)] italic">{emptyText ?? 'No documents.'}</div>
+  if (err) return <div className="mt-2"><Banner tone="error">{err}</Banner></div>
+  if (!docs) return <div className="mt-2 space-y-2" role="status" aria-label="Loading"><Skeleton className="h-11 w-full" /><Skeleton className="h-11 w-full" /></div>
+  if (docs.total === 0) return <p className="mt-2 text-[13px] italic" style={{ color: 'var(--mid-gray)' }}>{emptyText ?? 'No documents.'}</p>
 
   return (
-    <div className="mt-2 space-y-3">
+    <div className="mt-2 space-y-4">
       <DocGroup title="Initial Evaluation" rows={docs.initialEvaluations} token={token} />
       <DocGroup title="Progress Reports" rows={docs.progressReports} token={token} />
       <DocGroup title="Other Documents" rows={docs.otherDocuments} token={token} />
@@ -1100,7 +1190,7 @@ function DocGroup({ title, rows, token }: { title: string; rows: PatientDocument
   if (rows.length === 0) return null
   return (
     <div>
-      <div className="text-[10.5px] font-bold uppercase tracking-[0.08em] text-[color:var(--teal)] mb-1">{title}</div>
+      <p className="text-[10.5px] font-bold uppercase tracking-wider mb-1.5" style={{ color: 'var(--teal)', fontFamily: 'var(--font-display)' }}>{title}</p>
       <div className="space-y-1.5">
         {rows.map((d) => (
           <a
@@ -1108,13 +1198,19 @@ function DocGroup({ title, rows, token }: { title: string; rows: PatientDocument
             href={documentFileUrl(d.id, token)}
             target="_blank"
             rel="noopener noreferrer"
-            className="flex items-center justify-between gap-2 px-3 py-2 rounded-lg border border-[color:var(--paper-3)] bg-white hover:border-[color:var(--sage)] transition-colors"
+            className="flex items-center justify-between gap-3 px-3 py-2.5 rounded-lg transition-colors hover:bg-[#F8FAF2]"
+            style={CARD_STYLE}
           >
-            <span className="min-w-0">
-              <span className="block text-[13px] font-medium text-[color:var(--deep-teal)] truncate">{d.fileName}</span>
-              <span className="block text-[11px] text-[color:var(--mid-gray)]" style={{ fontFamily: 'var(--font-display)' }}>{fmtDate(d.createdAt.slice(0, 10))}</span>
+            <span className="flex items-center gap-2.5 min-w-0">
+              <Icon name="file" size={16} style={{ color: 'var(--teal)' }} />
+              <span className="min-w-0">
+                <span className="block text-[13px] font-medium truncate" style={{ color: 'var(--charcoal)' }}>{d.fileName}</span>
+                <span className="block text-[11px]" style={{ color: 'var(--mid-gray)' }}>{fmtDate(d.createdAt.slice(0, 10))}</span>
+              </span>
             </span>
-            <span className="text-[color:var(--teal)] text-[12px] font-semibold shrink-0">View ↗</span>
+            <span className="inline-flex items-center gap-1 text-[12px] font-semibold shrink-0" style={{ color: 'var(--teal)' }}>
+              View <Icon name="external" size={12} />
+            </span>
           </a>
         ))}
       </div>
@@ -1122,31 +1218,24 @@ function DocGroup({ title, rows, token }: { title: string; rows: PatientDocument
   )
 }
 
-function StatusInline({ status }: { status: string }) {
-  return <span className="font-semibold text-[color:var(--deep-teal)]">{fmtStatus(status)}</span>
-}
-
 function FolderIcon() {
   return (<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" /></svg>)
 }
 
+// Session status → kit StatusPill (dot + label, never colour alone).
 function StatusBadge({ status }: { status: string }) {
   const s = status.toUpperCase()
-  const tone =
+  const tone: Tone =
     s === 'CONFIRMED' || s === 'COMPLETED' || s === 'PAID'
-      ? 'bg-emerald-50 text-emerald-700'
+      ? 'success'
       : s === 'PENDING'
-        ? 'bg-amber-100 text-amber-800'
+        ? 'warn'
         : s === 'RESCHEDULED'
-          ? 'bg-sky-100 text-sky-800'
+          ? 'info'
           : s === 'CANCELLED' || s === 'NO_SHOW' || s === 'REJECTED'
-            ? 'bg-rose-50 text-rose-700'
-            : 'bg-[color:var(--pale-teal)] text-[color:var(--teal)]'
-  return (
-    <span className={`inline-flex items-center px-2 py-0.5 rounded text-[11px] font-semibold ${tone}`} style={{ fontFamily: 'var(--font-display)' }}>
-      {fmtStatus(status)}
-    </span>
-  )
+            ? 'error'
+            : 'neutral'
+  return <StatusPill tone={tone}>{fmtStatus(status)}</StatusPill>
 }
 
 // ── Feedback ─────────────────────────────────────────────────────────────────
@@ -1156,13 +1245,18 @@ function FeedbackSection({ surveys }: { surveys: MeResult['surveys'] }) {
   const frontdeskSurveys = surveys.filter((s) => FRONTDESK_SURVEYS.has(s.surveyType))
 
   return (
-    <div className="card-static">
-      <h3 className="text-[20px] leading-tight text-[color:var(--deep-teal)]">Feedback</h3>
-      <p className="text-sm text-[color:var(--mid-gray)] mt-1">
-        Scan a QR code with your phone to share feedback. Your responses are confidential.
-      </p>
-
-      <div className="mt-5 grid gap-5 sm:grid-cols-2">
+    <DashCard
+      title="Feedback"
+      description="Scan a QR code with your phone to share feedback. Your responses are confidential."
+      icon={<Icon name="edit" size={16} />}
+      footer={clinicianSurveys.length === 0 && frontdeskSurveys.length === 0 ? (
+        <>
+          Clinician and front-desk feedback QR codes appear here only when you&apos;re randomly
+          selected to assess a staff member.
+        </>
+      ) : undefined}
+    >
+      <div className="grid gap-4 sm:grid-cols-2">
         {/* Complaint — always available */}
         <QrCard
           title="Raise a complaint"
@@ -1191,14 +1285,7 @@ function FeedbackSection({ surveys }: { surveys: MeResult['surveys'] }) {
           />
         ))}
       </div>
-
-      {clinicianSurveys.length === 0 && frontdeskSurveys.length === 0 && (
-        <Disclaimer>
-          Clinician and front-desk feedback QR codes appear here only when you&apos;re randomly
-          selected to assess a staff member.
-        </Disclaimer>
-      )}
-    </div>
+    </DashCard>
   )
 }
 
@@ -1218,11 +1305,12 @@ function QrCard({
       href={url}
       target="_blank"
       rel="noopener noreferrer"
-      className="flex flex-col items-center text-center rounded-2xl border border-[color:var(--light-gray)] hover:border-[color:var(--teal)] p-5 transition-colors group"
+      className={`flex flex-col items-center text-center rounded-xl p-5 transition-colors hover:bg-[#F8FAF2] group ${FOCUS}`}
+      style={CARD_STYLE}
     >
-      <div className="text-sm font-semibold text-[color:var(--deep-teal)]">{title}</div>
-      <p className="text-[12px] text-[color:var(--mid-gray)] mt-1 leading-snug">{subtitle}</p>
-      <div className="mt-4 rounded-xl bg-white p-3 border border-[color:var(--light-gray)] shadow-sm">
+      <div className="text-sm font-bold" style={{ color: 'var(--charcoal)', fontFamily: 'var(--font-display)' }}>{title}</div>
+      <p className="text-xs mt-1 leading-snug" style={{ color: 'var(--mid-gray)' }}>{subtitle}</p>
+      <div className="mt-4 rounded-lg bg-white p-3" style={{ border: '1px solid var(--light-gray)' }}>
         {qrSrc ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img src={qrSrc} alt={`QR code — ${title}`} width={132} height={132} className="w-[132px] h-[132px]" />
@@ -1230,22 +1318,14 @@ function QrCard({
           <QRCodeSVG value={url} size={132} level="M" bgColor="#ffffff" fgColor="#13262B" />
         )}
       </div>
-      <span className="mt-3 text-[12px] font-semibold text-[color:var(--teal)] group-hover:translate-x-0.5 transition-transform" style={{ fontFamily: 'var(--font-display)' }}>
-        Or tap to open →
+      <span className="mt-3 inline-flex items-center gap-1 text-xs font-semibold" style={{ color: 'var(--teal)', fontFamily: 'var(--font-display)' }}>
+        Or tap to open <Icon name="external" size={12} />
       </span>
     </a>
   )
 }
 
 // ── Shared bits used by the signed-in sections ───────────────────────────────
-
-function Disclaimer({ children }: { children: React.ReactNode }) {
-  return (
-    <p className="mt-5 text-[12px] text-[color:var(--mid-gray)] leading-relaxed border-t border-[color:var(--light-gray)] pt-3">
-      {children}
-    </p>
-  )
-}
 
 function shortDept(label: string): string {
   const m = /\(([^)]+)\)/.exec(label)
@@ -1359,85 +1439,6 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   )
 }
 
-// Patient-facing copies of the docs they uploaded at sign-up (or that the front
-// desk attached in the CRM). Links open the file served from the Operations Hub.
-function MyDocumentsCard({ profile, token, onUploaded }: {
-  profile: MeResult['profile']
-  token: string
-  onUploaded: (patch: Partial<MeResult['profile']>) => void
-}) {
-  const items: { label: string; url: string | null; docType: 'referral' | 'pwd-id'; field: 'referralUrl' | 'pwdIdUrl' }[] = [
-    { label: "Doctor's Referral", url: profile.referralUrl ?? null, docType: 'referral', field: 'referralUrl' },
-    { label: 'PWD ID / Senior ID', url: profile.pwdIdUrl ?? null, docType: 'pwd-id', field: 'pwdIdUrl' },
-  ]
-  const [busy, setBusy] = useState<string | null>(null)
-  const [pct, setPct] = useState(0)
-  const [err, setErr] = useState<string | null>(null)
-
-  function pick(docType: 'referral' | 'pwd-id', field: 'referralUrl' | 'pwdIdUrl') {
-    const input = document.createElement('input')
-    input.type = 'file'
-    input.accept = 'image/*,application/pdf'
-    input.onchange = async () => {
-      const file = input.files?.[0]
-      if (!file) return
-      if (file.size > 20 * 1024 * 1024) { setErr(`"${file.name}" is too large. Please keep it under 20 MB.`); return }
-      setErr(null); setPct(0); setBusy(docType)
-      try {
-        const res = await uploadPatientDocument(token, docType, file, setPct)
-        onUploaded({ [field]: res.url } as Partial<MeResult['profile']>)
-      } catch (e) {
-        setErr((e as Error).message || 'Upload failed.')
-      } finally {
-        setBusy(null)
-      }
-    }
-    input.click()
-  }
-
-  return (
-    <div className="card-static">
-      <h3 className="text-[20px] leading-tight text-[color:var(--deep-teal)]">My Documents</h3>
-      <div className="mt-4 space-y-2.5">
-        {items.map((it) => (
-          <div key={it.label} className="flex items-center justify-between gap-3 px-4 py-3 rounded-xl border border-[color:var(--light-gray)]">
-            <span className="text-sm font-semibold text-[color:var(--deep-teal)]">{it.label}</span>
-            <div className="flex items-center gap-3 shrink-0">
-              {it.url && (
-                <a
-                  href={it.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-sm font-semibold text-[color:var(--teal)] hover:underline inline-flex items-center gap-1"
-                >
-                  View <span aria-hidden>→</span>
-                </a>
-              )}
-              {busy === it.docType ? (
-                <span className="text-[13px] text-[color:var(--mid-gray)]" style={{ fontFamily: 'var(--font-display)' }}>{pct}%…</span>
-              ) : (
-                <button
-                  onClick={() => pick(it.docType, it.field)}
-                  disabled={!!busy}
-                  className="text-sm font-semibold text-[color:var(--moss)] hover:underline disabled:opacity-50"
-                >
-                  {it.url ? 'Replace' : 'Upload'}
-                </button>
-              )}
-            </div>
-          </div>
-        ))}
-      </div>
-      {err && (
-        <p className="mt-3 text-[12.5px] text-rose-700 bg-rose-50 border border-rose-100 rounded-lg px-3 py-2">{err}</p>
-      )}
-      <p className="mt-4 text-[12px] text-[color:var(--mid-gray)] leading-relaxed border-t border-[color:var(--light-gray)] pt-3">
-        Upload a clear photo or PDF of your Doctor&apos;s Referral or PWD / Senior ID (max 20 MB). It&apos;s saved to your patient record so the clinic can see it — no need to visit the front desk.
-      </p>
-    </div>
-  )
-}
-
 // Read an optional file input into a base64 data URL for the register payload.
 async function fileToDataUrl(file: File | null): Promise<{ name: string; dataUrl: string } | undefined> {
   if (!file || file.size === 0) return undefined
@@ -1451,17 +1452,6 @@ async function fileToDataUrl(file: File | null): Promise<{ name: string; dataUrl
     reader.readAsDataURL(file)
   })
   return { name: file.name, dataUrl }
-}
-
-function Detail({ label, value }: { label: string; value: string | null }) {
-  return (
-    <div>
-      <dt className="text-[10.5px] uppercase tracking-[0.12em] text-[color:var(--mid-gray)]" style={{ fontFamily: 'var(--font-display)' }}>
-        {label}
-      </dt>
-      <dd className="text-sm text-[color:var(--deep-teal)] font-medium mt-0.5">{value || '—'}</dd>
-    </div>
-  )
 }
 
 function fmtDate(iso: string): string {

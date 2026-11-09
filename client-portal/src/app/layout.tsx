@@ -1,6 +1,9 @@
 import type { Metadata, Viewport } from 'next'
 import localFont from 'next/font/local'
 import './globals.css'
+// Signed-in shell: hides the header below and makes room for the sidebar
+// while components/PortalShell is mounted (patients signed in on "/").
+import './portal-shell.css'
 import PublicHeader, { PublicFooter } from '@/components/PublicHeader'
 import RegisterSW from './RegisterSW'
 
