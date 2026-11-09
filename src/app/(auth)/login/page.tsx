@@ -174,12 +174,12 @@ export default function LoginPage() {
     <div
       className="min-h-screen flex items-center justify-center relative overflow-hidden"
       style={{
-        // Aura backdrop — coral top-left → cream halo → soft sage bottom-right
+        // Staff sign-in backdrop — light paper-green top-left → sage → moss bottom-right
         background: [
-          'radial-gradient(1200px 380px at 50% 35%, rgba(244, 236, 221, 0.22), transparent 60%)',
-          'radial-gradient(820px 380px at 8% 0%, rgba(212, 145, 132, 0.55), transparent 60%)',
-          'radial-gradient(1100px 440px at 100% 110%, rgba(123, 152, 138, 0.55), transparent 65%)',
-          'linear-gradient(135deg, #D49184 0%, #C9A28F 38%, #9CB1A2 72%, #7B988A 100%)',
+          'radial-gradient(1000px 520px at 12% 0%, rgba(255, 255, 255, 0.55), transparent 60%)',
+          'radial-gradient(1200px 380px at 50% 35%, rgba(237, 243, 217, 0.30), transparent 60%)',
+          'radial-gradient(1100px 520px at 100% 110%, rgba(36, 73, 82, 0.40), transparent 65%)',
+          'linear-gradient(135deg, #E6EFD0 0%, #C5D8AC 32%, #8DB09B 68%, #4A8073 100%)',
         ].join(', '),
       }}
     >
@@ -188,7 +188,7 @@ export default function LoginPage() {
         className="absolute pointer-events-none"
         style={{
           top: -260, right: -180, width: 560, height: 560,
-          border: '1px solid rgba(244, 236, 221, 0.28)',
+          border: '1px solid rgba(255, 255, 255, 0.40)',
           borderRadius: '50%',
         }}
       />
@@ -196,7 +196,7 @@ export default function LoginPage() {
         className="absolute pointer-events-none"
         style={{
           top: -200, right: -300, width: 760, height: 760,
-          border: '1px solid rgba(244, 236, 221, 0.18)',
+          border: '1px solid rgba(255, 255, 255, 0.26)',
           borderRadius: '50%',
         }}
       />
@@ -484,7 +484,7 @@ export default function LoginPage() {
 
         </div>
 
-        <p className="text-center mt-6 text-xs" style={{ color: 'rgba(255,255,255,0.85)' }}>
+        <p className="text-center mt-6 text-xs" style={{ color: 'rgba(23, 50, 58, 0.85)', fontWeight: 500 }}>
           Internal access only · Sapphire Clinics East staff
         </p>
       </div>
