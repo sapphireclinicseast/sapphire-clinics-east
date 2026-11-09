@@ -15,7 +15,7 @@ import {
   Activity,
   Stethoscope,
 } from 'lucide-react'
-import { cn, formatTime, formatDate, toDateString } from '@/lib/utils'
+import { cn, formatTime, formatDate, manilaDateString, shiftDateString } from '@/lib/utils'
 import { useBranchSwitcher } from '@/components/BranchSwitcher'
 
 interface SessionItem {
@@ -54,7 +54,7 @@ const statusBadge: Record<string, string> = {
 export default function DashboardPage() {
   const { data: session } = useSession()
   const router = useRouter()
-  const [date, setDate] = useState(toDateString(new Date()))
+  const [date, setDate] = useState(() => manilaDateString())
   const [sessions, setSessions] = useState<SessionItem[]>([])
   const [loading, setLoading] = useState(true)
   const { isMultiBranch, sharedStaffId, activeStaffId, activeBranch } = useBranchSwitcher()
@@ -88,12 +88,10 @@ export default function DashboardPage() {
   }
 
   function changeDate(offset: number) {
-    const d = new Date(date)
-    d.setDate(d.getDate() + offset)
-    setDate(toDateString(d))
+    setDate(shiftDateString(date, offset))
   }
 
-  const isToday = toDateString(new Date()) === date
+  const isToday = manilaDateString() === date
   const completed = sessions.filter((s) => s.sessionNote?.status === 'COMPLETED').length
   const pending = sessions.filter((s) => !s.sessionNote).length
   const discontinued = sessions.filter((s) => s.sessionNote?.status === 'DISCONTINUED').length
@@ -125,7 +123,7 @@ export default function DashboardPage() {
             <input
               type="date"
               value={date}
-              onChange={(e) => setDate(e.target.value)}
+              onChange={(e) => { if (e.target.value) setDate(e.target.value) }}
               className="px-4 py-2.5 rounded-xl bg-white/10 border border-white/20 text-white text-sm focus:border-white/50 outline-none [color-scheme:dark]"
             />
             <button
@@ -136,7 +134,7 @@ export default function DashboardPage() {
             </button>
             {!isToday && (
               <button
-                onClick={() => setDate(toDateString(new Date()))}
+                onClick={() => setDate(manilaDateString())}
                 className="px-4 py-2.5 rounded-xl bg-white text-[var(--deep-teal)] text-sm font-semibold hover:bg-white/90 transition-all active:scale-97"
               >
                 Today
