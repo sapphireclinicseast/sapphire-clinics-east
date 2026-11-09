@@ -4,7 +4,7 @@
 // page caches the wrong layout across deploys.
 export const dynamic = 'force-dynamic'
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { signIn, type AuthRole } from '@/lib/session'
@@ -21,6 +21,8 @@ const ROLES: { value: AuthRole; title: string; sub: string; icon: IconName }[] =
   { value: 'ADMIN',        title: 'Main admin',       sub: 'SCEI HQ',           icon: 'shield' },
 ]
 
+const noopSubscribe = () => () => {}
+
 const POINTS = [
   'DepEd-accredited curriculum via Light Bearer Christian Academy',
   'Clinic-integrated SPED support for every learner',
@@ -34,6 +36,13 @@ export default function SignInPage() {
   const [busy, setBusy] = useState(false)
   const [showPw, setShowPw] = useState(false)
   const emailRef = useRef<HTMLInputElement>(null)
+  // /reset sends people back here with ?reset=ok after a new password is saved.
+  // Read once from the URL on the client; false during server render.
+  const resetOk = useSyncExternalStore(
+    noopSubscribe,
+    () => new URLSearchParams(window.location.search).get('reset') === 'ok',
+    () => false,
+  )
 
   // Picking a role unlocks the fields; move the cursor straight into Email
   // so the next keystroke lands where it should.
@@ -210,6 +219,12 @@ export default function SignInPage() {
                 )
               })}
             </div>
+
+            {resetOk && !err && (
+              <div className="mb-4 animate-fade-in">
+                <Banner tone="success">Password updated. Choose your role and sign in with your new password.</Banner>
+              </div>
+            )}
 
             {err && (
               <div className="mb-4 animate-fade-in">
