@@ -165,7 +165,7 @@ export default function BellIcon() {
                       <button
                         type="button"
                         onClick={() => handleRowClick(n)}
-                        className={`w-full text-left px-4 py-3 flex gap-2.5 transition-colors hover:bg-[#FBF9F5] focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[color:var(--teal)] ${isUnread ? 'bg-[color:var(--sage-tint)]' : ''}`}
+                        className={`w-full text-left px-4 py-3 flex gap-2.5 transition-colors hover:bg-[#F8FAF2] focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[color:var(--teal)] ${isUnread ? 'bg-[color:var(--sage-tint)]' : ''}`}
                       >
                         <span className={`shrink-0 text-[16px] leading-tight ${meta.tone}`} aria-hidden>{meta.emoji}</span>
                         <span className="min-w-0 flex-1">

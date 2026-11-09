@@ -536,8 +536,8 @@ export default function AdmissionPage() {
                   </td></tr>
                 )}
                 {filtered.map(s => (
-                  <tr key={s.id} className="group transition-colors hover:bg-[#FBF9F5]" style={{ borderTop: '1px solid var(--light-gray)' }}>
-                    <td className={`${CELL} whitespace-nowrap font-semibold sticky left-0 z-10 bg-white group-hover:bg-[#FBF9F5] transition-colors`} style={{ color: 'var(--charcoal)', boxShadow: 'inset -1px 0 0 var(--light-gray)' }}>{[s.firstName, s.lastName].filter(Boolean).join(' ') || s.email}</td>
+                  <tr key={s.id} className="group transition-colors hover:bg-[#F8FAF2]" style={{ borderTop: '1px solid var(--light-gray)' }}>
+                    <td className={`${CELL} whitespace-nowrap font-semibold sticky left-0 z-10 bg-white group-hover:bg-[#F8FAF2] transition-colors`} style={{ color: 'var(--charcoal)', boxShadow: 'inset -1px 0 0 var(--light-gray)' }}>{[s.firstName, s.lastName].filter(Boolean).join(' ') || s.email}</td>
                     <td className={`${CELL} whitespace-nowrap`}>{s.level ? levelLabel(s.level) : <Dash />}</td>
                     <td className={`${CELL} whitespace-nowrap`}>{s.schoolYear || <Dash />}</td>
                     <td className={`${CELL} whitespace-nowrap`}>{s.lrnStatus === 'NO_LRN' ? 'NO LRN' : s.lrnStatus === 'WITH_LRN' ? 'WITH LRN' : s.lrnStatus === 'RETURNING' ? 'RETURNING' : <Dash />}</td>
@@ -704,8 +704,8 @@ export default function AdmissionPage() {
 
 const CELL = 'py-2 px-2.5 align-middle'
 /** Inline editors inside the table: borderless until hovered or focused. */
-const INLINE = 'w-full bg-transparent text-[12px] rounded-md px-1.5 py-1 -mx-1.5 outline-none border border-transparent hover:border-[color:var(--light-gray)] focus:border-[color:var(--teal)] focus:bg-white focus:shadow-[0_0_0_3px_rgba(84,125,114,0.14)] transition-[border-color,box-shadow]'
-const DOC_BG = '#FBF9F5'
+const INLINE = 'w-full bg-transparent text-[12px] rounded-md px-1.5 py-1 -mx-1.5 outline-none border border-transparent hover:border-[color:var(--light-gray)] focus:border-[color:var(--teal)] focus:bg-white focus:shadow-[0_0_0_3px_rgba(74,128,115,0.14)] transition-[border-color,box-shadow]'
+const DOC_BG = '#F8FAF2'
 const DOC_HEAD_BG = '#F3EEE4'
 
 const COLUMNS: Array<{ key: string; label: string; minWidth: number; sticky?: boolean }> = [

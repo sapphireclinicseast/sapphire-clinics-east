@@ -1,31 +1,28 @@
 @import "tailwindcss";
 
 :root {
-  /* Aura Academy for Learning palette — sampled from the rainbow logo:
-   *   - narra: deep teal matching the wordmark text
-   *   - moss:  medium teal (interpolates narra → slate)
-   *   - sage:  sage green from the middle rainbow band
-   *   - slate: dusty blue-grey from the innermost rainbow band
-   *   - clay:  warm tan from the outer rainbow band
-   *   - sun:   lighter warm tan accent
+  /* Aura palette — the same values as the Client Portal (client.
+   * sapphireclinicseast.org) so both patient-facing portals read as one
+   * brand: pale-green paper, narra deep teal, moss, sage.
+   *   - slate: dusty blue-grey from the innermost rainbow band (Academy mark)
    */
-  --narra:  #3D6B62;
-  --moss:   #547D72;
-  --sage:   #8AA76A;
+  --narra:  #244952;
+  --moss:   #4A8073;
+  --sage:   #7DA292;
   --slate:  #7B939B;
-  --clay:   #B8896A;
-  --sun:    #D4A87A;
-  --paper:  #F5F0E8;
+  --clay:   #CF9D88;
+  --sun:    #C69849;
+  --paper:  #EDF3D9;
   --ink:    #1A1A1A;
 
-  --paper-2:  #ECE6D9;
-  --paper-3:  #DCD3C0;
-  --sage-tint:  rgba(138, 167, 106, 0.12);
-  --moss-tint:  rgba(84, 125, 114, 0.10);
+  --paper-2:  #E2EAC6;
+  --paper-3:  #CFDAAF;
+  --sage-tint:  rgba(125, 162, 146, 0.18);
+  --moss-tint:  rgba(74, 128, 115, 0.10);
   --slate-tint: rgba(123, 147, 155, 0.12);
-  --clay-tint:  rgba(184, 137, 106, 0.14);
-  --sun-tint:   rgba(212, 168, 122, 0.14);
-  --mid-gray: #6B6357;
+  --clay-tint:  rgba(207, 157, 136, 0.14);
+  --sun-tint:   rgba(198, 152, 73, 0.26);
+  --mid-gray: #5E6655;
 
   /* Soft mint used as the lightest stop in the aurora gradient on /. */
   --scei-mint: #CBDAB5;
@@ -46,7 +43,7 @@
   /* Ops Hub sidebar colour, in Aura terms: narra taken down to a deep
      forest green so the signed-in sidebar reads like the Ops Hub's dark
      rail without leaving the Aura palette. */
-  --near-black:  #1E3832;
+  --near-black:  #17323A;
 }
 
 * { box-sizing: border-box; }

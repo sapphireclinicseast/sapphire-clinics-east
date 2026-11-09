@@ -287,7 +287,7 @@ export default function AuthSidebar() {
   const linkCls = (active: boolean) =>
     `flex items-center gap-3 px-3 py-2 rounded-lg text-[13.5px] font-medium transition-colors ${focusRing} ${
       active
-        ? 'bg-[rgba(138,167,106,0.22)] text-white'
+        ? 'bg-[rgba(125,162,146,0.22)] text-white'
         : 'text-white/70 hover:text-white hover:bg-white/[0.06]'
     }`
 

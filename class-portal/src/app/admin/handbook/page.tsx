@@ -248,10 +248,10 @@ export default function HandbookPage() {
           /* Aura Academy palette — the same moss / narra / paper tokens as
              the rest of the portal, written as hex so the Word export
              (which can't see the page's CSS variables) keeps the colours. */
-          --ink:#1F2A27; --body:#3A3E3A; --muted:#6B6357;
-          --teal:#547D72; --teal-deep:#3D6B62; --teal-soft:#EAF0EC;
-          --line:#DCD3C0; --line-soft:#ECE6D9;
-          --paper:#F5F0E8; --card:#FFFFFF;
+          --ink:#1F2A27; --body:#3A3E3A; --muted:#5E6655;
+          --teal:#4A8073; --teal-deep:#244952; --teal-soft:#EAF0EC;
+          --line:#CFDAAF; --line-soft:#E2EAC6;
+          --paper:#EDF3D9; --card:#FFFFFF;
           /* Role accents — five roles for the class portal */
           --ra:#7E4CC4; --ra-bg:#F1EAFB;   /* main Admin */
           --rb:#1F6FB2; --rb-bg:#E7F0F9;   /* Branch admin */
@@ -299,8 +299,8 @@ export default function HandbookPage() {
         /* ── Masthead ──────────────────────────────── */
         .hb-mast {
           background:
-            radial-gradient(60% 120% at 100% 0%, rgba(138,167,106,.45), transparent 60%),
-            linear-gradient(135deg, #3D6B62 0%, #547D72 70%, #6E9070 100%);
+            radial-gradient(60% 120% at 100% 0%, rgba(125,162,146,.45), transparent 60%),
+            linear-gradient(135deg, #244952 0%, #4A8073 70%, #7DA292 100%);
           color: #E6EEE8;
           padding: 40px 40px 34px;
         }
@@ -329,7 +329,7 @@ export default function HandbookPage() {
           display: inline-flex; align-items: center; gap: 7px;
           height: 36px; padding: 0 14px; border-radius: 8px;
           border: 1px solid transparent;
-          background: #fff; color: #3D6B62;
+          background: #fff; color: #244952;
           transition: opacity .15s, background .15s;
         }
         .hb-mast-actions .hb-btn:hover { opacity: .92; }
@@ -344,7 +344,7 @@ export default function HandbookPage() {
           gap: 40px;
           align-items: start;
           padding: 32px 40px 56px;
-          background: #FBF9F5;
+          background: #F8FAF2;
         }
         @media (max-width: 900px) {
           .hb-shell { grid-template-columns: minmax(0, 1fr); gap: 0; padding: 20px 14px 36px; }
@@ -682,7 +682,7 @@ export default function HandbookPage() {
         }
         .hb-content .hb-search input:focus {
           outline: none; border-color: var(--teal);
-          box-shadow: 0 0 0 3px rgba(84,125,114,.18);
+          box-shadow: 0 0 0 3px rgba(74,128,115,.18);
         }
         .hb-content .hb-search .hint {
           font-size: 12.5px; color: var(--muted); margin: 8px 0 0;
@@ -708,7 +708,7 @@ export default function HandbookPage() {
         /* ── Print ────────────────────────────────── */
         @media print {
           .hb-root { background: #fff; font-size: 11.5pt; box-shadow: none; border-radius: 0; }
-          .hb-mast { background: #3D6B62 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+          .hb-mast { background: #244952 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
           .hb-toc, .hb-mast-actions, .hb-search { display: none !important; }
           .hb-shell { grid-template-columns: minmax(0, 1fr); padding: 20px 0; }
           .hb-content .mod, .hb-content .play, .hb-content .legend .rc,

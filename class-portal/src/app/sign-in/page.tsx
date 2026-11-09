@@ -77,22 +77,23 @@ export default function SignInPage() {
     // form side by side at equal height on desktop, form only on phones.
     <div className="animate-fade-up">
       <div
-        className="grid lg:grid-cols-[minmax(0,1fr)_minmax(0,1.05fr)] rounded-2xl overflow-hidden"
-        style={{ background: '#fff', border: '1px solid var(--light-gray)', boxShadow: '0 1px 2px rgba(30,56,50,0.04), 0 12px 32px -18px rgba(30,56,50,0.25)' }}
+        className="grid lg:grid-cols-[minmax(0,1fr)_minmax(0,1.05fr)] rounded-[18px] overflow-hidden"
+        style={{ background: '#fff', border: '1px solid var(--light-gray)', boxShadow: '0 2px 12px rgba(25,72,80,0.06)' }}
       >
 
         {/* ── LEFT: brand panel (lg and up) ─────────────────────── */}
         <aside
           className="hidden lg:flex flex-col justify-between gap-10 px-10 py-10 relative overflow-hidden"
           style={{
-            background: 'linear-gradient(135deg, var(--deep-teal) 0%, var(--moss) 65%, var(--bright-teal) 100%)',
+            // Same panel as the Client Portal's landing hero (Hero3D) so the
+            // two patient-facing sign-ins read as one brand.
+            background:
+              'radial-gradient(800px 360px at 110% -10%, rgba(198,152,73,0.30), transparent 60%),' +
+              'radial-gradient(700px 320px at -10% 120%, rgba(207,157,136,0.24), transparent 60%),' +
+              'linear-gradient(135deg, #13262B 0%, #244952 55%, #4A8073 110%)',
             color: '#fff',
           }}
         >
-          <div aria-hidden className="absolute -top-24 -right-24 w-80 h-80 rounded-full opacity-25"
-            style={{ background: 'radial-gradient(circle, var(--bright-teal) 0%, transparent 70%)', filter: 'blur(40px)' }} />
-          <div aria-hidden className="absolute -bottom-32 -left-16 w-96 h-96 rounded-full opacity-20"
-            style={{ background: 'radial-gradient(circle, #fff 0%, transparent 70%)', filter: 'blur(60px)' }} />
 
           <div className="relative z-10">
             <div className="flex items-center gap-3">
@@ -169,7 +170,7 @@ export default function SignInPage() {
               <div className="text-[11px] font-semibold uppercase tracking-wider mb-1" style={{ fontFamily: 'var(--font-display)', color: 'var(--teal)' }}>
                 Welcome back
               </div>
-              <h1 className="text-[24px] sm:text-[26px] font-bold leading-tight tracking-tight" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>
+              <h1 className="text-[24px] sm:text-[26px] font-bold leading-tight tracking-tight" style={{ fontFamily: 'var(--font-display)', color: 'var(--deep-teal)' }}>
                 Sign in to your account
               </h1>
               <p className="text-sm mt-1.5" style={{ color: 'var(--mid-gray)' }}>
@@ -189,11 +190,11 @@ export default function SignInPage() {
                     type="button"
                     onClick={() => { setRole(r.value); setErr(null) }}
                     aria-pressed={active}
-                    className={`relative flex items-center gap-2 sm:gap-2.5 text-left rounded-xl px-2.5 sm:px-3 py-2.5 transition-[border-color,background-color,box-shadow] ${active ? '' : 'hover:bg-[#FBF9F5]'} ${FOCUS} ${i === 0 ? 'col-span-2' : ''}`}
+                    className={`relative flex items-center gap-2 sm:gap-2.5 text-left rounded-xl px-2.5 sm:px-3 py-2.5 transition-[border-color,background-color,box-shadow] ${active ? '' : 'hover:bg-[#F8FAF2]'} ${FOCUS} ${i === 0 ? 'col-span-2' : ''}`}
                     style={{
                       border: `1px solid ${active ? 'var(--teal)' : 'var(--light-gray)'}`,
                       background: active ? 'var(--moss-tint)' : '#fff',
-                      boxShadow: active ? '0 0 0 3px rgba(84,125,114,0.14)' : 'none',
+                      boxShadow: active ? '0 0 0 3px rgba(74,128,115,0.14)' : 'none',
                     }}
                   >
                     <span
@@ -241,7 +242,7 @@ export default function SignInPage() {
                   required
                   name="email"
                   type="email"
-                  className={`${CONTROL} w-full h-10`}
+                  className={`${CONTROL} w-full !h-11 !rounded-xl`}
                   style={CONTROL_STYLE}
                   placeholder="you@example.com"
                   autoComplete="email"
@@ -261,7 +262,7 @@ export default function SignInPage() {
                     required
                     name="password"
                     type={showPw ? 'text' : 'password'}
-                    className={`${CONTROL} w-full h-10 pr-11`}
+                    className={`${CONTROL} w-full !h-11 !rounded-xl pr-11`}
                     style={CONTROL_STYLE}
                     placeholder="••••••••"
                     autoComplete="current-password"
@@ -273,7 +274,7 @@ export default function SignInPage() {
                     disabled={!role}
                     aria-label={showPw ? 'Hide password' : 'Show password'}
                     aria-pressed={showPw}
-                    className={`absolute right-1 top-1 w-8 h-8 rounded-md flex items-center justify-center transition-colors hover:bg-[color:var(--paper)] disabled:opacity-40 disabled:cursor-not-allowed ${FOCUS}`}
+                    className={`absolute right-1.5 top-1.5 w-8 h-8 rounded-lg flex items-center justify-center transition-colors hover:bg-[color:var(--paper)] disabled:opacity-40 disabled:cursor-not-allowed ${FOCUS}`}
                     style={{ color: showPw ? 'var(--teal)' : 'var(--mid-gray)' }}
                   >
                     <Icon name="eye" size={16} />
@@ -284,7 +285,7 @@ export default function SignInPage() {
               <button
                 type="submit"
                 disabled={!role || busy}
-                className={`${BTN_PRIMARY} w-full h-10 mt-1`}
+                className={`${BTN_PRIMARY} w-full !h-11 !rounded-xl mt-1`}
                 style={PRIMARY_STYLE}
               >
                 {busy

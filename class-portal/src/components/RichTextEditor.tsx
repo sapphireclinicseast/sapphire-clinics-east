@@ -152,7 +152,7 @@ export default function RichTextEditor({ value, onChange, placeholder, disabled,
 
   return (
     <div
-      className="rte overflow-hidden transition-[border-color,box-shadow] focus-within:border-[color:var(--teal)] focus-within:shadow-[0_0_0_3px_rgba(84,125,114,0.18)]"
+      className="rte overflow-hidden transition-[border-color,box-shadow] focus-within:border-[color:var(--teal)] focus-within:shadow-[0_0_0_3px_rgba(74,128,115,0.18)]"
       style={{
         border: '1px solid var(--light-gray)',
         borderRadius: 10,
@@ -166,7 +166,7 @@ export default function RichTextEditor({ value, onChange, placeholder, disabled,
         className="flex flex-wrap items-center gap-1 px-2 py-1.5"
         style={{
           borderBottom: '1px solid var(--light-gray)',
-          background: '#FAF7F1',
+          background: '#F6F8EE',
         }}
       >
         {BUTTONS.map(b => (
@@ -302,7 +302,7 @@ function LinkPrompt({ onConfirm, onCancel }: { onConfirm: (url: string) => void;
           if (e.key === 'Escape') { e.preventDefault(); onCancel() }
         }}
         placeholder="https://example.com or email@example.com"
-        className="flex-1 min-w-0 basis-48 h-8 px-2.5 rounded-md text-[13px] outline-none transition-[border-color,box-shadow] focus:border-[color:var(--teal)] focus:shadow-[0_0_0_3px_rgba(84,125,114,0.18)]"
+        className="flex-1 min-w-0 basis-48 h-8 px-2.5 rounded-md text-[13px] outline-none transition-[border-color,box-shadow] focus:border-[color:var(--teal)] focus:shadow-[0_0_0_3px_rgba(74,128,115,0.18)]"
         style={{
           border: '1px solid var(--light-gray)',
           background: '#fff',

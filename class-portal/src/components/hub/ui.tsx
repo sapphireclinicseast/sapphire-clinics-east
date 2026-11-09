@@ -17,16 +17,16 @@ import type { CSSProperties, ReactNode } from 'react'
 // ── Tokens ───────────────────────────────────────────────────────────────────
 export const CARD_STYLE = { background: '#fff', border: '1px solid var(--light-gray)' } as const
 /** Header rows, table heads, quiet panels. A step lighter than --paper. */
-export const SUBTLE_BG = '#FAF7F1'
+export const SUBTLE_BG = '#F6F8EE'
 export const DANGER = '#B42318'
 /** Visible keyboard focus ring, shared by every interactive element. */
 export const FOCUS = 'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--teal)]'
 
-export const CONTROL = 'h-9 px-3 rounded-lg text-sm outline-none transition-[border-color,box-shadow] focus:border-[color:var(--teal)] focus:shadow-[0_0_0_3px_rgba(84,125,114,0.18)] disabled:opacity-60 disabled:cursor-not-allowed'
-export const CONTROL_SM = 'h-8 px-2.5 rounded-lg text-xs outline-none transition-[border-color,box-shadow] focus:border-[color:var(--teal)] focus:shadow-[0_0_0_3px_rgba(84,125,114,0.18)]'
+export const CONTROL = 'h-9 px-3 rounded-lg text-sm outline-none transition-[border-color,box-shadow] focus:border-[color:var(--teal)] focus:shadow-[0_0_0_3px_rgba(74,128,115,0.18)] disabled:opacity-60 disabled:cursor-not-allowed'
+export const CONTROL_SM = 'h-8 px-2.5 rounded-lg text-xs outline-none transition-[border-color,box-shadow] focus:border-[color:var(--teal)] focus:shadow-[0_0_0_3px_rgba(74,128,115,0.18)]'
 export const CONTROL_STYLE: CSSProperties = { background: '#fff', border: '1px solid var(--light-gray)', color: 'var(--charcoal)', fontFamily: 'var(--font-body)' }
 /** Multi-line text box: CONTROL without the fixed height. */
-export const TEXTAREA = 'w-full px-3 py-2 rounded-lg text-sm leading-relaxed outline-none transition-[border-color,box-shadow] focus:border-[color:var(--teal)] focus:shadow-[0_0_0_3px_rgba(84,125,114,0.18)] disabled:opacity-60 disabled:cursor-not-allowed'
+export const TEXTAREA = 'w-full px-3 py-2 rounded-lg text-sm leading-relaxed outline-none transition-[border-color,box-shadow] focus:border-[color:var(--teal)] focus:shadow-[0_0_0_3px_rgba(74,128,115,0.18)] disabled:opacity-60 disabled:cursor-not-allowed'
 /** For a <label> that wraps a visually hidden file input: the ring shows
  *  when the input inside has keyboard focus. */
 export const FILE_FOCUS = 'cursor-pointer focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-[color:var(--teal)]'
@@ -44,7 +44,7 @@ export const SECONDARY_STYLE: CSSProperties = { ...CONTROL_STYLE, color: 'var(--
 export const TH = 'px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider whitespace-nowrap'
 export const TH_STYLE: CSSProperties = { color: 'var(--mid-gray)', background: SUBTLE_BG, borderBottom: '1px solid var(--light-gray)', fontFamily: 'var(--font-display)' }
 export const TD = 'px-3 py-2.5 align-top'
-export const TR = 'transition-colors hover:bg-[#FBF9F5]'
+export const TR = 'transition-colors hover:bg-[#F8FAF2]'
 export const TR_STYLE: CSSProperties = { borderTop: '1px solid var(--light-gray)' }
 export const MODAL_BACKDROP: CSSProperties = { background: 'rgba(26,26,26,0.45)', backdropFilter: 'blur(4px)' }
 /** Content column used by signed-in dashboards. */

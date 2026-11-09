@@ -192,7 +192,7 @@ export default function TemplatesPanel({ viewer }: Props) {
         ) : (
           <ul>
             {filtered.map((t, i) => (
-              <li key={t.id} className="flex flex-wrap items-center gap-x-4 gap-y-2 px-4 sm:px-5 py-3 transition-colors hover:bg-[#FBF9F5]"
+              <li key={t.id} className="flex flex-wrap items-center gap-x-4 gap-y-2 px-4 sm:px-5 py-3 transition-colors hover:bg-[#F8FAF2]"
                 style={{ borderTop: i ? '1px solid var(--light-gray)' : undefined }}>
                 <span className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0" style={{ background: 'var(--pale-teal)', color: 'var(--deep-teal)' }}>
                   <Icon name="file" size={16} />
