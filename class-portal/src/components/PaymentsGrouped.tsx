@@ -13,6 +13,11 @@ import {
   type StoredUser, type EnrollmentLevel,
 } from '@/lib/session'
 import PaymentReminderNotifications from './PaymentReminderNotifications'
+import {
+  DashCard, KpiCard, EmptyState, StatusPill, Tag, Icon, PillTabs,
+  CONTROL, CONTROL_SM, CONTROL_STYLE, LABEL_STYLE, BTN_SM, BTN_DANGER_GHOST, SECONDARY_STYLE,
+  TH, TH_STYLE, TD, TR, TR_STYLE, DANGER,
+} from '@/components/hub/ui'
 
 
 function fmt(cents: number) {
@@ -290,41 +295,61 @@ export default function PaymentsGrouped({
   // day-after) and every send is logged for the Notifications panel.
   void senderEmail; void senderName; void senderRole; void canSendReminders
 
+  // Headline counts for the tiles. Same row statuses and the same
+  // "deadline before today" overdue rule the pending table uses.
+  const todayForCounts = new Date()
+  const paidTotal = rows.filter(r => r.status === 'PAID').length
+  const pendingTotal = rows.filter(r => r.status === 'PENDING').length
+  const overdueTotal = rows.filter(r => r.status === 'PENDING' && r.deadline && r.deadline < todayForCounts).length
+  const noRecordTotal = rows.filter(r => !r.plan).length
+  const noRecordRows = filteredRows.filter(r => !r.plan)
+
   return (
-    <div className="space-y-4">
-      <div className="card-static">
-        <div className="flex items-start justify-between gap-3 flex-wrap mb-3">
-          <div>
-            <h2 className="text-[18px] leading-tight">Pending payments — by deadline</h2>
-            <p className="text-[12.5px] text-[color:var(--mid-gray)] mt-1">
-              Closest deadline first. Reminders go out automatically 5 days before, the day before, and the day after each deadline. For an overdue row, click <span aria-hidden>🔔</span> <strong>Remind</strong> to fire a manual reminder email now — every send is logged in the Notifications panel below.
-            </p>
-          </div>
-          <input
-            className="input"
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            placeholder="Search by name, email, plan, or branch"
-            style={{ width: 280 }}
-          />
-        </div>
+    <div className="space-y-5">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <KpiCard label="Paid this period" icon={<Icon name="check" />} value={paidTotal} sub={`of ${rows.length} active students`} />
+        <KpiCard label="Pending" icon={<Icon name="clock" />} accent="var(--sun)" value={pendingTotal} sub="Owe the current period" />
+        <KpiCard label="Overdue" icon={<Icon name="alert" />} accent={DANGER} value={overdueTotal} sub="Deadline has passed" />
+        <KpiCard label="No payment record" icon={<Icon name="users" />} accent="var(--slate)" value={noRecordTotal} sub="Never started checkout" />
+      </div>
+
+      {/* One search drives every list in this panel. */}
+      <label className="relative block w-full sm:max-w-[360px]">
+        <span className="sr-only">Search students in the payment lists</span>
+        <Icon name="search" size={14} className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: 'var(--mid-gray)' }} />
+        <input
+          className={`${CONTROL} w-full pl-8`}
+          style={CONTROL_STYLE}
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          placeholder="Search by name, email, plan, or branch"
+        />
+      </label>
+
+      <DashCard
+        flush
+        title="Pending payments — by deadline"
+        icon={<Icon name="clock" size={15} />}
+        description={<>Closest deadline first. Reminders go out automatically 5 days before, the day before, and the day after each deadline. For an overdue row, click <strong>Remind</strong> to send a reminder email now — every send is logged in the reminders card below.</>}
+        action={pendingByDeadline.length > 0 ? <StatusPill tone="warn">{pendingByDeadline.length} pending</StatusPill> : undefined}
+      >
         {pendingByDeadline.length === 0 ? (
-          <p className="text-sm text-[color:var(--mid-gray)] text-center py-6">No pending payments. 🎉</p>
+          <EmptyState icon="check" title={search.trim() ? `No pending payments match “${search}”.` : 'No pending payments.'} hint={search.trim() ? 'Try a name, email, plan or branch.' : 'Every active student is paid for the current period.'} />
         ) : (
-          <div className="overflow-x-auto rounded-xl border" style={{ borderColor: 'var(--paper-3)' }}>
-            <table className="w-full text-sm">
-              <thead style={{ background: 'var(--paper-2)' }}>
-                <tr className="text-left text-[11.5px] uppercase tracking-[0.08em] text-[color:var(--mid-gray)] border-b" style={{ borderColor: 'var(--paper-3)', fontFamily: 'var(--font-display)' }}>
-                  <th className="py-2 px-3">Student</th>
-                  <th className="py-2 px-3">Branch</th>
-                  <th className="py-2 px-3">Plan</th>
-                  <th className="py-2 px-3">Period</th>
-                  <th className="py-2 px-3">Deadline</th>
-                  <th className="py-2 px-3 text-right">Amount</th>
-                  <th className="py-2 px-3">Method</th>
-                  <th className="py-2 px-3">Proof</th>
-                  <th className="py-2 px-3 text-right">Remind</th>
-                  {canDelete && <th className="py-2 px-3 text-right">Action</th>}
+          <div className="overflow-auto" style={{ maxHeight: 520 }}>
+            <table className="w-full text-sm" style={{ borderCollapse: 'collapse', minWidth: canDelete ? 1040 : 960 }}>
+              <thead className="sticky top-0 z-10">
+                <tr>
+                  <th className={TH} style={TH_STYLE}>Student</th>
+                  <th className={TH} style={TH_STYLE}>Branch</th>
+                  <th className={TH} style={TH_STYLE}>Plan</th>
+                  <th className={TH} style={TH_STYLE}>Period</th>
+                  <th className={TH} style={TH_STYLE}>Deadline</th>
+                  <th className={`${TH} text-right`} style={TH_STYLE}>Amount</th>
+                  <th className={TH} style={TH_STYLE}>Method</th>
+                  <th className={TH} style={TH_STYLE}>Proof</th>
+                  <th className={`${TH} text-right`} style={TH_STYLE}>Remind</th>
+                  {canDelete && <th className={`${TH} text-right`} style={TH_STYLE}><span className="sr-only">Actions</span></th>}
                 </tr>
               </thead>
               <tbody>
@@ -332,60 +357,48 @@ export default function PaymentsGrouped({
                   const today = new Date()
                   const overdue = r.deadline ? r.deadline < today : false
                   return (
-                    <tr key={r.student.id} className="border-b" style={{ borderColor: 'var(--paper-3)' }}>
-                      <td className="py-2.5 px-3">
-                        <div className="font-semibold text-[color:var(--narra)]">{[r.student.firstName, r.student.lastName].filter(Boolean).join(' ') || r.student.email}</div>
-                        <div className="text-[11px] text-[color:var(--mid-gray)]">{r.student.email} · {r.student.level ? levelLabel(r.student.level as EnrollmentLevel) : '—'}</div>
+                    <tr key={r.student.id} className={TR} style={TR_STYLE}>
+                      <StudentCell student={r.student} />
+                      <td className={TD}><BranchTag branch={r.student.branch} /></td>
+                      <td className={`${TD} text-[12.5px]`}>{r.plan ? planLabel(r.plan) : '—'}</td>
+                      <td className={`${TD} text-[12.5px]`}>{r.payment?.period ?? '—'}</td>
+                      <td className={`${TD} text-[12.5px] whitespace-nowrap`}>
+                        <div style={{ color: overdue ? DANGER : 'var(--charcoal)', fontWeight: overdue ? 600 : 400 }}>{r.deadline ? r.deadline.toLocaleDateString() : '—'}</div>
+                        {r.deadline && (
+                          <div className="mt-1">
+                            {overdue ? <StatusPill tone="error">Overdue</StatusPill> : <StatusPill tone="warn">Due</StatusPill>}
+                          </div>
+                        )}
                       </td>
-                      <td className="py-2.5 px-3 text-[12.5px]">
-                        {r.student.branch ? (
-                          <span
-                            className="badge"
-                            style={{
-                              background: r.student.branch === 'EAST' ? '#dbeafe' : '#fef3c7',
-                              color:      r.student.branch === 'EAST' ? '#1e40af' : '#92400e',
-                            }}
-                          >
-                            {r.student.branch === 'EAST' ? 'East' : 'Greenhills'}
-                          </span>
-                        ) : <span className="text-[color:var(--mid-gray)]">—</span>}
-                      </td>
-                      <td className="py-2.5 px-3 text-[12.5px]">{r.plan ? planLabel(r.plan) : '—'}</td>
-                      <td className="py-2.5 px-3 text-[12.5px]">{r.payment?.period ?? '—'}</td>
-                      <td className="py-2.5 px-3 text-[12.5px]" style={{ color: overdue ? '#9f1239' : undefined, fontWeight: overdue ? 600 : 400 }}>
-                        {r.deadline ? r.deadline.toLocaleDateString() : '—'}
-                        {overdue && <span className="ml-1 text-[10.5px] uppercase tracking-[0.08em]">overdue</span>}
-                      </td>
-                      <td className="py-2.5 px-3 text-right tabular-nums">{r.payment ? fmt(r.payment.tuitionAmount + r.payment.miscAmount) : '—'}</td>
-                      <td className="py-2.5 px-3 text-[12.5px]">{methodLabel(r.payment?.method)}</td>
-                      <td className="py-2.5 px-3"><ProofBtn payment={r.payment} /></td>
-                      <td className="py-2.5 px-3 text-right">
+                      <td className={`${TD} text-right tabular-nums whitespace-nowrap font-semibold`} style={{ color: 'var(--charcoal)' }}>{r.payment ? fmt(r.payment.tuitionAmount + r.payment.miscAmount) : '—'}</td>
+                      <td className={`${TD} text-[12.5px]`}>{methodLabel(r.payment?.method)}</td>
+                      <td className={TD}><ProofBtn payment={r.payment} /></td>
+                      <td className={`${TD} text-right`}>
                         {overdue ? (
                           <button
                             type="button"
-                            className="inline-flex items-center gap-1 text-[11.5px] px-2 py-1 rounded-md font-semibold transition-colors disabled:opacity-50"
-                            style={{
-                              background: remindSent[r.student.id] ? '#dcfce7' : '#fee2e2',
-                              color:      remindSent[r.student.id] ? '#166534' : '#9f1239',
-                              border:     `1px solid ${remindSent[r.student.id] ? 'rgba(22,101,52,0.35)' : 'rgba(159,18,42,0.35)'}`,
-                            }}
+                            className={BTN_SM}
+                            style={remindSent[r.student.id]
+                              ? { background: '#EEF5E8', color: '#2F5A28', border: '1px solid #CFE0BF' }
+                              : { ...SECONDARY_STYLE, color: DANGER, border: '1px solid #FECACA' }}
                             onClick={() => void handleManualRemind(r)}
                             disabled={busyRemind === r.student.id}
                             title={`Send an overdue-reminder email to ${r.student.email}`}
                           >
-                            {remindSent[r.student.id] ? '✓ Sent'
+                            {remindSent[r.student.id] ? <><Icon name="check" size={12} /> Sent</>
                               : busyRemind === r.student.id ? 'Sending…'
-                              : <><span aria-hidden>🔔</span> Remind</>}
+                              : <><Icon name="alert" size={12} /> Remind</>}
                           </button>
                         ) : (
-                          <span className="text-[11px] text-[color:var(--mid-gray)]">—</span>
+                          <span className="text-[11px]" style={{ color: 'var(--mid-gray)' }}>—</span>
                         )}
                       </td>
                       {canDelete && (
-                        <td className="py-2.5 px-3 text-right">
+                        <td className={`${TD} text-right`}>
                           <button
                             type="button"
-                            className="text-[11px] px-2 py-1 rounded text-[color:var(--clay)] hover:bg-[color:var(--clay-tint)] disabled:opacity-40"
+                            className={BTN_DANGER_GHOST}
+                            style={{ color: DANGER }}
                             onClick={() => void handleDelete(r.student)}
                             disabled={busyDelete === r.student.id}
                             title="Delete this student account (main admin only)."
@@ -401,7 +414,7 @@ export default function PaymentsGrouped({
             </table>
           </div>
         )}
-      </div>
+      </DashCard>
 
       {/* Consolidated single-table view: one plan-type filter drives
           the whole table (Annual / Biannual / Monthly), plus a sub-slice
@@ -416,22 +429,28 @@ export default function PaymentsGrouped({
       />
 
       {/* Students with no plan / no payment yet — surface so admin can chase them. */}
-      {filteredRows.some(r => !r.plan) && (
-        <div className="card-static">
-          <h2 className="text-[18px] leading-tight mb-1">No payment record yet</h2>
-          <p className="text-[12.5px] text-[color:var(--mid-gray)] mb-3">Students who haven&apos;t started checkout. Send them a reminder to pay.</p>
-          <ul className="divide-y rounded-xl border" style={{ borderColor: 'var(--paper-3)' }}>
-            {filteredRows.filter(r => !r.plan).map(r => (
-              <li key={r.student.id} className="flex items-center justify-between gap-3 px-4 py-2.5 text-sm">
+      {noRecordRows.length > 0 && (
+        <DashCard
+          flush
+          title="No payment record yet"
+          icon={<Icon name="users" size={15} />}
+          description="Students who haven't started checkout. Send them a reminder to pay."
+          action={<StatusPill tone="neutral">{noRecordRows.length} student{noRecordRows.length === 1 ? '' : 's'}</StatusPill>}
+        >
+          <ul className="overflow-auto" style={{ maxHeight: 420 }}>
+            {noRecordRows.map((r, i) => (
+              <li key={r.student.id} className="flex items-center justify-between gap-3 px-4 sm:px-5 py-2.5 text-sm" style={i ? TR_STYLE : undefined}>
                 <div className="min-w-0">
-                  <div className="font-semibold text-[color:var(--narra)] truncate">{[r.student.firstName, r.student.lastName].filter(Boolean).join(' ') || r.student.email}</div>
-                  <div className="text-[11.5px] text-[color:var(--mid-gray)] truncate">{r.student.email} · {r.student.level ? levelLabel(r.student.level as EnrollmentLevel) : '—'}</div>
+                  <div className="font-semibold truncate" style={{ color: 'var(--charcoal)' }}>{[r.student.firstName, r.student.lastName].filter(Boolean).join(' ') || r.student.email}</div>
+                  <div className="text-[11.5px] truncate" style={{ color: 'var(--mid-gray)' }}>{r.student.email} · {r.student.level ? levelLabel(r.student.level as EnrollmentLevel) : '—'}</div>
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
+                  <BranchTag branch={r.student.branch} />
                   {canDelete && (
                     <button
                       type="button"
-                      className="text-[11px] px-2 py-1 rounded text-[color:var(--clay)] hover:bg-[color:var(--clay-tint)] disabled:opacity-40"
+                      className={BTN_DANGER_GHOST}
+                      style={{ color: DANGER }}
                       onClick={() => void handleDelete(r.student)}
                       disabled={busyDelete === r.student.id}
                       title="Delete this student account (main admin only)."
@@ -443,7 +462,7 @@ export default function PaymentsGrouped({
               </li>
             ))}
           </ul>
-        </div>
+        </DashCard>
       )}
 
       {/* Automated payment-reminder log — reads from the daily cron's
@@ -453,6 +472,21 @@ export default function PaymentsGrouped({
       <PaymentReminderNotifications />
     </div>
   )
+}
+
+/** Name over email · level, shared by both tables. */
+function StudentCell({ student }: { student: StoredUser }) {
+  return (
+    <td className={TD} style={{ minWidth: 200 }}>
+      <div className="font-semibold" style={{ color: 'var(--charcoal)' }}>{[student.firstName, student.lastName].filter(Boolean).join(' ') || student.email}</div>
+      <div className="text-[11px] break-all" style={{ color: 'var(--mid-gray)' }}>{student.email}{student.level ? ` · ${levelLabel(student.level as EnrollmentLevel)}` : ''}</div>
+    </td>
+  )
+}
+
+function BranchTag({ branch }: { branch: StoredUser['branch'] }) {
+  if (!branch) return <span style={{ color: 'var(--mid-gray)' }}>—</span>
+  return <Tag tone={branch === 'EAST' ? 'brand' : 'info'}>{branch === 'EAST' ? 'East' : 'Greenhills'}</Tag>
 }
 
 
@@ -540,53 +574,36 @@ function PaymentsTable({
   ]
 
   return (
-    <div className="card-static">
-      <div className="flex items-start justify-between gap-3 flex-wrap mb-3">
-        <div>
-          <div className="text-[10.5px] font-bold uppercase tracking-[0.14em] text-[color:var(--bright-teal)]" style={{ fontFamily: 'var(--font-display)' }}>Payments</div>
-          <h2 className="text-[18px] leading-tight">Paying students</h2>
-          <div className="text-[11.5px] text-[color:var(--mid-gray)] mt-0.5">
-            Showing: <span className="font-semibold">{sliceLabel}</span> · {paidCount} paid · {pendingCount} pending
-          </div>
-        </div>
-      </div>
-
+    <DashCard
+      flush
+      title="Paying students"
+      icon={<Icon name="wallet" size={15} />}
+      description={<>Showing <span className="font-semibold">{sliceLabel}</span> · {paidCount} paid · {pendingCount} pending</>}
+    >
       {/* Type-of-payment filter */}
-      <div className="flex items-center gap-2 flex-wrap mb-3">
-        <div className="inline-flex rounded-lg p-0.5 border" style={{ borderColor: 'var(--paper-3)', background: 'var(--paper-2)' }}>
-          {typeTabs.map(t => (
-            <button
-              key={t.key}
-              type="button"
-              onClick={() => setTypeFilter(t.key)}
-              className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-all ${typeFilter === t.key ? 'bg-white shadow-sm text-[color:var(--deep-teal)]' : 'text-[color:var(--mid-gray)]'}`}
-              style={{ fontFamily: 'var(--font-display)' }}
-            >
-              {t.label}
-            </button>
-          ))}
-        </div>
+      <div className="px-4 sm:px-5 py-3 flex items-center gap-2 flex-wrap" style={{ borderBottom: '1px solid var(--light-gray)' }}>
+        <PillTabs
+          label="Filter by type of payment"
+          size="sm"
+          tabs={typeTabs.map(t => ({ id: t.key, label: t.label }))}
+          value={typeFilter}
+          onChange={id => setTypeFilter(id as 'ALL' | PaymentPlan)}
+        />
 
         {typeFilter === 'BIANNUAL' && (
-          <div className="inline-flex rounded-lg p-0.5 border" style={{ borderColor: 'var(--paper-3)', background: 'var(--paper-2)' }}>
-            {(['FIRST', 'SECOND'] as const).map(h => (
-              <button
-                key={h}
-                type="button"
-                onClick={() => setHalf(h)}
-                className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-all ${half === h ? 'bg-white shadow-sm text-[color:var(--deep-teal)]' : 'text-[color:var(--mid-gray)]'}`}
-                style={{ fontFamily: 'var(--font-display)' }}
-              >
-                {h === 'FIRST' ? '1st Biannual' : '2nd Biannual'}
-              </button>
-            ))}
-          </div>
+          <PillTabs
+            label="Bi-annual installment"
+            size="sm"
+            tabs={(['FIRST', 'SECOND'] as const).map(h => ({ id: h, label: h === 'FIRST' ? '1st Biannual' : '2nd Biannual' }))}
+            value={half}
+            onChange={id => setHalf(id as 'FIRST' | 'SECOND')}
+          />
         )}
 
         {typeFilter === 'MONTHLY' && (
           <div className="flex items-center gap-2">
-            <label className="text-[11.5px] text-[color:var(--mid-gray)]" style={{ fontFamily: 'var(--font-display)' }}>Month</label>
-            <select className="input" value={monthKey} onChange={e => setMonthKey(e.target.value)} style={{ maxWidth: 200 }}>
+            <label htmlFor="paying-students-month" className="text-[11px] font-semibold uppercase tracking-wider" style={LABEL_STYLE}>Month</label>
+            <select id="paying-students-month" className={CONTROL_SM} style={{ ...CONTROL_STYLE, maxWidth: 200 }} value={monthKey} onChange={e => setMonthKey(e.target.value)}>
               {syMonths.map(m => <option key={m.key} value={m.key}>{m.label}</option>)}
             </select>
           </div>
@@ -594,50 +611,36 @@ function PaymentsTable({
       </div>
 
       {sortedRows.length === 0 ? (
-        <p className="text-sm text-[color:var(--mid-gray)] text-center py-6">No students match this filter.</p>
+        <EmptyState icon="search" title="No students match this filter." hint="Try another plan type, or clear the search above." />
       ) : (
-        <div className="overflow-x-auto rounded-lg border" style={{ borderColor: 'var(--paper-3)' }}>
-          <table className="w-full text-sm">
-            <thead style={{ background: 'var(--paper-2)' }}>
-              <tr className="text-left text-[11.5px] uppercase tracking-[0.08em] text-[color:var(--mid-gray)] border-b" style={{ borderColor: 'var(--paper-3)', fontFamily: 'var(--font-display)' }}>
-                <th className="py-2 px-3">Name</th>
-                <th className="py-2 px-3">Plan</th>
-                <th className="py-2 px-3">Branch</th>
-                <th className="py-2 px-3">Status</th>
-                {canDelete && <th className="py-2 px-3 text-right">Action</th>}
+        <div className="overflow-auto" style={{ maxHeight: 560 }}>
+          <table className="w-full text-sm" style={{ borderCollapse: 'collapse', minWidth: 600 }}>
+            <thead className="sticky top-0 z-10">
+              <tr>
+                <th className={TH} style={TH_STYLE}>Name</th>
+                <th className={TH} style={TH_STYLE}>Plan</th>
+                <th className={TH} style={TH_STYLE}>Branch</th>
+                <th className={TH} style={TH_STYLE}>Status</th>
+                {canDelete && <th className={`${TH} text-right`} style={TH_STYLE}><span className="sr-only">Actions</span></th>}
               </tr>
             </thead>
             <tbody>
               {sortedRows.map(r => (
-                <tr key={r.student.id} className="border-b" style={{ borderColor: 'var(--paper-3)' }}>
-                  <td className="py-2 px-3">
-                    <div className="font-semibold text-[color:var(--narra)]">{[r.student.firstName, r.student.lastName].filter(Boolean).join(' ') || r.student.email}</div>
-                    <div className="text-[11px] text-[color:var(--mid-gray)]">{r.student.email}{r.student.level ? ` · ${levelLabel(r.student.level as EnrollmentLevel)}` : ''}</div>
-                  </td>
-                  <td className="py-2 px-3 text-[12.5px]">{r.plan ? planLabel(r.plan) : '—'}</td>
-                  <td className="py-2 px-3 text-[12.5px]">
-                    {r.student.branch ? (
-                      <span
-                        className="badge"
-                        style={{
-                          background: r.student.branch === 'EAST' ? '#dbeafe' : '#fef3c7',
-                          color:      r.student.branch === 'EAST' ? '#1e40af' : '#92400e',
-                        }}
-                      >
-                        {r.student.branch === 'EAST' ? 'East' : 'Greenhills'}
-                      </span>
-                    ) : <span className="text-[color:var(--mid-gray)]">—</span>}
-                  </td>
-                  <td className="py-2 px-3">
-                    <span className={`badge ${r.status === 'PAID' ? 'badge-paid' : 'badge-pending'}`}>
-                      {r.status === 'PAID' ? 'Paid' : 'Pending'}
-                    </span>
+                <tr key={r.student.id} className={TR} style={TR_STYLE}>
+                  <StudentCell student={r.student} />
+                  <td className={`${TD} text-[12.5px]`}>{r.plan ? planLabel(r.plan) : '—'}</td>
+                  <td className={TD}><BranchTag branch={r.student.branch} /></td>
+                  <td className={TD}>
+                    {r.status === 'PAID'
+                      ? <StatusPill tone="success">Paid</StatusPill>
+                      : <StatusPill tone="warn">Pending</StatusPill>}
                   </td>
                   {canDelete && (
-                    <td className="py-2 px-3 text-right">
+                    <td className={`${TD} text-right`}>
                       <button
                         type="button"
-                        className="text-[11px] px-2 py-0.5 rounded text-[color:var(--clay)] hover:bg-[color:var(--clay-tint)] disabled:opacity-40"
+                        className={BTN_DANGER_GHOST}
+                        style={{ color: DANGER }}
                         onClick={() => onDelete(r.student)}
                         disabled={busyDelete === r.student.id}
                         title="Delete this student account (main admin only)."
@@ -652,7 +655,7 @@ function PaymentsTable({
           </table>
         </div>
       )}
-    </div>
+    </DashCard>
   )
 }
 
@@ -666,7 +669,11 @@ function ProofBtn({ payment }: { payment: PaymentRecord | null }) {
     setTimeout(() => URL.revokeObjectURL(url), 60_000)
   }
   if (!payment?.proofFileId) {
-    return <span className="text-[11.5px] text-[color:var(--mid-gray)]">—</span>
+    return <span className="text-[11.5px]" style={{ color: 'var(--mid-gray)' }}>—</span>
   }
-  return <button type="button" className="btn-secondary text-xs" onClick={open}>View</button>
+  return (
+    <button type="button" className={BTN_SM} style={SECONDARY_STYLE} onClick={open}>
+      <Icon name="eye" size={12} /> View
+    </button>
+  )
 }
