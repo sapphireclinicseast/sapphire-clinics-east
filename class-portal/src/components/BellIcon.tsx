@@ -98,39 +98,43 @@ export default function BellIcon() {
       <button
         type="button"
         onClick={() => setOpen(v => !v)}
-        className="flex items-center gap-2.5 w-full px-3 py-2 rounded-lg text-[13.5px] text-[color:var(--narra)] hover:bg-[color:var(--paper-2)] transition-colors"
+        className="flex items-center gap-3 w-full px-3 py-2 rounded-lg text-[13.5px] font-medium text-white/70 hover:text-white hover:bg-white/[0.06] transition-colors focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[color:var(--scei-mint)]"
+        aria-expanded={open}
         aria-label={`Inbox${unreadCount > 0 ? ` — ${unreadCount} unread` : ''}`}
       >
-        <span className="relative flex items-center justify-center w-5 h-5 shrink-0 opacity-80">
+        <span className="relative flex items-center justify-center w-5 h-5 shrink-0">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
             <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
             <path d="M13.73 21a2 2 0 0 1-3.46 0" />
           </svg>
           {unreadCount > 0 && (
-            <span className="absolute -top-1 -right-1 min-w-[16px] h-[16px] px-[4px] rounded-full bg-[color:var(--clay)] text-white text-[9.5px] font-bold flex items-center justify-center">
+            <span aria-hidden className="absolute -top-1.5 -right-1.5 min-w-[16px] h-[16px] px-[4px] rounded-full bg-[color:var(--clay)] text-white text-[9.5px] font-bold flex items-center justify-center ring-2 ring-[color:var(--near-black)]">
               {unreadCount > 99 ? '99+' : unreadCount}
             </span>
           )}
         </span>
         <span>Inbox</span>
+        {unreadCount > 0 && (
+          <span aria-hidden className="ml-auto text-[11px] font-semibold text-white/60 tabular-nums">{unreadCount > 99 ? '99+' : unreadCount} new</span>
+        )}
       </button>
 
       {open && (
         <div
-          className="absolute left-full top-0 ml-2 w-[340px] max-h-[70vh] overflow-hidden rounded-xl shadow-xl border bg-white z-50 flex flex-col"
-          style={{ borderColor: 'var(--paper-3)' }}
+          className="fixed left-3 right-3 top-16 md:absolute md:left-full md:right-auto md:top-auto md:bottom-0 md:ml-3 md:w-[340px] max-h-[70vh] overflow-hidden rounded-xl shadow-2xl border bg-white z-50 flex flex-col"
+          style={{ borderColor: 'var(--light-gray)' }}
           role="dialog"
           aria-label="Inbox"
         >
-          <div className="px-3 py-2 border-b flex items-center justify-between" style={{ borderColor: 'var(--paper-3)' }}>
-            <div className="text-[12.5px] font-semibold text-[color:var(--narra)]">
+          <div className="px-4 py-2.5 border-b flex items-center justify-between gap-3" style={{ borderColor: 'var(--light-gray)' }}>
+            <div className="text-sm font-semibold text-[color:var(--charcoal)]" style={{ fontFamily: 'var(--font-display)' }}>
               Inbox{unreadCount > 0 ? ` · ${unreadCount} unread` : ''}
             </div>
             {unreadCount > 0 && (
               <button
                 type="button"
                 onClick={handleMarkAllRead}
-                className="text-[11px] text-[color:var(--deep-teal)] hover:underline"
+                className="text-xs font-medium text-[color:var(--teal)] hover:underline rounded focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--teal)]"
               >
                 Mark all read
               </button>
@@ -138,11 +142,21 @@ export default function BellIcon() {
           </div>
           <div className="flex-1 overflow-y-auto">
             {!loaded ? (
-              <div className="p-4 text-[12px] text-[color:var(--mid-gray)]">Loading…</div>
+              <div className="p-4 space-y-3" role="status" aria-label="Loading inbox">
+                {[0, 1, 2].map(i => (
+                  <div key={i} className="flex gap-2.5" aria-hidden>
+                    <div className="w-5 h-5 rounded-md animate-pulse" style={{ background: 'var(--paper-2)' }} />
+                    <div className="flex-1 space-y-1.5">
+                      <div className="h-3 rounded animate-pulse" style={{ background: 'var(--paper-2)', width: `${70 - i * 12}%` }} />
+                      <div className="h-2.5 rounded animate-pulse" style={{ background: 'var(--paper-2)', width: `${50 - i * 8}%` }} />
+                    </div>
+                  </div>
+                ))}
+              </div>
             ) : notifications.length === 0 ? (
-              <div className="p-4 text-[12px] text-[color:var(--mid-gray)]">You&apos;re all caught up.</div>
+              <div className="px-4 py-8 text-sm text-center text-[color:var(--mid-gray)]">You&apos;re all caught up.</div>
             ) : (
-              <ul className="divide-y" style={{ borderColor: 'var(--paper-3)' }}>
+              <ul className="divide-y divide-[color:var(--light-gray)]">
                 {notifications.map(n => {
                   const meta = KIND_META[n.kind] ?? { emoji: '🔔', tone: 'text-[color:var(--mid-gray)]' }
                   const isUnread = !n.readAt
@@ -151,11 +165,13 @@ export default function BellIcon() {
                       <button
                         type="button"
                         onClick={() => handleRowClick(n)}
-                        className={`w-full text-left px-3 py-2.5 flex gap-2 hover:bg-[color:var(--paper-2)] ${isUnread ? 'bg-[color:var(--sage-tint)]/40' : ''}`}
+                        className={`w-full text-left px-4 py-3 flex gap-2.5 transition-colors hover:bg-[#FBF9F5] focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[color:var(--teal)] ${isUnread ? 'bg-[color:var(--sage-tint)]' : ''}`}
                       >
                         <span className={`shrink-0 text-[16px] leading-tight ${meta.tone}`} aria-hidden>{meta.emoji}</span>
                         <span className="min-w-0 flex-1">
-                          <span className="block text-[12.5px] font-semibold text-[color:var(--narra)] truncate">{n.title}</span>
+                          <span className={`block text-[12.5px] truncate ${isUnread ? 'font-semibold text-[color:var(--charcoal)]' : 'font-medium text-[color:var(--mid-gray)]'}`}>
+                            {isUnread && <span className="sr-only">Unread: </span>}{n.title}
+                          </span>
                           <span className="block text-[11.5px] text-[color:var(--mid-gray)] line-clamp-2">{n.body}</span>
                           <span className="block text-[10.5px] text-[color:var(--mid-gray)] mt-0.5">{formatRelative(n.createdAt)}</span>
                         </span>

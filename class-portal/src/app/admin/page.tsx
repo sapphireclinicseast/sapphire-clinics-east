@@ -35,6 +35,11 @@ import FrontDeskPaymentConfirmations from '@/components/FrontDeskPaymentConfirma
 import PromissoryNotesPanel from '@/components/PromissoryNotesPanel'
 import AssignmentsPanel from '@/components/AssignmentsPanel'
 import ClassesPanel from '@/components/ClassesPanel'
+import {
+  PAGE, PageHeader, PillTabs, DashCard, KpiCard, Banner, StatusPill, Tag, Dialog, EmptyState, RowsSkeleton, Skeleton, Icon,
+  CONTROL, CONTROL_STYLE, LABEL, LABEL_STYLE, BTN_PRIMARY, BTN_SECONDARY, BTN_SM, BTN_DANGER_GHOST,
+  PRIMARY_STYLE, SECONDARY_STYLE, SUBTLE_BG, TH, TH_STYLE, TD, TR, TR_STYLE, displayName,
+} from '@/components/hub/ui'
 
 type AdminTab = 'USERS' | 'STUDENTS' | 'CLASSES' | 'CURRICULUM' | 'PAYMENTS' | 'FEES' | 'ASSIGNMENTS'
 
@@ -62,38 +67,40 @@ export default function AdminPage() {
     ? 'SCEI main admin'
     : `Branch admin — ${branchLabel(adminBranch)}`
 
+  const TABS: Array<{ id: AdminTab; label: string }> = [
+    { id: 'USERS', label: 'Users' },
+    { id: 'STUDENTS', label: 'Students' },
+    { id: 'CLASSES', label: 'Grade Levels' },
+    { id: 'CURRICULUM', label: 'Curriculum' },
+    { id: 'PAYMENTS', label: 'Payments' },
+    { id: 'FEES', label: 'Fees' },
+    { id: 'ASSIGNMENTS', label: 'Assignments' },
+  ]
+
   return (
-    <div className="max-w-5xl mx-auto animate-fade-up space-y-6">
-      <div className="card-static">
-        <div className="text-[10.5px] font-bold uppercase tracking-[0.14em] text-[color:var(--bright-teal)] mb-1" style={{ fontFamily: 'var(--font-display)' }}>{headerLabel}</div>
-        <h1 className="text-[24px] leading-tight text-[color:var(--deep-teal)]">{isMainAdmin ? 'Admin dashboard' : 'Branch dashboard'}</h1>
-        <p className="text-sm text-[color:var(--mid-gray)]">{adminEmail}</p>
-      </div>
+    <div className={`${PAGE} animate-fade-up`}>
+      <PageHeader
+        eyebrow={headerLabel}
+        title={isMainAdmin ? 'Admin dashboard' : 'Branch dashboard'}
+        description={<>Accounts, students, grade levels, payments and fees · signed in as <span className="font-semibold" style={{ color: 'var(--charcoal)' }}>{adminEmail}</span></>}
+      />
 
-      <div className="flex gap-2 p-1 bg-[color:var(--pale-teal)] rounded-xl overflow-x-auto" style={{ fontFamily: 'var(--font-display)' }}>
-        {([
-          ['USERS', 'Users'],
-          ['STUDENTS', 'Students'],
-          ['CLASSES', 'Grade Levels'],
-          ['CURRICULUM', 'Curriculum'],
-          ['PAYMENTS', 'Payments'],
-          ['FEES', 'Fees'],
-          ['ASSIGNMENTS', 'Assignments'],
-        ] as Array<[AdminTab, string]>).map(([k, label]) => (
-          <button
-            key={k}
-            onClick={() => setTab(k)}
-            className={`px-4 py-2 rounded-lg text-sm font-semibold whitespace-nowrap transition-all ${tab === k ? 'bg-white text-[color:var(--deep-teal)] shadow-sm' : 'text-[color:var(--mid-gray)]'}`}
-          >{label}</button>
-        ))}
-      </div>
+      <PillTabs
+        label="Admin dashboard sections"
+        tabs={TABS}
+        value={tab}
+        onChange={id => setTab(id as AdminTab)}
+      />
 
+      {/* hub-frame gives the shared panels below Ops-Hub card framing
+          (see globals.css); their insides are restyled in later phases. */}
+      <div role="tabpanel" aria-label={TABS.find(t => t.id === tab)?.label} className="hub-frame space-y-5 min-w-0">
       {tab === 'USERS'         && <UsersPanel viewerRole={adminRole} viewerBranch={adminBranch} />}
       {tab === 'STUDENTS'      && <StudentListPanel viewer={{ role: 'ADMIN', email: adminEmail, name: isMainAdmin ? 'Main admin' : 'Branch admin' }} viewerBranch={isMainAdmin ? undefined : adminBranch} />}
       {tab === 'CLASSES'       && <ClassesPanel />}
       {tab === 'CURRICULUM'    && <CurriculumPanel viewer={{ role: 'ADMIN', email: adminEmail }} />}
       {tab === 'PAYMENTS'      && (
-        <div className="space-y-6">
+        <div className="space-y-5">
           {/* canDelete restricted to the main admin (not branch admin)
               because the server endpoint also enforces role === 'ADMIN'.
               Used to clear test rows that were never real payments. */}
@@ -106,12 +113,13 @@ export default function AdminPage() {
         </div>
       )}
       {tab === 'FEES'          && (
-        <div className="space-y-6">
+        <div className="space-y-5">
           <FeesPanel viewerRole={adminRole} viewerBranch={adminBranch} />
           {isMainAdmin && <VouchersPanel adminEmail={adminEmail} />}
         </div>
       )}
       {tab === 'ASSIGNMENTS'   && <AssignmentsPanel viewerBranch={isMainAdmin ? undefined : adminBranch} />}
+      </div>
     </div>
   )
 }
@@ -120,11 +128,11 @@ export default function AdminPage() {
 
 type Filter = 'ALL' | UserRole
 
-const ROLE_BADGE_CLASS: Record<UserRole, string> = {
-  STUDENT:      'badge-approved',
-  TEACHER:      'badge-teletherapy',
-  FRONTDESK:    'badge-pending',
-  BRANCH_ADMIN: 'badge-pending',
+const ROLE_TAG_TONE: Record<UserRole, 'brand' | 'info' | 'warn' | 'neutral'> = {
+  STUDENT:      'brand',
+  TEACHER:      'info',
+  FRONTDESK:    'neutral',
+  BRANCH_ADMIN: 'neutral',
 }
 
 function UsersPanel({ viewerRole, viewerBranch }: { viewerRole: 'ADMIN' | 'BRANCH_ADMIN'; viewerBranch?: Branch }) {
@@ -346,292 +354,320 @@ function UsersPanel({ viewerRole, viewerBranch }: { viewerRole: 'ADMIN' | 'BRANC
     } catch (e) { setErr((e as Error).message) }
   }
 
+  const counts = {
+    students: scoped.filter(u => u.role === 'STUDENT').length,
+    teachers: scoped.filter(u => u.role === 'TEACHER').length,
+    interns: scoped.filter(u => u.role === 'TEACHER' && u.isIntern).length,
+    frontdesk: scoped.filter(u => u.role === 'FRONTDESK').length,
+    branchAdmins: scoped.filter(u => u.role === 'BRANCH_ADMIN').length,
+    disabled: scoped.filter(u => !!u.disabledAt).length,
+  }
+  const FILTERS: Array<{ id: Filter; label: string; count: number }> = [
+    { id: 'ALL', label: 'All', count: scoped.length },
+    { id: 'STUDENT', label: 'Students', count: counts.students },
+    { id: 'TEACHER', label: 'Teachers', count: counts.teachers },
+    { id: 'FRONTDESK', label: 'Front desk', count: counts.frontdesk },
+    { id: 'BRANCH_ADMIN', label: 'Branch admins', count: counts.branchAdmins },
+  ]
+  const rowBtn = (color: string) => ({ ...CONTROL_STYLE, color })
+
   return (
     <>
-      <div className="card-static">
-        <div className="flex items-start justify-between gap-4 flex-wrap">
-          <div>
-            <h2 className="text-[18px] leading-tight">Users</h2>
-            <p className="text-sm text-[color:var(--mid-gray)] mt-1">
-              {scoped.length} total · {scoped.filter(u => u.role === 'STUDENT').length} students · {scoped.filter(u => u.role === 'TEACHER').length} teachers · {scoped.filter(u => u.role === 'FRONTDESK').length} front desk · {scoped.filter(u => u.role === 'BRANCH_ADMIN').length} branch admins
-            </p>
-          </div>
-          <label className="inline-flex items-center gap-2 text-sm text-[color:var(--ink)]">
-            <input type="checkbox" checked={showPasswords} onChange={e => setShowPasswords(e.target.checked)} />
-            Show passwords
-          </label>
-        </div>
-
-        <p className="text-[11.5px] text-[color:var(--mid-gray)] mt-2" style={{ fontFamily: 'var(--font-display)' }}>
-          Passwords are one-way encrypted on the server and can&apos;t be retrieved — not by Claude, not by Anthropic, not by us. The list shows the plaintext only when it was set or reset on <span className="font-semibold">this device</span>; otherwise the row shows <span className="font-semibold">who last set it and when</span>. To give a parent or staff member access, click <span className="font-semibold">Reset</span> next to their row.
-        </p>
-
-        {err && <div className="mt-4 px-4 py-3 rounded-xl bg-rose-50 border border-rose-100 text-sm text-rose-800">{err}</div>}
-        {info && <div className="mt-4 px-4 py-3 rounded-xl bg-emerald-50 border border-emerald-100 text-sm text-emerald-800 break-words">{info}</div>}
-
-        <div className="flex gap-2 mt-5 p-1 bg-[color:var(--pale-teal)] rounded-xl w-fit flex-wrap" style={{ fontFamily: 'var(--font-display)' }}>
-          {(['ALL', 'STUDENT', 'TEACHER', 'FRONTDESK', 'BRANCH_ADMIN'] as Filter[]).map(f => (
-            <button key={f} onClick={() => setFilter(f)} className={`px-3 sm:px-4 py-2 rounded-lg text-sm font-semibold transition-all ${filter === f ? 'bg-white text-[color:var(--deep-teal)] shadow-sm' : 'text-[color:var(--mid-gray)]'}`}>
-              {f === 'ALL' ? 'All' : f === 'STUDENT' ? 'Students' : f === 'TEACHER' ? 'Teachers' : f === 'FRONTDESK' ? 'Front desk' : 'Branch admins'}
-            </button>
-          ))}
-        </div>
-
-        <div className="overflow-auto mt-4 rounded-xl border" style={{ maxHeight: 420, borderColor: 'var(--paper-3)' }}>
-          <table className="w-full text-sm">
-            <thead className="sticky top-0 z-10" style={{ background: 'var(--paper)' }}>
-              <tr className="text-left text-[11.5px] uppercase tracking-[0.08em] text-[color:var(--mid-gray)] border-b" style={{ borderColor: 'var(--paper-3)', fontFamily: 'var(--font-display)' }}>
-                <th className="py-2 px-3">Role</th>
-                <th className="py-2 px-3">Name</th>
-                <th className="py-2 px-3">Email</th>
-                <th className="py-2 px-3">Branch</th>
-                <th className="py-2 px-3">Password</th>
-                <th className="py-2 px-3">Level</th>
-                <th className="py-2 px-3">Created</th>
-                <th className="py-2 px-3"></th>
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.length === 0 && <tr><td colSpan={8} className="py-6 px-3 text-center text-[color:var(--mid-gray)]">No users in this view.</td></tr>}
-              {filtered.map(u => (
-                <tr
-                  key={u.id}
-                  className={`border-b hover:bg-[color:var(--paper-2)] ${u.disabledAt ? 'opacity-55' : ''}`}
-                  style={{ borderColor: 'var(--paper-3)' }}
-                  title={u.disabledAt ? `Disabled by ${u.disabledBy ?? 'unknown'} on ${new Date(u.disabledAt).toLocaleDateString()}` : undefined}
-                >
-                  <td className="py-2.5 px-3">
-                    <span className={`badge ${ROLE_BADGE_CLASS[u.role] ?? 'badge-pending'}`}>{roleLabel(u.role)}</span>
-                    {u.isIntern && (
-                      <span
-                        className="ml-1.5 inline-block text-[9px] font-bold uppercase tracking-[0.08em] px-1.5 py-0.5 rounded bg-amber-100 text-amber-900 border border-amber-200 align-middle"
-                        title={u.internContractExpiry
-                          ? `Intern — auto-disables ${formatAutoDisableDate(u.internContractExpiry)} (15 days after the end of the contract month, ${formatShortDate(u.internContractExpiry)})`
-                          : 'Intern — no contract end on file, will not auto-disable'}
-                      >
-                        Intern
-                      </span>
-                    )}
-                    {u.disabledAt && (
-                      <span className="ml-1.5 inline-block text-[9px] font-bold uppercase tracking-[0.08em] px-1.5 py-0.5 rounded bg-rose-100 text-rose-800 border border-rose-200 align-middle" title="Cannot sign in. Hidden from teacher and front-desk lists.">
-                        Disabled
-                      </span>
-                    )}
-                  </td>
-                  <td className="py-2.5 px-3">{[u.firstName, u.lastName].filter(Boolean).join(' ') || '—'}</td>
-                  <td className="py-2.5 px-3">{u.email}</td>
-                  <td className="py-2.5 px-3 text-[12.5px]">{branchLabel(u.branch)}</td>
-                  <td className="py-2.5 px-3 font-mono text-[12.5px]">
-                    {u.password ? (
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span>{showPasswords ? u.password : '•'.repeat(Math.min(u.password.length, 10))}</span>
-                        <button
-                          type="button"
-                          className="text-[10.5px] px-2 py-0.5 rounded-md text-white font-semibold"
-                          style={{ background: 'var(--moss)' }}
-                          onClick={() => { setResetting(u); setErr(null); setInfo(null) }}
-                        >Reset</button>
-                      </div>
-                    ) : (
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="text-[color:var(--mid-gray)] text-[11px] not-italic font-sans">
-                          {u.passwordSetAt
-                            ? <>Last set by <span className="font-semibold">{u.passwordSetBy ?? 'unknown'}</span> on {new Date(u.passwordSetAt).toLocaleDateString()}</>
-                            : <span className="italic">not on device</span>}
-                        </span>
-                        <button
-                          type="button"
-                          className="text-[10.5px] px-2 py-0.5 rounded-md text-white font-semibold"
-                          style={{ background: 'var(--moss)' }}
-                          onClick={() => { setResetting(u); setErr(null); setInfo(null) }}
-                        >Reset</button>
-                      </div>
-                    )}
-                  </td>
-                  <td className="py-2.5 px-3">{u.level ? levelLabel(u.level) : '—'}</td>
-                  <td className="py-2.5 px-3 text-[color:var(--mid-gray)] text-xs">{new Date(u.createdAt).toLocaleDateString()}</td>
-                  <td className="py-2.5 px-3 text-right whitespace-nowrap">
-                    <button className="text-xs px-2 py-1 rounded-md text-[color:var(--narra)] hover:bg-[color:var(--paper-2)]" onClick={() => { setEditing(u); setErr(null); setInfo(null) }}>Edit</button>
-                    {u.role !== 'BRANCH_ADMIN' && (
-                      <button
-                        className="text-xs px-2 py-1 rounded-md text-[color:var(--deep-teal)] hover:bg-[color:var(--paper-2)] ml-1"
-                        title="Open this user's portal as them. A persistent banner lets you return to your admin session; the session is audit-logged."
-                        onClick={() => handleViewAs(u)}
-                      >View as</button>
-                    )}
-                    <button
-                      className="text-xs px-2 py-1 rounded-md text-[color:var(--moss)] hover:bg-[color:var(--paper-2)] ml-1"
-                      title="Email a one-shot reset link — the user picks their own new password."
-                      onClick={() => handleSendResetLink(u)}
-                    >Email reset link</button>
-                    {viewerRole === 'ADMIN' && (
-                      <button
-                        className={`text-xs px-2 py-1 rounded-md ml-1 ${u.disabledAt
-                          ? 'text-[color:var(--moss)] hover:bg-[color:var(--sage-tint)]'
-                          : 'text-[color:var(--mid-gray)] hover:bg-[color:var(--paper-2)]'}`}
-                        title={u.disabledAt
-                          ? 'Re-enable this account so the user can sign in again.'
-                          : "Disable this account. The user can't sign in and is hidden from teacher / front-desk lists, but their enrollment and payment history are preserved. Reversible."}
-                        onClick={() => handleToggleDisabled(u)}
-                      >{u.disabledAt ? 'Enable' : 'Disable'}</button>
-                    )}
-                    {viewerRole === 'ADMIN' && (
-                      <button className="text-xs px-2 py-1 rounded-md text-[color:var(--clay)] hover:bg-[color:var(--clay-tint)] ml-1" onClick={() => handleDelete(u)}>Delete</button>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+      {/* ── At a glance ── */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <KpiCard label="Accounts" icon={<Icon name="users" />} value={scoped.length}
+          sub={counts.disabled > 0 ? `${counts.disabled} disabled` : viewerRole === 'BRANCH_ADMIN' ? branchLabel(viewerBranch) : 'All branches'} />
+        <KpiCard label="Students" icon={<Icon name="student" />} value={counts.students} sub="Parent / student logins" />
+        <KpiCard label="Teachers" icon={<Icon name="teacher" />} accent="var(--slate)" value={counts.teachers}
+          sub={counts.interns > 0 ? `${counts.interns} intern${counts.interns === 1 ? '' : 's'}` : 'Incl. interns'} />
+        <KpiCard label="Office staff" icon={<Icon name="building" />} accent="var(--clay)" value={counts.frontdesk + counts.branchAdmins}
+          sub={`${counts.frontdesk} front desk · ${counts.branchAdmins} branch admin${counts.branchAdmins === 1 ? '' : 's'}`} />
       </div>
 
-      <div className="card-static mt-6">
-        <h2 className="text-[18px] leading-tight">Create staff account</h2>
-        <p className="text-[12.5px] text-[color:var(--mid-gray)] mt-1">
-          {viewerRole === 'ADMIN'
-            ? 'Mint a teacher, front desk, or branch admin account directly. The password you set here is shown once below — copy it before navigating away.'
-            : `You can create teacher and front-desk accounts scoped to ${branchLabel(viewerBranch)}.`}
-        </p>
+      {err && <Banner tone="error">{err}</Banner>}
+      {info && <Banner tone="success">{info}</Banner>}
 
-        <form className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-4" onSubmit={handleCreate}>
+      <DashCard
+        flush
+        title="Users"
+        icon={<Icon name="users" size={15} />}
+        description={`${scoped.length} total · ${counts.students} students · ${counts.teachers} teachers · ${counts.frontdesk} front desk · ${counts.branchAdmins} branch admins`}
+        action={
+          <label className="inline-flex items-center gap-2 text-xs font-semibold cursor-pointer select-none" style={{ color: 'var(--charcoal)' }}>
+            <input type="checkbox" className="w-4 h-4 accent-[color:var(--deep-teal)]" checked={showPasswords} onChange={e => setShowPasswords(e.target.checked)} />
+            Show passwords
+          </label>
+        }
+        footer={<>
+          Passwords are one-way encrypted on the server and can&apos;t be retrieved — not by Claude, not by Anthropic, not by us. The list shows the plaintext only when it was set or reset on <span className="font-semibold">this device</span>; otherwise the row shows <span className="font-semibold">who last set it and when</span>. To give a parent or staff member access, click <span className="font-semibold">Reset</span> next to their row.
+        </>}
+      >
+        <div className="px-4 sm:px-5 py-3" style={{ borderBottom: '1px solid var(--light-gray)' }}>
+          <PillTabs label="Filter users by role" size="sm" tabs={FILTERS} value={filter} onChange={id => setFilter(id as Filter)} />
+        </div>
+
+        {filtered.length === 0 ? (
+          <EmptyState icon="users" title="No users in this view." hint="Try another role filter, or create an account below." />
+        ) : (
+          <div className="overflow-auto" style={{ maxHeight: 520 }}>
+            <table className="w-full text-sm" style={{ borderCollapse: 'collapse', minWidth: 900 }}>
+              <thead className="sticky top-0 z-10">
+                <tr>
+                  {['Role', 'Name', 'Email', 'Branch', 'Password', 'Level', 'Created', ''].map((h, i) => (
+                    <th key={`${h}-${i}`} className={`${TH} ${i === 7 ? 'text-right' : ''}`} style={TH_STYLE}>
+                      {h || <span className="sr-only">Actions</span>}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.map(u => (
+                  <tr
+                    key={u.id}
+                    className={TR}
+                    style={{ ...TR_STYLE, ...(u.disabledAt ? { background: SUBTLE_BG } : {}) }}
+                    title={u.disabledAt ? `Disabled by ${u.disabledBy ?? 'unknown'} on ${new Date(u.disabledAt).toLocaleDateString()}` : undefined}
+                  >
+                    <td className={TD}>
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <Tag tone={ROLE_TAG_TONE[u.role] ?? 'neutral'}>{roleLabel(u.role)}</Tag>
+                        {u.isIntern && (
+                          <Tag
+                            tone="warn"
+                            title={u.internContractExpiry
+                              ? `Intern — auto-disables ${formatAutoDisableDate(u.internContractExpiry)} (15 days after the end of the contract month, ${formatShortDate(u.internContractExpiry)})`
+                              : 'Intern — no contract end on file, will not auto-disable'}
+                          >
+                            Intern
+                          </Tag>
+                        )}
+                        {u.disabledAt && (
+                          <StatusPill tone="error" title="Cannot sign in. Hidden from teacher and front-desk lists.">Disabled</StatusPill>
+                        )}
+                      </div>
+                    </td>
+                    <td className={`${TD} font-semibold ${u.disabledAt ? 'opacity-60' : ''}`} style={{ color: 'var(--charcoal)' }}>{[u.firstName, u.lastName].filter(Boolean).join(' ') || '—'}</td>
+                    <td className={`${TD} text-[13px] break-all ${u.disabledAt ? 'opacity-60' : ''}`} style={{ color: 'var(--mid-gray)', minWidth: 180 }}>{u.email}</td>
+                    <td className={`${TD} text-[12.5px] whitespace-nowrap`}>{branchLabel(u.branch)}</td>
+                    <td className={`${TD} font-mono text-[12.5px]`} style={{ minWidth: 170 }}>
+                      {u.password ? (
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span>{showPasswords ? u.password : '•'.repeat(Math.min(u.password.length, 10))}</span>
+                          <button
+                            type="button"
+                            className={`${BTN_SM} h-7 font-sans`}
+                            style={rowBtn('var(--deep-teal)')}
+                            onClick={() => { setResetting(u); setErr(null); setInfo(null) }}
+                          >Reset</button>
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="text-[color:var(--mid-gray)] text-[11px] not-italic font-sans">
+                            {u.passwordSetAt
+                              ? <>Last set by <span className="font-semibold">{u.passwordSetBy ?? 'unknown'}</span> on {new Date(u.passwordSetAt).toLocaleDateString()}</>
+                              : <span className="italic">not on device</span>}
+                          </span>
+                          <button
+                            type="button"
+                            className={`${BTN_SM} h-7 font-sans`}
+                            style={rowBtn('var(--deep-teal)')}
+                            onClick={() => { setResetting(u); setErr(null); setInfo(null) }}
+                          >Reset</button>
+                        </div>
+                      )}
+                    </td>
+                    <td className={`${TD} whitespace-nowrap`}>{u.level ? levelLabel(u.level) : '—'}</td>
+                    <td className={`${TD} text-[color:var(--mid-gray)] text-xs whitespace-nowrap tabular-nums`}>{new Date(u.createdAt).toLocaleDateString()}</td>
+                    <td className={`${TD} text-right`}>
+                      <div className="flex items-center justify-end gap-1.5 flex-wrap" style={{ minWidth: 220 }}>
+                        <button type="button" className={BTN_SM} style={rowBtn('var(--charcoal)')} onClick={() => { setEditing(u); setErr(null); setInfo(null) }}>Edit</button>
+                        {u.role !== 'BRANCH_ADMIN' && (
+                          <button
+                            type="button"
+                            className={BTN_SM}
+                            style={rowBtn('var(--deep-teal)')}
+                            title="Open this user's portal as them. A persistent banner lets you return to your admin session; the session is audit-logged."
+                            onClick={() => handleViewAs(u)}
+                          >View as</button>
+                        )}
+                        <button
+                          type="button"
+                          className={BTN_SM}
+                          style={rowBtn('var(--teal)')}
+                          title="Email a one-shot reset link — the user picks their own new password."
+                          onClick={() => handleSendResetLink(u)}
+                        >Email reset link</button>
+                        {viewerRole === 'ADMIN' && (
+                          <button
+                            type="button"
+                            className={BTN_SM}
+                            style={rowBtn(u.disabledAt ? 'var(--teal)' : 'var(--mid-gray)')}
+                            title={u.disabledAt
+                              ? 'Re-enable this account so the user can sign in again.'
+                              : "Disable this account. The user can't sign in and is hidden from teacher / front-desk lists, but their enrollment and payment history are preserved. Reversible."}
+                            onClick={() => handleToggleDisabled(u)}
+                          >{u.disabledAt ? 'Enable' : 'Disable'}</button>
+                        )}
+                        {viewerRole === 'ADMIN' && (
+                          <button type="button" className={BTN_DANGER_GHOST} style={{ color: '#B42318' }} onClick={() => handleDelete(u)}>Delete</button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </DashCard>
+
+      <DashCard
+        title="Create staff account"
+        icon={<Icon name="userPlus" size={15} />}
+        description={viewerRole === 'ADMIN'
+          ? 'Mint a teacher, front desk, or branch admin account directly. The password you set here is shown once below — copy it before navigating away.'
+          : `You can create teacher and front-desk accounts scoped to ${branchLabel(viewerBranch)}.`}
+      >
+        <form className="grid grid-cols-1 sm:grid-cols-2 gap-x-3 gap-y-4" onSubmit={handleCreate}>
           <label className="block">
-            <span className="label">Role</span>
-            <select className="select" value={newRole} onChange={e => setNewRole(e.target.value as Exclude<UserRole, 'STUDENT'>)}>
+            <span className={LABEL} style={LABEL_STYLE}>Role</span>
+            <select className={`${CONTROL} w-full`} style={CONTROL_STYLE} value={newRole} onChange={e => setNewRole(e.target.value as Exclude<UserRole, 'STUDENT'>)}>
               {creatableRoles.map(r => <option key={r} value={r}>{roleLabel(r)}</option>)}
             </select>
           </label>
           <label className="block">
-            <span className="label">Branch {needsBranch ? '' : <span className="text-[color:var(--mid-gray)]">(not required for teachers)</span>}</span>
-            <select className="select" value={newBranch} onChange={e => setNewBranch(e.target.value as Branch | '')} disabled={viewerRole === 'BRANCH_ADMIN'}>
+            <span className={LABEL} style={LABEL_STYLE}>Branch {needsBranch ? '' : <span className="normal-case tracking-normal font-normal">(not required for teachers)</span>}</span>
+            <select className={`${CONTROL} w-full`} style={CONTROL_STYLE} value={newBranch} onChange={e => setNewBranch(e.target.value as Branch | '')} disabled={viewerRole === 'BRANCH_ADMIN'}>
               <option value="">—</option>
               {ALL_BRANCHES.map(b => <option key={b} value={b}>{branchLabel(b)}</option>)}
             </select>
           </label>
           <label className="block">
-            <span className="label">First name</span>
-            <input className="input" value={newFirst} onChange={e => setNewFirst(e.target.value)} />
+            <span className={LABEL} style={LABEL_STYLE}>First name</span>
+            <input className={`${CONTROL} w-full`} style={CONTROL_STYLE} value={newFirst} onChange={e => setNewFirst(e.target.value)} />
           </label>
           <label className="block">
-            <span className="label">Last name</span>
-            <input className="input" value={newLast} onChange={e => setNewLast(e.target.value)} />
+            <span className={LABEL} style={LABEL_STYLE}>Last name</span>
+            <input className={`${CONTROL} w-full`} style={CONTROL_STYLE} value={newLast} onChange={e => setNewLast(e.target.value)} />
           </label>
           <label className="block sm:col-span-2">
-            <span className="label">Email</span>
-            <input required type="email" className="input" value={newEmail} onChange={e => setNewEmail(e.target.value)} placeholder="staff@sapphireclinicseast.org" />
+            <span className={LABEL} style={LABEL_STYLE}>Email</span>
+            <input required type="email" className={`${CONTROL} w-full`} style={CONTROL_STYLE} value={newEmail} onChange={e => setNewEmail(e.target.value)} placeholder="staff@sapphireclinicseast.org" />
           </label>
           <label className="block sm:col-span-2">
-            <span className="label">Password</span>
+            <span className={LABEL} style={LABEL_STYLE}>Password</span>
             <div className="flex gap-2">
-              <input required minLength={6} className="input flex-1 font-mono" value={newPw} onChange={e => setNewPw(e.target.value)} />
-              <button type="button" onClick={() => setNewPw(generatePassword())} className="btn-secondary whitespace-nowrap" style={{ padding: '0 14px' }}>Generate</button>
+              <input required minLength={6} className={`${CONTROL} flex-1 min-w-0 font-mono`} style={CONTROL_STYLE} value={newPw} onChange={e => setNewPw(e.target.value)} />
+              <button type="button" onClick={() => setNewPw(generatePassword())} className={BTN_SECONDARY} style={SECONDARY_STYLE}>
+                <Icon name="refresh" size={14} /> Generate
+              </button>
             </div>
           </label>
-          <div className="sm:col-span-2">
-            <button type="submit" disabled={creating} className="btn-primary w-full sm:w-auto">{creating ? 'Creating…' : `Create ${roleLabel(newRole).toLowerCase()}`}</button>
+          <div className="sm:col-span-2 flex justify-end pt-1" style={{ borderTop: '1px solid var(--light-gray)', paddingTop: 16 }}>
+            <button type="submit" disabled={creating} className={`${BTN_PRIMARY} w-full sm:w-auto`} style={PRIMARY_STYLE}>
+              <Icon name="userPlus" size={15} />
+              {creating ? 'Creating…' : `Create ${roleLabel(newRole).toLowerCase()}`}
+            </button>
           </div>
         </form>
-      </div>
+      </DashCard>
 
-      <div className="card-static mt-6">
-        <div className="flex items-start justify-between gap-4 flex-wrap mb-1">
-          <div>
-            <h2 className="text-[18px] leading-tight">Add teacher from Staff Module</h2>
-            <p className="text-[12.5px] text-[color:var(--mid-gray)] mt-1">
-              Showing <span className="font-semibold">active SPED teachers + interns</span> from <span className="font-semibold">HR Hub</span>.
-            </p>
-          </div>
-          {staffLoading && <span className="text-[12px] text-[color:var(--mid-gray)]">Loading staff…</span>}
-        </div>
-
-        <div className="mt-3 px-4 py-3 rounded-xl border" style={{ background: 'var(--paper-2)', borderColor: 'var(--paper-3)' }}>
-          <p className="text-[12.5px] leading-snug text-[color:var(--ink)]">
+      <DashCard
+        flush
+        title="Add teacher from Staff Module"
+        icon={<Icon name="teacher" size={15} />}
+        description={<>Showing <span className="font-semibold">active SPED teachers + interns</span> from <span className="font-semibold">HR Hub</span>.</>}
+        action={staffLoading ? <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>Loading staff…</span> : undefined}
+      >
+        <div className="px-4 sm:px-5 pt-4 space-y-3">
+          <Banner tone="info">
             <span className="font-semibold">Intern accounts auto-disable</span> 15 days after the end of their internship-end month
             (e.g. an August end date auto-disables on September 15). They keep the same upload / edit permissions as a regular
             SPED teacher while active. Re-enable manually from the Users list if HR extends their contract.
-          </p>
+          </Banner>
+
+          {staffErr && <Banner tone="error">Couldn&apos;t load Staff Module: {staffErr}</Banner>}
+
+          <div className="flex flex-wrap items-end gap-3 pb-4">
+            <label className="block flex-1 min-w-[200px]">
+              <span className={LABEL} style={LABEL_STYLE}>Search</span>
+              <span className="relative block">
+                <Icon name="search" size={14} className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: 'var(--mid-gray)' }} />
+                <input className={`${CONTROL} w-full pl-8`} style={CONTROL_STYLE} placeholder="Name, job title, or email" value={staffSearch} onChange={e => setStaffSearch(e.target.value)} />
+              </span>
+            </label>
+            <label className="block w-full sm:w-auto">
+              <span className={LABEL} style={LABEL_STYLE}>Branch</span>
+              <select className={`${CONTROL} w-full sm:w-[220px]`} style={CONTROL_STYLE} value={staffBranchFilter} onChange={e => setStaffBranchFilter(e.target.value as typeof staffBranchFilter)}>
+                <option value="">All branches</option>
+                <option value="SBEA">East Branch</option>
+                <option value="SBGH">Greenhills Branch</option>
+              </select>
+            </label>
+          </div>
         </div>
 
-        {staffErr && <div className="mt-3 px-4 py-3 rounded-xl bg-rose-50 border border-rose-100 text-sm text-rose-800">Couldn&apos;t load Staff Module: {staffErr}</div>}
-
-        <div className="flex flex-wrap items-end gap-3 mt-4">
-          <label className="block flex-1 min-w-[220px]">
-            <span className="label">Search</span>
-            <input className="input" placeholder="Name, job title, or email" value={staffSearch} onChange={e => setStaffSearch(e.target.value)} />
-          </label>
-          <label className="block">
-            <span className="label">Branch</span>
-            <select className="select" value={staffBranchFilter} onChange={e => setStaffBranchFilter(e.target.value as typeof staffBranchFilter)} style={{ minWidth: 220 }}>
-              <option value="">All branches</option>
-              <option value="SBEA">East Branch</option>
-              <option value="SBGH">Greenhills Branch</option>
-            </select>
-          </label>
-        </div>
-
-        <div className="overflow-auto mt-4 rounded-xl border" style={{ maxHeight: 420, borderColor: 'var(--paper-3)' }}>
-          <table className="w-full text-sm">
-            <thead className="sticky top-0 z-10" style={{ background: 'var(--paper)' }}>
-              <tr className="text-left text-[11.5px] uppercase tracking-[0.08em] text-[color:var(--mid-gray)] border-b" style={{ borderColor: 'var(--paper-3)', fontFamily: 'var(--font-display)' }}>
-                <th className="py-2 px-3">Name</th>
-                <th className="py-2 px-3">Role</th>
-                <th className="py-2 px-3">Job title</th>
-                <th className="py-2 px-3">Branch</th>
-                <th className="py-2 px-3">Email</th>
-                <th className="py-2 px-3">Contract end</th>
-                <th className="py-2 px-3"></th>
-              </tr>
-            </thead>
-            <tbody>
-              {!staffLoading && filteredStaff.length === 0 && (
-                <tr><td colSpan={7} className="py-6 px-3 text-center text-[color:var(--mid-gray)]">
-                  {staff.length === 0 ? 'No SPED teachers returned from the Staff Module.' : 'No SPED teachers match this search.'}
-                </td></tr>
-              )}
-              {filteredStaff.map(m => {
-                const has = teacherEmailSet.has(m.email.toLowerCase())
-                const isIntern = (m.employmentType ?? '').toLowerCase() === 'intern'
-                return (
-                  <tr key={m.id} className="border-b hover:bg-[color:var(--paper-2)]" style={{ borderColor: 'var(--paper-3)' }}>
-                    <td className="py-2.5 px-3 whitespace-nowrap">{m.firstName} {m.lastName}</td>
-                    <td className="py-2.5 px-3 whitespace-nowrap">
-                      {isIntern
-                        ? <span className="badge badge-pending" title="Auto-disables 15 days after contract end month">Intern</span>
-                        : <span className="text-[12.5px] text-[color:var(--mid-gray)]">Staff</span>}
-                    </td>
-                    <td className="py-2.5 px-3">{m.jobTitle || <span className="text-[color:var(--mid-gray)]">—</span>}</td>
-                    <td className="py-2.5 px-3 text-[12.5px]">{m.branch === 'SBEA' ? 'East Branch' : m.branch === 'SBGH' ? 'Greenhills Branch' : m.branch}</td>
-                    <td className="py-2.5 px-3 text-[12.5px]">{m.email || <span className="text-[color:var(--mid-gray)]">no email on file</span>}</td>
-                    <td className="py-2.5 px-3 text-[12.5px] whitespace-nowrap">
-                      {m.contractExpiry
-                        ? <span title={`Auto-disables ${formatAutoDisableDate(m.contractExpiry)}`}>{formatShortDate(m.contractExpiry)}</span>
-                        : <span className="text-[color:var(--mid-gray)]">—</span>}
-                    </td>
-                    <td className="py-2.5 px-3 text-right whitespace-nowrap">
-                      {has ? <span className="badge badge-approved">Account exists</span> : <CreateTeacherInlineForm onCreate={pw => handleCreateFromStaff(m, pw)} disabled={!m.email} />}
-                    </td>
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
-        </div>
-      </div>
+        {staffLoading && filteredStaff.length === 0 ? (
+          <div style={{ borderTop: '1px solid var(--light-gray)' }}><RowsSkeleton rows={4} label="Loading staff" /></div>
+        ) : !staffLoading && filteredStaff.length === 0 ? (
+          <div style={{ borderTop: '1px solid var(--light-gray)' }}>
+            <EmptyState icon="teacher" title={staff.length === 0 ? 'No SPED teachers returned from the Staff Module.' : 'No SPED teachers match this search.'} />
+          </div>
+        ) : (
+          <div className="overflow-auto" style={{ maxHeight: 460 }}>
+            <table className="w-full text-sm" style={{ borderCollapse: 'collapse', minWidth: 820 }}>
+              <thead className="sticky top-0 z-10">
+                <tr>
+                  {['Name', 'Role', 'Job title', 'Branch', 'Email', 'Contract end', ''].map((h, i) => (
+                    <th key={`${h}-${i}`} className={`${TH} ${i === 6 ? 'text-right' : ''}`} style={TH_STYLE}>
+                      {h || <span className="sr-only">Account</span>}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {filteredStaff.map(m => {
+                  const has = teacherEmailSet.has(m.email.toLowerCase())
+                  const isIntern = (m.employmentType ?? '').toLowerCase() === 'intern'
+                  return (
+                    <tr key={m.id} className={TR} style={TR_STYLE}>
+                      <td className={`${TD} whitespace-nowrap font-semibold`} style={{ color: 'var(--charcoal)' }}>{displayName(`${m.firstName} ${m.lastName}`)}</td>
+                      <td className={`${TD} whitespace-nowrap`}>
+                        {isIntern
+                          ? <Tag tone="warn" title="Auto-disables 15 days after contract end month">Intern</Tag>
+                          : <span className="text-[12.5px] text-[color:var(--mid-gray)]">Staff</span>}
+                      </td>
+                      <td className={TD}>{m.jobTitle || <span className="text-[color:var(--mid-gray)]">—</span>}</td>
+                      <td className={`${TD} text-[12.5px] whitespace-nowrap`}>{m.branch === 'SBEA' ? 'East Branch' : m.branch === 'SBGH' ? 'Greenhills Branch' : m.branch}</td>
+                      <td className={`${TD} text-[12.5px] break-all`} style={{ minWidth: 160 }}>{m.email || <span className="text-[color:var(--mid-gray)]">no email on file</span>}</td>
+                      <td className={`${TD} text-[12.5px] whitespace-nowrap tabular-nums`}>
+                        {m.contractExpiry
+                          ? <span title={`Auto-disables ${formatAutoDisableDate(m.contractExpiry)}`}>{formatShortDate(m.contractExpiry)}</span>
+                          : <span className="text-[color:var(--mid-gray)]">—</span>}
+                      </td>
+                      <td className={`${TD} text-right whitespace-nowrap`}>
+                        {has ? <StatusPill tone="success">Account exists</StatusPill> : <CreateTeacherInlineForm onCreate={pw => handleCreateFromStaff(m, pw)} disabled={!m.email} />}
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </DashCard>
 
       {editing && (
-        <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in" onClick={() => setEditing(null)}>
-          <div className="card-static w-full max-w-md" onClick={e => e.stopPropagation()}>
-            <h2 className="text-[20px] leading-tight mb-1">Edit {roleLabel(editing.role).toLowerCase()}</h2>
-            <p className="text-sm text-[color:var(--mid-gray)] mb-5">{editing.email}</p>
-            <form className="space-y-3" onSubmit={handleSaveEdit}>
-              <div className="grid grid-cols-2 gap-3">
-                <label className="block"><span className="label">First name</span><input name="firstName" className="input" defaultValue={editing.firstName ?? ''} /></label>
-                <label className="block"><span className="label">Last name</span><input name="lastName" className="input" defaultValue={editing.lastName ?? ''} /></label>
+        <Dialog labelId="edit-user-title" title={`Edit ${roleLabel(editing.role).toLowerCase()}`} description={editing.email} onClose={() => setEditing(null)}>
+            <form className="space-y-4" onSubmit={handleSaveEdit}>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <label className="block"><span className={LABEL} style={LABEL_STYLE}>First name</span><input name="firstName" className={`${CONTROL} w-full`} style={CONTROL_STYLE} defaultValue={editing.firstName ?? ''} /></label>
+                <label className="block"><span className={LABEL} style={LABEL_STYLE}>Last name</span><input name="lastName" className={`${CONTROL} w-full`} style={CONTROL_STYLE} defaultValue={editing.lastName ?? ''} /></label>
               </div>
-              <label className="block"><span className="label">Email</span><input required name="email" type="email" className="input" defaultValue={editing.email} /></label>
+              <label className="block"><span className={LABEL} style={LABEL_STYLE}>Email</span><input required name="email" type="email" className={`${CONTROL} w-full`} style={CONTROL_STYLE} defaultValue={editing.email} /></label>
               <label className="block">
-                <span className="label">Branch</span>
-                <select name="branch" className="select" defaultValue={editing.branch ?? ''}>
+                <span className={LABEL} style={LABEL_STYLE}>Branch</span>
+                <select name="branch" className={`${CONTROL} w-full`} style={CONTROL_STYLE} defaultValue={editing.branch ?? ''}>
                   <option value="">—</option>
                   {ALL_BRANCHES.map(b => <option key={b} value={b}>{branchLabel(b)}</option>)}
                 </select>
@@ -642,8 +678,8 @@ function UsersPanel({ viewerRole, viewerBranch }: { viewerRole: 'ADMIN' | 'BRANC
                   form doesn't accidentally try to set one. */}
               {editing.role === 'STUDENT' && (
                 <label className="block">
-                  <span className="label">Grade level</span>
-                  <select name="level" className="select" defaultValue={editing.level ?? ''}>
+                  <span className={LABEL} style={LABEL_STYLE}>Grade level</span>
+                  <select name="level" className={`${CONTROL} w-full`} style={CONTROL_STYLE} defaultValue={editing.level ?? ''}>
                     <option value="">—</option>
                     {ALL_GRADE_LEVELS.map(l => (
                       <option key={l} value={l}>{levelLabel(l)}</option>
@@ -652,16 +688,15 @@ function UsersPanel({ viewerRole, viewerBranch }: { viewerRole: 'ADMIN' | 'BRANC
                 </label>
               )}
               <label className="block">
-                <span className="label">New password <span className="text-[color:var(--mid-gray)]">(leave blank to keep current)</span></span>
-                <input name="password" className="input font-mono" minLength={6} placeholder="Leave blank to keep current" />
+                <span className={LABEL} style={LABEL_STYLE}>New password <span className="normal-case tracking-normal font-normal">(leave blank to keep current)</span></span>
+                <input name="password" className={`${CONTROL} w-full font-mono`} style={CONTROL_STYLE} minLength={6} placeholder="Leave blank to keep current" />
               </label>
               <div className="flex items-center gap-2 pt-2">
-                <button type="button" className="btn-secondary" onClick={() => setEditing(null)}>Cancel</button>
-                <button type="submit" className="btn-primary flex-1">Save changes</button>
+                <button type="button" className={BTN_SECONDARY} style={SECONDARY_STYLE} onClick={() => setEditing(null)}>Cancel</button>
+                <button type="submit" className={`${BTN_PRIMARY} flex-1`} style={PRIMARY_STYLE}>Save changes</button>
               </div>
             </form>
-          </div>
-        </div>
+        </Dialog>
       )}
 
       {resetting && (
@@ -678,26 +713,24 @@ function UsersPanel({ viewerRole, viewerBranch }: { viewerRole: 'ADMIN' | 'BRANC
 function ResetPasswordModal({ user, onCancel, onConfirm }: { user: StoredUser; onCancel: () => void; onConfirm: (pw: string) => void }) {
   const [pw, setPw] = useState(() => generatePassword())
   return (
-    <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in" onClick={onCancel}>
-      <div className="card-static w-full max-w-md" onClick={e => e.stopPropagation()}>
-        <h2 className="text-[20px] leading-tight mb-1">Reset password</h2>
-        <p className="text-sm text-[color:var(--mid-gray)] mb-1">{user.email}</p>
-        <p className="text-[12px] text-[color:var(--mid-gray)] mb-4" style={{ fontFamily: 'var(--font-display)' }}>
+    <Dialog labelId="reset-password-title" title="Reset password" description={user.email} onClose={onCancel}>
+        <p className="text-xs mb-4" style={{ color: 'var(--mid-gray)' }}>
           The current password can&apos;t be retrieved. Setting a new one will overwrite it. Copy the value before closing — it&apos;s only shown to you.
         </p>
-        <label className="block mb-4">
-          <span className="label">New password</span>
+        <label className="block mb-5">
+          <span className={LABEL} style={LABEL_STYLE}>New password</span>
           <div className="flex gap-2">
-            <input className="input flex-1 font-mono" minLength={6} value={pw} onChange={e => setPw(e.target.value)} autoFocus />
-            <button type="button" onClick={() => setPw(generatePassword())} className="btn-secondary whitespace-nowrap" style={{ padding: '0 14px' }}>Generate</button>
+            <input className={`${CONTROL} flex-1 min-w-0 font-mono`} style={CONTROL_STYLE} minLength={6} value={pw} onChange={e => setPw(e.target.value)} autoFocus />
+            <button type="button" onClick={() => setPw(generatePassword())} className={BTN_SECONDARY} style={SECONDARY_STYLE}>
+              <Icon name="refresh" size={14} /> Generate
+            </button>
           </div>
         </label>
         <div className="flex items-center gap-2">
-          <button type="button" className="btn-secondary" onClick={onCancel}>Cancel</button>
-          <button type="button" className="btn-primary flex-1" onClick={() => onConfirm(pw)}>Save new password</button>
+          <button type="button" className={BTN_SECONDARY} style={SECONDARY_STYLE} onClick={onCancel}>Cancel</button>
+          <button type="button" className={`${BTN_PRIMARY} flex-1`} style={PRIMARY_STYLE} onClick={() => onConfirm(pw)}>Save new password</button>
         </div>
-      </div>
-    </div>
+    </Dialog>
   )
 }
 
@@ -705,13 +738,16 @@ function CreateTeacherInlineForm({ onCreate, disabled }: { onCreate: (pw: string
   const [open, setOpen] = useState(false)
   const [pw, setPw] = useState('')
   if (!open) return (
-    <button type="button" disabled={disabled} onClick={() => setOpen(true)} className="text-xs px-3 py-1.5 rounded-md text-[color:var(--narra)] hover:bg-[color:var(--paper-2)] border" style={{ borderColor: 'var(--paper-3)' }}>Create account</button>
+    <button type="button" disabled={disabled} onClick={() => setOpen(true)} className={BTN_SM} style={SECONDARY_STYLE}
+      title={disabled ? 'No email on file in the Staff Module' : undefined}>
+      <Icon name="plus" size={13} /> Create account
+    </button>
   )
   return (
     <div className="inline-flex items-center gap-1.5">
-      <input autoFocus type="text" placeholder="password (min 6)" className="input" value={pw} onChange={e => setPw(e.target.value)} style={{ width: 180, padding: '6px 10px', fontSize: 12 }} />
-      <button type="button" onClick={() => { onCreate(pw); setOpen(false); setPw('') }} className="text-xs px-3 py-1.5 rounded-md bg-[color:var(--narra)] text-white">Save</button>
-      <button type="button" onClick={() => { setOpen(false); setPw('') }} className="text-xs px-2 py-1.5 rounded-md text-[color:var(--mid-gray)] hover:text-[color:var(--narra)]">Cancel</button>
+      <input autoFocus type="text" aria-label="Password for the new account" placeholder="password (min 6)" className={`h-8 px-2.5 rounded-lg text-xs outline-none focus:border-[color:var(--teal)] font-mono`} value={pw} onChange={e => setPw(e.target.value)} style={{ ...CONTROL_STYLE, width: 170 }} />
+      <button type="button" onClick={() => { onCreate(pw); setOpen(false); setPw('') }} className={`${BTN_SM} text-white hover:opacity-90`} style={PRIMARY_STYLE}>Save</button>
+      <button type="button" onClick={() => { setOpen(false); setPw('') }} className={BTN_SM} style={{ color: 'var(--mid-gray)' }}>Cancel</button>
     </div>
   )
 }
@@ -799,73 +835,82 @@ function FeesPanel({ viewerRole, viewerBranch }: { viewerRole: 'ADMIN' | 'BRANCH
     } catch (e) { setErr((e as Error).message) }
   }
 
-  if (loading && fees.length === 0) return <div className="card-static">Loading fees…</div>
+  if (loading && fees.length === 0) return (
+    <DashCard title="Tuition + fees" icon={<Icon name="wallet" size={15} />} description="Loading fees…">
+      <div role="status" aria-label="Loading fees" className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        {Array.from({ length: 6 }).map((_, i) => (
+          <div key={i} aria-hidden>
+            <Skeleton className="h-3 w-28" />
+            <Skeleton className="h-9 w-full mt-2" />
+          </div>
+        ))}
+      </div>
+    </DashCard>
+  )
 
   return (
-    <div className="card-static space-y-6">
-      <div>
-        <h2 className="text-[18px] leading-tight">Tuition + fees</h2>
-        <p className="text-sm text-[color:var(--mid-gray)] mt-1">
-          Set per-branch tuition (annual / bi-annual / monthly), miscellaneous fees, and any extra line items (uniforms, books, etc.). What you save here is what every student under that branch sees on the Pay portal.
-        </p>
-        <p className="text-[11.5px] text-[color:var(--mid-gray)] mt-1" style={{ fontFamily: 'var(--font-display)' }}>
-          Defaults when a branch has not been set: tuition ₱{centavosToPeso(DEFAULT_FEE_VALUES.tuitionAnnualCentavos)} annual · ₱{centavosToPeso(DEFAULT_FEE_VALUES.tuitionBiannualCentavos)} bi-annual · ₱{centavosToPeso(DEFAULT_FEE_VALUES.tuitionMonthlyCentavos)} monthly.
-        </p>
-      </div>
-
-      {err  && <div className="px-4 py-3 rounded-xl bg-rose-50 border border-rose-100 text-sm text-rose-800">{err}</div>}
-      {info && <div className="px-4 py-3 rounded-xl bg-emerald-50 border border-emerald-100 text-sm text-emerald-800">{info}</div>}
+    <DashCard
+      title="Tuition + fees"
+      icon={<Icon name="wallet" size={15} />}
+      description="Set per-branch tuition (annual / bi-annual / monthly), miscellaneous fees, and any extra line items (uniforms, books, etc.). What you save here is what every student under that branch sees on the Pay portal."
+      footer={<>Defaults when a branch has not been set: tuition ₱{centavosToPeso(DEFAULT_FEE_VALUES.tuitionAnnualCentavos)} annual · ₱{centavosToPeso(DEFAULT_FEE_VALUES.tuitionBiannualCentavos)} bi-annual · ₱{centavosToPeso(DEFAULT_FEE_VALUES.tuitionMonthlyCentavos)} monthly.</>}
+    >
+      <div className="space-y-5">
+      {err  && <Banner tone="error">{err}</Banner>}
+      {info && <Banner tone="success">{info}</Banner>}
 
       {visibleBranches.map(b => {
         const f = fees.find(x => x.branch === b)
         if (!f) return null
         return (
-          <div key={b} className="rounded-2xl border p-4 sm:p-5" style={{ borderColor: 'var(--paper-3)', background: 'var(--paper-2)' }}>
-            <div className="flex items-center justify-between mb-3 gap-3 flex-wrap">
-              <h3 className="text-[16px] leading-tight" style={{ fontFamily: 'var(--font-display)' }}>{branchLabel(b)}</h3>
+          <div key={b} className="rounded-xl p-4 sm:p-5" style={{ border: '1px solid var(--light-gray)', background: SUBTLE_BG }}>
+            <div className="flex items-center justify-between mb-4 gap-x-3 gap-y-1 flex-wrap">
+              <h3 className="text-[14px] font-bold leading-tight tracking-normal flex items-center gap-2" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>
+                <Icon name="building" size={15} style={{ color: 'var(--teal)' }} />
+                {branchLabel(b)}
+              </h3>
               {f.updatedAt && (
                 <span className="text-[11.5px] text-[color:var(--mid-gray)]">Last updated {new Date(f.updatedAt).toLocaleString()} {f.updatedBy ? `by ${f.updatedBy}` : ''}</span>
               )}
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-x-3 gap-y-4">
               <PesoInput label="Tuition — Annual"    centavos={f.tuitionAnnualCentavos}    onChange={c => patch(b, { tuitionAnnualCentavos: c })} />
               <PesoInput label="Tuition — Bi-annual" centavos={f.tuitionBiannualCentavos}  onChange={c => patch(b, { tuitionBiannualCentavos: c })} />
               <PesoInput label="Tuition — Monthly"   centavos={f.tuitionMonthlyCentavos}   onChange={c => patch(b, { tuitionMonthlyCentavos: c })} />
-              <div />
               <PesoInput label="Misc — Annual"       centavos={f.miscAnnualCentavos}       onChange={c => patch(b, { miscAnnualCentavos: c })} />
               <PesoInput label="Misc — Bi-annual"    centavos={f.miscBiannualCentavos}     onChange={c => patch(b, { miscBiannualCentavos: c })} />
               <PesoInput label="Misc — Monthly"      centavos={f.miscMonthlyCentavos}      onChange={c => patch(b, { miscMonthlyCentavos: c })} />
             </div>
 
-            <div className="mt-5">
-              <div className="flex items-center justify-between mb-2">
-                <div>
-                  <h4 className="text-sm font-semibold" style={{ fontFamily: 'var(--font-display)' }}>Other line items</h4>
+            <div className="mt-5 pt-4" style={{ borderTop: '1px solid var(--light-gray)' }}>
+              <div className="flex items-start justify-between gap-3 mb-3 flex-wrap">
+                <div className="min-w-0">
+                  <h4 className="text-[13px] font-bold tracking-normal" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>Other line items</h4>
                   <p className="text-[11.5px] text-[color:var(--mid-gray)]">Uniforms, books, supplies — anything else parents should see itemized on the Pay portal.</p>
                 </div>
-                <button type="button" onClick={() => addExtra(b)} className="text-xs px-3 py-1.5 rounded-md text-[color:var(--narra)] hover:bg-[color:var(--paper)] border" style={{ borderColor: 'var(--paper-3)' }}>+ Add item</button>
+                <button type="button" onClick={() => addExtra(b)} className={BTN_SM} style={SECONDARY_STYLE}><Icon name="plus" size={13} /> Add item</button>
               </div>
 
               {f.extraItems.length === 0 && (
-                <div className="text-[12.5px] text-[color:var(--mid-gray)] italic py-2">No extra items yet.</div>
+                <div className="text-[12.5px] text-[color:var(--mid-gray)] py-2">No extra items yet.</div>
               )}
 
               {f.extraItems.map((x, idx) => (
-                <div key={idx} className="grid grid-cols-1 sm:grid-cols-[1fr_140px_1fr_auto] gap-2 mb-2 items-end">
+                <div key={idx} className="grid grid-cols-1 sm:grid-cols-[1fr_140px_1fr_auto] gap-2 mb-3 sm:mb-2 items-end rounded-lg p-3 sm:p-0 bg-white sm:bg-transparent border sm:border-0 border-[color:var(--light-gray)]">
                   <label className="block">
-                    <span className="label">Label</span>
-                    <input className="input" placeholder="e.g. Uniform set" value={x.label} onChange={e => patchExtra(b, idx, { label: e.target.value })} />
+                    <span className={LABEL} style={LABEL_STYLE}>Label</span>
+                    <input className={`${CONTROL} w-full`} style={CONTROL_STYLE} placeholder="e.g. Uniform set" value={x.label} onChange={e => patchExtra(b, idx, { label: e.target.value })} />
                   </label>
                   <label className="block">
-                    <span className="label">Amount (₱)</span>
-                    <input className="input text-right" inputMode="decimal" placeholder="0.00" value={centavosToPeso(x.amountCentavos)} onChange={e => patchExtra(b, idx, { amountCentavos: pesoToCentavos(e.target.value) })} />
+                    <span className={LABEL} style={LABEL_STYLE}>Amount (₱)</span>
+                    <input className={`${CONTROL} w-full text-right tabular-nums`} style={CONTROL_STYLE} inputMode="decimal" placeholder="0.00" value={centavosToPeso(x.amountCentavos)} onChange={e => patchExtra(b, idx, { amountCentavos: pesoToCentavos(e.target.value) })} />
                   </label>
                   <label className="block">
-                    <span className="label">Notes (optional)</span>
-                    <input className="input" placeholder="e.g. payable at front desk" value={x.notes ?? ''} onChange={e => patchExtra(b, idx, { notes: e.target.value })} />
+                    <span className={LABEL} style={LABEL_STYLE}>Notes (optional)</span>
+                    <input className={`${CONTROL} w-full`} style={CONTROL_STYLE} placeholder="e.g. payable at front desk" value={x.notes ?? ''} onChange={e => patchExtra(b, idx, { notes: e.target.value })} />
                   </label>
-                  <button type="button" onClick={() => removeExtra(b, idx)} className="text-xs px-3 py-2 rounded-md text-[color:var(--clay)] hover:bg-[color:var(--clay-tint)]">Remove</button>
+                  <button type="button" onClick={() => removeExtra(b, idx)} className={`${BTN_DANGER_GHOST} h-9 justify-self-start`} style={{ color: '#B42318' }}>Remove</button>
                 </div>
               ))}
             </div>
@@ -874,20 +919,22 @@ function FeesPanel({ viewerRole, viewerBranch }: { viewerRole: 'ADMIN' | 'BRANCH
       })}
 
       <div className="flex gap-2 justify-end">
-        <button type="button" onClick={handleSave} className="btn-primary">Save fees</button>
+        <button type="button" onClick={handleSave} className={`${BTN_PRIMARY} w-full sm:w-auto`} style={PRIMARY_STYLE}>Save fees</button>
       </div>
-    </div>
+      </div>
+    </DashCard>
   )
 }
 
 function PesoInput({ label, centavos, onChange }: { label: string; centavos: number; onChange: (c: number) => void }) {
   return (
     <label className="block">
-      <span className="label">{label}</span>
+      <span className={LABEL} style={LABEL_STYLE}>{label}</span>
       <div className="relative">
-        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[color:var(--mid-gray)] pointer-events-none">₱</span>
+        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-[color:var(--mid-gray)] pointer-events-none">₱</span>
         <input
-          className="input text-right pl-7"
+          className={`${CONTROL} w-full text-right pl-7 tabular-nums`}
+          style={CONTROL_STYLE}
           inputMode="decimal"
           value={centavosToPeso(centavos)}
           onChange={e => onChange(pesoToCentavos(e.target.value))}
@@ -983,76 +1030,73 @@ function VouchersPanel({ adminEmail }: { adminEmail: string }) {
   }
 
   return (
-    <div className="card-static space-y-5">
-      <div>
-        <h2 className="text-[18px] leading-tight">Voucher codes</h2>
-        <p className="text-sm text-[color:var(--mid-gray)] mt-1">
-          Create promo codes parents can type on the Pay portal to get a percentage off their tuition. The discount applies to the tuition portion (annual / bi-annual / monthly) up to and including the <span className="font-semibold">Valid until</span> date.
-        </p>
-        <p className="text-[11.5px] text-[color:var(--mid-gray)] mt-1" style={{ fontFamily: 'var(--font-display)' }}>
-          Codes are not case-sensitive and apply across both branches. Untick <span className="font-semibold">Active</span> to pause a code without deleting it.
-        </p>
-      </div>
-
-      {err  && <div className="px-4 py-3 rounded-xl bg-rose-50 border border-rose-100 text-sm text-rose-800">{err}</div>}
-      {info && <div className="px-4 py-3 rounded-xl bg-emerald-50 border border-emerald-100 text-sm text-emerald-800">{info}</div>}
+    <div className="space-y-5">
+    <DashCard
+      title="Voucher codes"
+      icon={<Icon name="tag" size={15} />}
+      description={<>Create promo codes parents can type on the Pay portal to get a percentage off their tuition. The discount applies to the tuition portion (annual / bi-annual / monthly) up to and including the <span className="font-semibold">Valid until</span> date.</>}
+      footer={<>Codes are not case-sensitive and apply across both branches. Untick <span className="font-semibold">Active</span> to pause a code without deleting it. Editing as {adminEmail}.</>}
+    >
+      <div className="space-y-4">
+      {err  && <Banner tone="error">{err}</Banner>}
+      {info && <Banner tone="success">{info}</Banner>}
 
       {loading && rows.length === 0 ? (
-        <div className="text-[13px] text-[color:var(--mid-gray)]">Loading vouchers…</div>
+        <div role="status" aria-label="Loading vouchers" className="space-y-2">
+          {[0, 1, 2].map(i => <Skeleton key={i} className="h-11 w-full" />)}
+        </div>
       ) : rows.length === 0 ? (
-        <div className="text-[12.5px] text-[color:var(--mid-gray)] italic py-2">No voucher codes yet. Add one below.</div>
+        <EmptyState icon="tag" title="No voucher codes yet." hint="Add one below." />
       ) : (
         <div className="space-y-2">
-          <div className="hidden sm:grid grid-cols-[1fr_120px_160px_90px_auto] gap-2 px-1 text-[11px] uppercase tracking-[0.08em] text-[color:var(--mid-gray)]" style={{ fontFamily: 'var(--font-display)' }}>
+          <div className="hidden sm:grid grid-cols-[1fr_120px_160px_90px_auto] gap-2 px-2 text-[11px] font-semibold uppercase tracking-wider text-[color:var(--mid-gray)]" style={{ fontFamily: 'var(--font-display)' }}>
             <span>Code</span><span>Discount %</span><span>Valid until</span><span>Active</span><span />
           </div>
           {rows.map((r, idx) => (
-            <div key={idx} className="grid grid-cols-1 sm:grid-cols-[1fr_120px_160px_90px_auto] gap-2 items-center rounded-xl border p-2 sm:p-1.5" style={{ borderColor: 'var(--paper-3)', background: 'var(--paper-2)' }}>
-              <input className="input uppercase tracking-wide" placeholder="e.g. PROMO30" value={r.code} onChange={e => patch(idx, { code: e.target.value })} />
+            <div key={idx} className="grid grid-cols-1 sm:grid-cols-[1fr_120px_160px_90px_auto] gap-2 items-center rounded-xl p-3 sm:p-2" style={{ border: '1px solid var(--light-gray)', background: SUBTLE_BG }}>
+              <input aria-label="Voucher code" className={`${CONTROL} w-full uppercase tracking-wide font-mono`} style={CONTROL_STYLE} placeholder="e.g. PROMO30" value={r.code} onChange={e => patch(idx, { code: e.target.value })} />
               <div className="relative">
-                <input className="input text-right pr-7" inputMode="numeric" value={String(r.discountPercent)} onChange={e => patch(idx, { discountPercent: Math.max(0, Math.min(100, Math.round(Number(e.target.value.replace(/[^\d]/g, '')) || 0))) })} />
-                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[color:var(--mid-gray)] pointer-events-none">%</span>
+                <input aria-label="Discount percent" className={`${CONTROL} w-full text-right pr-7 tabular-nums`} style={CONTROL_STYLE} inputMode="numeric" value={String(r.discountPercent)} onChange={e => patch(idx, { discountPercent: Math.max(0, Math.min(100, Math.round(Number(e.target.value.replace(/[^\d]/g, '')) || 0))) })} />
+                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-[color:var(--mid-gray)] pointer-events-none">%</span>
               </div>
               <div>
-                <input type="date" className="input" value={r.validUntil} onChange={e => patch(idx, { validUntil: e.target.value })} />
-                {r.validUntil && isExpired(r.validUntil) && <span className="text-[10.5px] text-[color:var(--clay)]">expired</span>}
+                <input aria-label="Valid until" type="date" className={`${CONTROL} w-full`} style={CONTROL_STYLE} value={r.validUntil} onChange={e => patch(idx, { validUntil: e.target.value })} />
+                {r.validUntil && isExpired(r.validUntil) && <span className="mt-1 inline-block"><StatusPill tone="warn">Expired</StatusPill></span>}
               </div>
-              <label className="inline-flex items-center gap-2 text-sm">
-                <input type="checkbox" checked={r.enabled} onChange={e => patch(idx, { enabled: e.target.checked })} />
-                <span className="sm:hidden text-[color:var(--mid-gray)]">Active</span>
+              <label className="inline-flex items-center gap-2 text-sm cursor-pointer">
+                <input type="checkbox" className="w-4 h-4 accent-[color:var(--deep-teal)]" checked={r.enabled} onChange={e => patch(idx, { enabled: e.target.checked })} />
+                <span className="sm:sr-only text-[color:var(--mid-gray)]">Active</span>
               </label>
-              <button type="button" onClick={() => removeRow(idx)} className="text-xs px-3 py-2 rounded-md text-[color:var(--clay)] hover:bg-[color:var(--clay-tint)] justify-self-start sm:justify-self-center">Remove</button>
+              <button type="button" onClick={() => removeRow(idx)} className={`${BTN_DANGER_GHOST} justify-self-start sm:justify-self-center`} style={{ color: '#B42318' }}>Remove</button>
             </div>
           ))}
         </div>
       )}
 
       <div className="flex items-center justify-between gap-2 flex-wrap">
-        <button type="button" onClick={addRow} className="text-sm px-3 py-2 rounded-md text-[color:var(--narra)] hover:bg-[color:var(--paper-2)] border" style={{ borderColor: 'var(--paper-3)' }}>+ Add voucher</button>
-        <button type="button" onClick={handleSave} disabled={saving} className="btn-primary">{saving ? 'Saving…' : 'Save vouchers'}</button>
+        <button type="button" onClick={addRow} className={BTN_SECONDARY} style={SECONDARY_STYLE}><Icon name="plus" size={14} /> Add voucher</button>
+        <button type="button" onClick={handleSave} disabled={saving} className={BTN_PRIMARY} style={PRIMARY_STYLE}>{saving ? 'Saving…' : 'Save vouchers'}</button>
       </div>
-      <p className="text-[11px] text-[color:var(--mid-gray)]" style={{ fontFamily: 'var(--font-display)' }}>Editing as {adminEmail}.</p>
+      </div>
+    </DashCard>
 
       {/* ── Personal early-bird vouchers ── */}
-      <div className="pt-6 mt-2 border-t" style={{ borderColor: 'var(--paper-3)' }}>
-        <h3 className="text-[16px] leading-tight text-[color:var(--deep-teal)]">Personal early-bird vouchers</h3>
-        <p className="text-sm text-[color:var(--mid-gray)] mt-1">
-          Codes issued to individual students who availed of the AURA30 early-bird promo before the deadline. Each code can only be redeemed by its assigned student, so parents on monthly / bi-annual plans keep the 30% discount for the rest of the school year. Issue new ones from the student&rsquo;s profile → <span className="font-semibold">Personal Vouchers</span> card.
-        </p>
+      <DashCard
+        flush
+        title="Personal early-bird vouchers"
+        icon={<Icon name="student" size={15} />}
+        description={<>Codes issued to individual students who availed of the AURA30 early-bird promo before the deadline. Each code can only be redeemed by its assigned student, so parents on monthly / bi-annual plans keep the 30% discount for the rest of the school year. Issue new ones from the student&rsquo;s profile → <span className="font-semibold">Personal Vouchers</span> card.</>}
+      >
         {personal.length === 0 ? (
-          <div className="text-[12.5px] text-[color:var(--mid-gray)] italic py-3">No personal vouchers issued yet.</div>
+          <EmptyState icon="tag" title="No personal vouchers issued yet." />
         ) : (
-          <div className="mt-3 overflow-x-auto">
-            <table className="w-full text-sm">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm" style={{ borderCollapse: 'collapse', minWidth: 760 }}>
               <thead>
-                <tr className="text-[11px] uppercase tracking-[0.08em] text-[color:var(--mid-gray)] border-b" style={{ fontFamily: 'var(--font-display)', borderColor: 'var(--paper-3)' }}>
-                  <th className="text-left py-2 pr-3">Student</th>
-                  <th className="text-left py-2 pr-3">Branch</th>
-                  <th className="text-left py-2 pr-3">Code</th>
-                  <th className="text-right py-2 pr-3">Discount</th>
-                  <th className="text-left py-2 pr-3">Valid until</th>
-                  <th className="text-left py-2 pr-3">Status</th>
-                  <th className="text-left py-2 pr-3">Issued by</th>
+                <tr>
+                  {['Student', 'Branch', 'Code', 'Discount', 'Valid until', 'Status', 'Issued by'].map((h, i) => (
+                    <th key={h} className={`${TH} ${i === 3 ? 'text-right' : ''}`} style={TH_STYLE}>{h}</th>
+                  ))}
                 </tr>
               </thead>
               <tbody>
@@ -1061,29 +1105,30 @@ function VouchersPanel({ adminEmail }: { adminEmail: string }) {
                   const s = v.dedicatedStudent
                   const name = s ? [s.firstName, s.lastName].filter(Boolean).join(' ') || s.email : '(unknown student)'
                   return (
-                    <tr key={v.id ?? v.code} className="border-b" style={{ borderColor: 'var(--paper-3)' }}>
-                      <td className="py-2 pr-3">
-                        <div className="font-semibold text-[color:var(--deep-teal)]">{name}</div>
-                        {s && <div className="text-[11px] text-[color:var(--mid-gray)]">{s.email}</div>}
+                    <tr key={v.id ?? v.code} className={TR} style={TR_STYLE}>
+                      <td className={TD}>
+                        <div className="font-semibold" style={{ color: 'var(--charcoal)' }}>{name}</div>
+                        {s && <div className="text-[11px] text-[color:var(--mid-gray)] break-all">{s.email}</div>}
                       </td>
-                      <td className="py-2 pr-3 text-[color:var(--mid-gray)]">{s?.branch ?? '—'}</td>
-                      <td className="py-2 pr-3">
+                      <td className={`${TD} text-[color:var(--mid-gray)]`}>{s?.branch ?? '—'}</td>
+                      <td className={TD}>
                         <button
                           type="button"
-                          className="font-mono text-[12.5px] px-2 py-1 rounded bg-[color:var(--paper-2)] hover:bg-[color:var(--sage-tint)] border"
-                          style={{ borderColor: 'var(--paper-3)' }}
+                          className={`${BTN_SM} h-7 font-mono text-[12.5px]`}
+                          style={{ ...CONTROL_STYLE, background: SUBTLE_BG }}
                           onClick={() => { try { navigator.clipboard?.writeText(v.code) } catch { /* no-op */ } }}
                           title="Click to copy"
+                          aria-label={`Copy code ${v.code}`}
                         >{v.code}</button>
                       </td>
-                      <td className="py-2 pr-3 text-right font-semibold">{v.discountPercent}%</td>
-                      <td className="py-2 pr-3 text-[color:var(--mid-gray)]">{new Date(v.validUntil).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</td>
-                      <td className="py-2 pr-3">
-                        {!v.enabled ? <span className="badge badge-rejected">Disabled</span>
-                          : expired ? <span className="badge badge-rejected">Expired</span>
-                          : <span className="badge badge-paid">Active</span>}
+                      <td className={`${TD} text-right font-semibold tabular-nums`}>{v.discountPercent}%</td>
+                      <td className={`${TD} text-[color:var(--mid-gray)] whitespace-nowrap`}>{new Date(v.validUntil).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</td>
+                      <td className={TD}>
+                        {!v.enabled ? <StatusPill tone="neutral">Disabled</StatusPill>
+                          : expired ? <StatusPill tone="warn">Expired</StatusPill>
+                          : <StatusPill tone="success">Active</StatusPill>}
                       </td>
-                      <td className="py-2 pr-3 text-[11.5px] text-[color:var(--mid-gray)]">{v.updatedBy ?? '—'}</td>
+                      <td className={`${TD} text-[11.5px] text-[color:var(--mid-gray)]`}>{v.updatedBy ?? '—'}</td>
                     </tr>
                   )
                 })}
@@ -1091,7 +1136,7 @@ function VouchersPanel({ adminEmail }: { adminEmail: string }) {
             </table>
           </div>
         )}
-      </div>
+      </DashCard>
     </div>
   )
 }
