@@ -2,6 +2,11 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useSession } from 'next-auth/react'
+import {
+  DashCard, EmptyState, PageHeader, PillTabs, Skeleton, Tag,
+  BTN_DANGER_GHOST, BTN_PRIMARY, BTN_SECONDARY, BTN_SM, CARD_STYLE, CONTROL, CONTROL_STYLE, DANGER, FOCUS,
+  LABEL, LABEL_STYLE, PAGE, PRIMARY_STYLE, SECONDARY_STYLE, SUBTLE_BG, TEXTAREA, TH, TH_STYLE,
+} from '@/components/hub/ui'
 import { Contact, Plus, Trash2, Loader2, X, Mail, Lock, Pencil, Globe, Building2, Save, ExternalLink, Search, ChevronUp, ChevronDown, ChevronsUpDown, MessageCircle, Phone } from 'lucide-react'
 
 type SortState = { col: string; dir: 'asc' | 'desc' }
@@ -10,12 +15,12 @@ type SortState = { col: string; dir: 'asc' | 'desc' }
 function SortableTh({ label, col, sort, onToggle, className }: { label: string; col: string; sort: SortState; onToggle: (c: string) => void; className?: string }) {
   const active = sort.col === col
   return (
-    <th onClick={() => onToggle(col)}
-      className={`px-5 py-3 font-semibold cursor-pointer select-none hover:text-[var(--deep-teal)] transition-colors ${className ?? ''}`}>
-      <span className="inline-flex items-center gap-1">
+    <th scope="col" aria-sort={active ? (sort.dir === 'asc' ? 'ascending' : 'descending') : 'none'}
+      className={`${TH} !px-5 ${className ?? ''}`} style={{ ...TH_STYLE, ...(active ? { color: 'var(--deep-teal)' } : null) }}>
+      <button type="button" onClick={() => onToggle(col)} className={`inline-flex items-center gap-1 uppercase tracking-wider rounded hover:text-[var(--deep-teal)] ${FOCUS}`}>
         {label}
         {active ? (sort.dir === 'asc' ? <ChevronUp size={13} /> : <ChevronDown size={13} />) : <ChevronsUpDown size={13} className="opacity-30" />}
-      </span>
+      </button>
     </th>
   )
 }
@@ -76,8 +81,7 @@ function VisibleTo({ visibleBranches }: { visibleBranches?: string[] }) {
     <div className="flex flex-wrap gap-1.5 items-center">
       <Lock size={12} className="text-[var(--mid-gray)] shrink-0" />
       {sortBranches(list).map((b) => (
-        <span key={b} className="px-2 py-0.5 rounded-md text-[11px] font-bold uppercase tracking-wider"
-          style={{ background: 'var(--sage-tint)', color: 'var(--deep-teal)' }}>{BRANCH_LABELS[b] ?? b}</span>
+        <Tag key={b} tone="brand">{BRANCH_LABELS[b] ?? b}</Tag>
       ))}
     </div>
   )
@@ -295,103 +299,96 @@ export default function DirectoryPage() {
   }, [websites, webQ, webSort])
 
   return (
-    <div className="max-w-5xl mx-auto">
-      {toast && <div className="toast">{toast}</div>}
+    <div className={`${PAGE} !max-w-[1040px]`}>
+      {toast && <div className="toast" role="status">{toast}</div>}
 
-      {/* Header */}
-      <div className="flex items-center gap-3 mb-5">
-        <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0"
-          style={{ background: 'linear-gradient(135deg, var(--narra), var(--moss))' }}>
-          <Contact size={20} className="text-white" />
-        </div>
-        <div>
-          <h1 className="text-2xl font-bold text-[var(--charcoal)]" style={{ fontFamily: 'var(--font-display)' }}>Directory</h1>
-          <p className="text-[13px] text-[var(--mid-gray)] mt-0.5">Branch information, emails and websites across the clinic.</p>
-        </div>
-      </div>
+      <PageHeader
+        eyebrow="Resources"
+        title="Directory"
+        description="Branch information, emails and websites across the clinic."
+      />
 
       {/* Online Forms — scannable QR cards (HR fillable forms) */}
-      <div className="rounded-2xl p-5 mb-6 border border-[var(--light-gray)]" style={{ background: '#edf3d9' }}>
-        <div className="mb-4">
-          <p className="text-[11px] font-bold uppercase tracking-[0.18em] mb-1" style={{ color: '#cf9d88' }}>Fill It Online</p>
-          <h2 className="text-[18px] font-bold" style={{ color: '#244952', fontFamily: 'var(--font-display)' }}>Online Forms — Scan or Click</h2>
-          <p className="text-[12.5px] text-[var(--mid-gray)] mt-1">These forms have fillable online versions. Scan the QR with your phone, or tap a card to open it.</p>
-        </div>
+      <DashCard
+        title="Online forms — scan or click"
+        icon={<Contact size={16} />}
+        description="These forms have fillable online versions. Scan the QR with your phone, or tap a card to open it."
+      >
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
           {FORM_QRS.map((f) => (
             <a key={f.id} href={`${HR_BASE}${f.path}`} target="_blank" rel="noopener noreferrer"
-              className="bg-white rounded-xl p-3 flex flex-col items-center text-center border border-[var(--light-gray)] hover:shadow-md transition-shadow">
-              <img src={`/forms-qr/${f.id}.svg`} alt={`${f.code} ${f.name} QR code`} width={120} height={120} className="w-full max-w-[118px]" style={{ aspectRatio: '1 / 1' }} />
-              <div className="mt-2 text-[13px] font-bold" style={{ color: '#c69849' }}>{f.code}</div>
-              <div className="text-[12px] font-semibold leading-tight" style={{ color: '#244952' }}>{f.name}</div>
-              <div className="mt-1 text-[10.5px] text-[var(--mid-gray)] break-all">{f.path}</div>
+              className={`rounded-xl p-3 flex flex-col items-center text-center transition-[border-color,box-shadow] hover:border-[var(--teal)] hover:shadow-[0_6px_18px_-10px_rgba(36,73,82,0.35)] ${FOCUS}`}
+              style={{ background: '#fff', border: '1px solid var(--light-gray)' }}>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={`/forms-qr/${f.id}.svg`} alt={`${f.code} ${f.name} QR code`} width={120} height={120} className="w-full max-w-[112px]" style={{ aspectRatio: '1 / 1' }} />
+              <span className="mt-2"><Tag tone="warn">{f.code}</Tag></span>
+              <span className="mt-1 text-[12.5px] font-semibold leading-tight" style={{ color: 'var(--charcoal)', fontFamily: 'var(--font-display)' }}>{f.name}</span>
+              <span className="mt-1 inline-flex items-center gap-1 text-[10.5px]" style={{ color: 'var(--teal)' }}><ExternalLink size={10} /> Open form</span>
             </a>
           ))}
         </div>
-      </div>
+      </DashCard>
 
       {/* Subtabs */}
-      <div className="flex gap-1 mb-5 border-b border-[var(--light-gray)]">
-        {tabs.map((t) => {
-          const active = tab === t.key
-          return (
-            <button key={t.key} onClick={() => setTab(t.key)}
-              className="flex items-center gap-2 px-4 py-2.5 text-[13px] font-semibold border-b-2 -mb-px transition-colors"
-              style={active
-                ? { borderColor: 'var(--moss)', color: 'var(--deep-teal)' }
-                : { borderColor: 'transparent', color: 'var(--mid-gray)' }}>
-              <t.icon size={15} /> {t.label}
-            </button>
-          )
-        })}
-      </div>
+      <PillTabs
+        label="Directory section"
+        value={tab}
+        onChange={(id) => setTab(id as Tab)}
+        tabs={tabs.map((t) => ({
+          id: t.key,
+          label: <span className="inline-flex items-center gap-1.5"><t.icon size={13} /> {t.label}</span>,
+          count: t.key === 'emails' ? entries.length : t.key === 'websites' ? websites.length : undefined,
+        }))}
+      />
 
       {loading ? (
-        <div className="py-16 text-center text-[var(--mid-gray)]"><Loader2 size={20} className="animate-spin mx-auto" /></div>
+        <div className="space-y-3" role="status" aria-label="Loading directory">
+          {[0, 1, 2].map((i) => <Skeleton key={i} className="h-32 rounded-xl" />)}
+        </div>
       ) : (
         <>
           {/* ── BRANCH INFORMATION ── */}
           {tab === 'branch' && (
             <div className="space-y-4">
               {BRANCH_ORDER.map((b) => (
-                <div key={b} className="card-static">
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="px-2 py-0.5 rounded-md text-[11px] font-bold uppercase tracking-wider" style={{ background: 'var(--sun-tint)', color: '#8a6a1f' }}>{BRANCH_LABELS[b]}</span>
+                <section key={b} className="rounded-xl" style={CARD_STYLE}>
+                  <header className="px-4 sm:px-5 pt-4 pb-3 flex items-center justify-between gap-3" style={{ borderBottom: '1px solid var(--light-gray)' }}>
+                    <h2 className="flex items-center gap-2 text-[14px] font-bold" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>
+                      <Building2 size={16} style={{ color: 'var(--teal)' }} />
+                      {BRANCH_LABELS[b]}
+                    </h2>
                     {isAdmin && (
-                      <button onClick={() => saveBranch(b)} disabled={savingBranch === b}
-                        className="btn-primary !py-1.5 !px-3 !text-[12px] !rounded-lg">
+                      <button type="button" onClick={() => saveBranch(b)} disabled={savingBranch === b} className={BTN_SM} style={{ ...SECONDARY_STYLE, color: 'var(--deep-teal)' }}>
                         {savingBranch === b ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />} Save
                       </button>
                     )}
+                  </header>
+                  <div className="p-4 sm:p-5">
+                    {isAdmin ? (
+                      <textarea value={branchDraft[b] ?? ''} onChange={(e) => setBranchDraft((p) => ({ ...p, [b]: e.target.value }))}
+                        rows={5} placeholder={`Information for ${BRANCH_LABELS[b]} branch…`} aria-label={`${BRANCH_LABELS[b]} branch information`}
+                        className={`${TEXTAREA} resize-y`} style={{ ...CONTROL_STYLE, minHeight: 90 }} />
+                    ) : (
+                      <p className="text-[13.5px] whitespace-pre-wrap leading-relaxed" style={{ color: 'var(--charcoal)' }}>
+                        {(branchInfo.find((x) => x.branch === b)?.info || '').trim() || <span className="italic" style={{ color: 'var(--mid-gray)' }}>No information yet.</span>}
+                      </p>
+                    )}
                   </div>
-                  {isAdmin ? (
-                    <textarea value={branchDraft[b] ?? ''} onChange={(e) => setBranchDraft((p) => ({ ...p, [b]: e.target.value }))}
-                      rows={5} placeholder={`Information for ${BRANCH_LABELS[b]} branch…`}
-                      className="input text-[13px] w-full resize-y" style={{ minHeight: 90 }} />
-                  ) : (
-                    <p className="text-[13px] text-[var(--charcoal)] whitespace-pre-wrap leading-relaxed">
-                      {(branchInfo.find((x) => x.branch === b)?.info || '').trim() || <span className="text-[var(--mid-gray)] italic">No information yet.</span>}
-                    </p>
-                  )}
                   {BRANCH_CONTACTS[b] && (
-                    <div className="mt-3 pt-3 border-t border-[var(--light-gray)]">
-                      <p className="text-[11px] font-bold uppercase tracking-wider text-[var(--mid-gray)] mb-2">Chat with this branch</p>
-                      <div className="flex flex-wrap items-center gap-2">
-                        <a href={BRANCH_CONTACTS[b].messenger} target="_blank" rel="noopener noreferrer"
-                          className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[12px] font-semibold text-white transition-opacity hover:opacity-90"
-                          style={{ background: '#0084FF' }}>
-                          <MessageCircle size={14} /> Messenger
-                        </a>
-                        <a href={`viber://chat?number=${encodeURIComponent(BRANCH_CONTACTS[b].viberNumber)}`}
-                          className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[12px] font-semibold text-white transition-opacity hover:opacity-90"
-                          style={{ background: '#7360F2' }}>
-                          <Phone size={14} /> Viber
-                        </a>
-                        <span className="text-[12px] text-[var(--mid-gray)]">{BRANCH_CONTACTS[b].viberDisplay}</span>
-                      </div>
+                    <div className="px-4 sm:px-5 py-3 flex flex-wrap items-center gap-2 rounded-b-xl" style={{ borderTop: '1px solid var(--light-gray)', background: SUBTLE_BG }}>
+                      <span className="text-[11px] font-semibold uppercase tracking-wider mr-1" style={{ color: 'var(--mid-gray)', fontFamily: 'var(--font-display)' }}>Chat with this branch</span>
+                      <a href={BRANCH_CONTACTS[b].messenger} target="_blank" rel="noopener noreferrer"
+                        className={`${BTN_SM} text-white`} style={{ background: '#0084FF' }}>
+                        <MessageCircle size={13} /> Messenger
+                      </a>
+                      <a href={`viber://chat?number=${encodeURIComponent(BRANCH_CONTACTS[b].viberNumber)}`}
+                        className={`${BTN_SM} text-white`} style={{ background: '#7360F2' }}>
+                        <Phone size={13} /> Viber
+                      </a>
+                      <span className="text-[12px] tabular-nums" style={{ color: 'var(--mid-gray)' }}>{BRANCH_CONTACTS[b].viberDisplay}</span>
                     </div>
                   )}
-                </div>
+                </section>
               ))}
             </div>
           )}
@@ -402,16 +399,16 @@ export default function DirectoryPage() {
               {isAdmin && (
                 <div className="mb-4">
                   {!showEmailForm ? (
-                    <button onClick={() => { resetEmailForm(); setShowEmailForm(true) }} className="btn-primary !py-2 !px-4 !text-[13px] !rounded-lg">
+                    <button type="button" onClick={() => { resetEmailForm(); setShowEmailForm(true) }} className={BTN_PRIMARY} style={PRIMARY_STYLE}>
                       <Plus size={15} /> Add Email
                     </button>
                   ) : (
-                    <div ref={emailFormRef} className="card-static">
+                    <div ref={emailFormRef} className="rounded-xl p-4 sm:p-5" style={CARD_STYLE}>
                       <div className="flex items-center justify-between mb-4">
-                        <h2 className="font-bold text-[var(--charcoal)] text-[15px]" style={{ fontFamily: 'var(--font-display)' }}>{editEmailId ? 'Edit Email' : 'New Email'}</h2>
-                        <button onClick={resetEmailForm} className="p-1 text-[var(--mid-gray)] hover:text-[var(--charcoal)]"><X size={18} /></button>
+                        <h2 className="font-bold text-[15px]" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>{editEmailId ? 'Edit Email' : 'New Email'}</h2>
+                        <button type="button" onClick={resetEmailForm} className={`w-8 h-8 rounded-lg flex items-center justify-center hover:bg-[var(--off-white)] ${FOCUS}`} style={{ color: 'var(--mid-gray)' }} aria-label="Close form"><X size={17} /></button>
                       </div>
-                      <label className="block text-[11px] font-semibold text-[var(--charcoal)] uppercase tracking-wider mb-2">Department(s)</label>
+                      <label className={`${LABEL} !mb-2`} style={LABEL_STYLE}>Department(s)</label>
                       <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mb-4">
                         {DEPT_ORDER.map((d) => {
                           const on = depts.includes(d)
@@ -425,29 +422,29 @@ export default function DirectoryPage() {
                           )
                         })}
                       </div>
-                      <label className="block text-[11px] font-semibold text-[var(--charcoal)] uppercase tracking-wider mb-2">Branch(es)</label>
+                      <label className={`${LABEL} !mb-2`} style={LABEL_STYLE}>Branch(es)</label>
                       <div className="mb-4"><BranchPicker selected={branchSel} onToggle={(b) => setBranchSel((p) => p.includes(b) ? p.filter((x) => x !== b) : [...p, b])} accent="gold" /></div>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
                         <div>
-                          <label className="block text-[11px] font-semibold text-[var(--charcoal)] uppercase tracking-wider mb-1">Email</label>
-                          <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="contact@sapphireclinicseast.org" className="input text-[13px]" />
+                          <label className={LABEL} style={LABEL_STYLE}>Email</label>
+                          <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="contact@sapphireclinicseast.org" className={`${CONTROL} w-full`} style={CONTROL_STYLE} />
                         </div>
                         <div>
-                          <label className="block text-[11px] font-semibold text-[var(--charcoal)] uppercase tracking-wider mb-1">Description</label>
-                          <input value={emailDesc} onChange={(e) => setEmailDesc(e.target.value)} placeholder="e.g. OT booking & inquiries" className="input text-[13px]" />
+                          <label className={LABEL} style={LABEL_STYLE}>Description</label>
+                          <input value={emailDesc} onChange={(e) => setEmailDesc(e.target.value)} placeholder="e.g. OT booking & inquiries" className={`${CONTROL} w-full`} style={CONTROL_STYLE} />
                         </div>
                       </div>
-                      <label className="block text-[11px] font-semibold text-[var(--charcoal)] uppercase tracking-wider mb-2">Who can view this email?</label>
+                      <label className={`${LABEL} !mb-2`} style={LABEL_STYLE}>Who can view this email?</label>
                       <div className="flex flex-col gap-2 mb-4">
                         <label className="flex items-center gap-2 text-[13px] cursor-pointer text-[var(--charcoal)]"><input type="radio" checked={!restrictView} onChange={() => { setRestrictView(false); setViewSel([]) }} /> Everyone</label>
                         <label className="flex items-center gap-2 text-[13px] cursor-pointer text-[var(--charcoal)]"><input type="radio" checked={restrictView} onChange={() => setRestrictView(true)} /> Only staff from specific branches</label>
                         {restrictView && <div className="sm:pl-6"><BranchPicker selected={viewSel} onToggle={(b) => setViewSel((p) => p.includes(b) ? p.filter((x) => x !== b) : [...p, b])} /></div>}
                       </div>
                       <div className="flex gap-2">
-                        <button onClick={saveEmail} disabled={savingEmail} className="btn-primary !py-2 !px-5 !text-[13px] !rounded-lg">
+                        <button type="button" onClick={saveEmail} disabled={savingEmail} className={BTN_PRIMARY} style={PRIMARY_STYLE}>
                           {savingEmail ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />} {editEmailId ? 'Save Changes' : 'Add Email'}
                         </button>
-                        <button onClick={resetEmailForm} className="btn-secondary !py-2 !px-5 !text-[13px] !rounded-lg">Cancel</button>
+                        <button type="button" onClick={resetEmailForm} className={BTN_SECONDARY} style={SECONDARY_STYLE}>Cancel</button>
                       </div>
                     </div>
                   )}
@@ -456,24 +453,24 @@ export default function DirectoryPage() {
 
               {entries.length > 0 && (
                 <div className="relative mb-3 sm:max-w-xs">
-                  <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--mid-gray)]" />
-                  <input value={emailQ} onChange={(e) => setEmailQ(e.target.value)} placeholder="Filter emails…" className="input text-[13px] !pl-9" />
+                  <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: 'var(--mid-gray)' }} />
+                  <input value={emailQ} onChange={(e) => setEmailQ(e.target.value)} placeholder="Filter emails…" className={`${CONTROL} w-full pl-9`} style={CONTROL_STYLE} />
                 </div>
               )}
-              <div className="card-static !p-0 overflow-hidden">
+              <div className="rounded-xl overflow-hidden" style={CARD_STYLE}>
                 {entries.length === 0 ? (
-                  <div className="py-12 text-center text-[var(--mid-gray)] text-[13px]"><Mail size={26} className="mx-auto mb-2 opacity-40" />No emails yet.</div>
+                  <EmptyState icon="file" title="No emails yet." />
                 ) : (
                   <div className="overflow-x-auto">
                     <table className="w-full min-w-[600px] text-left border-collapse">
                       <thead>
-                        <tr className="text-[11px] uppercase tracking-wider text-[var(--mid-gray)]" style={{ background: 'var(--off-white)' }}>
+                        <tr>
                           <SortableTh label="Department" col="dept" sort={emailSort} onToggle={(c) => toggleSort(setEmailSort, c)} />
                           <SortableTh label="Branch" col="branch" sort={emailSort} onToggle={(c) => toggleSort(setEmailSort, c)} />
                           <SortableTh label="Email" col="email" sort={emailSort} onToggle={(c) => toggleSort(setEmailSort, c)} />
                           <SortableTh label="Description" col="desc" sort={emailSort} onToggle={(c) => toggleSort(setEmailSort, c)} />
-                          {isAdmin && <th className="px-5 py-3 font-semibold">Visible To</th>}
-                          {isAdmin && <th className="px-5 py-3 font-semibold w-20"></th>}
+                          {isAdmin && <th scope="col" className={`${TH} !px-5`} style={TH_STYLE}>Visible To</th>}
+                          {isAdmin && <th scope="col" className={`${TH} !px-5 w-24`} style={TH_STYLE}><span className="sr-only">Actions</span></th>}
                         </tr>
                       </thead>
                       <tbody>
@@ -481,9 +478,9 @@ export default function DirectoryPage() {
                           <tr><td colSpan={isAdmin ? 6 : 4} className="px-5 py-10 text-center text-[13px] text-[var(--mid-gray)]">No emails match “{emailQ}”.</td></tr>
                         )}
                         {visibleEmails.map((e) => (
-                          <tr key={e.id} className="border-t border-[var(--light-gray)] align-top">
-                            <td className="px-5 py-3"><div className="flex flex-wrap gap-1.5">{sortDepts(e.departments).map((d) => <span key={d} className="px-2 py-0.5 rounded-md text-[11px] font-bold uppercase tracking-wider" style={{ background: 'var(--pale-teal)', color: 'var(--deep-teal)' }}>{DEPT_LABELS[d] ?? d}</span>)}</div></td>
-                            <td className="px-5 py-3"><div className="flex flex-wrap gap-1.5">{sortBranches(e.branches ?? []).map((b) => <span key={b} className="px-2 py-0.5 rounded-md text-[11px] font-bold uppercase tracking-wider" style={{ background: 'var(--sun-tint)', color: '#8a6a1f' }}>{BRANCH_LABELS[b] ?? b}</span>)}</div></td>
+                          <tr key={e.id} className="align-top transition-colors hover:bg-[#F8FAF2]" style={{ borderTop: '1px solid var(--light-gray)' }}>
+                            <td className="px-5 py-3"><div className="flex flex-wrap gap-1.5">{sortDepts(e.departments).map((d) => <Tag key={d} tone="brand">{DEPT_LABELS[d] ?? d}</Tag>)}</div></td>
+                            <td className="px-5 py-3"><div className="flex flex-wrap gap-1.5">{sortBranches(e.branches ?? []).map((b) => <Tag key={b} tone="warn">{BRANCH_LABELS[b] ?? b}</Tag>)}</div></td>
                             <td className="px-5 py-3">
                               {e.emailHidden ? (
                                 <span className="text-[13px] text-[var(--mid-gray)] inline-flex items-center gap-1.5"><Lock size={13} /> Restricted</span>
@@ -496,8 +493,8 @@ export default function DirectoryPage() {
                             {isAdmin && (
                               <td className="px-5 py-3">
                                 <div className="flex items-center gap-1">
-                                  <button onClick={() => startEditEmail(e)} className="p-1.5 text-[var(--teal)] hover:bg-[var(--pale-teal)] rounded-md" title="Edit"><Pencil size={14} /></button>
-                                  <button onClick={() => removeEmail(e.id)} className="p-1.5 text-red-500 hover:bg-red-50 rounded-md" title="Remove"><Trash2 size={14} /></button>
+                                  <button type="button" onClick={() => startEditEmail(e)} className={`w-8 h-8 rounded-md flex items-center justify-center hover:bg-[var(--pale-teal)] ${FOCUS}`} style={{ color: 'var(--teal)' }} title="Edit" aria-label={`Edit ${e.email ?? 'email'}`}><Pencil size={14} /></button>
+                                  <button type="button" onClick={() => removeEmail(e.id)} className={`${BTN_DANGER_GHOST} !w-8 !px-0`} style={{ color: DANGER }} title="Remove" aria-label={`Remove ${e.email ?? 'email'}`}><Trash2 size={14} /></button>
                                 </div>
                               </td>
                             )}
@@ -517,36 +514,36 @@ export default function DirectoryPage() {
               {isAdmin && (
                 <div className="mb-4">
                   {!showWebForm ? (
-                    <button onClick={() => { resetWebForm(); setShowWebForm(true) }} className="btn-primary !py-2 !px-4 !text-[13px] !rounded-lg">
+                    <button type="button" onClick={() => { resetWebForm(); setShowWebForm(true) }} className={BTN_PRIMARY} style={PRIMARY_STYLE}>
                       <Plus size={15} /> Add Website
                     </button>
                   ) : (
-                    <div ref={webFormRef} className="card-static">
+                    <div ref={webFormRef} className="rounded-xl p-4 sm:p-5" style={CARD_STYLE}>
                       <div className="flex items-center justify-between mb-4">
-                        <h2 className="font-bold text-[var(--charcoal)] text-[15px]" style={{ fontFamily: 'var(--font-display)' }}>{editWebId ? 'Edit Website' : 'New Website'}</h2>
-                        <button onClick={resetWebForm} className="p-1 text-[var(--mid-gray)] hover:text-[var(--charcoal)]"><X size={18} /></button>
+                        <h2 className="font-bold text-[15px]" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>{editWebId ? 'Edit Website' : 'New Website'}</h2>
+                        <button type="button" onClick={resetWebForm} className={`w-8 h-8 rounded-lg flex items-center justify-center hover:bg-[var(--off-white)] ${FOCUS}`} style={{ color: 'var(--mid-gray)' }} aria-label="Close form"><X size={17} /></button>
                       </div>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
                         <div>
-                          <label className="block text-[11px] font-semibold text-[var(--charcoal)] uppercase tracking-wider mb-1">Link</label>
-                          <input value={wLink} onChange={(e) => setWLink(e.target.value)} placeholder="https://example.com" className="input text-[13px]" />
+                          <label className={LABEL} style={LABEL_STYLE}>Link</label>
+                          <input value={wLink} onChange={(e) => setWLink(e.target.value)} placeholder="https://example.com" className={`${CONTROL} w-full`} style={CONTROL_STYLE} />
                         </div>
                         <div>
-                          <label className="block text-[11px] font-semibold text-[var(--charcoal)] uppercase tracking-wider mb-1">Description</label>
-                          <input value={wDesc} onChange={(e) => setWDesc(e.target.value)} placeholder="e.g. PhilHealth portal" className="input text-[13px]" />
+                          <label className={LABEL} style={LABEL_STYLE}>Description</label>
+                          <input value={wDesc} onChange={(e) => setWDesc(e.target.value)} placeholder="e.g. PhilHealth portal" className={`${CONTROL} w-full`} style={CONTROL_STYLE} />
                         </div>
                       </div>
-                      <label className="block text-[11px] font-semibold text-[var(--charcoal)] uppercase tracking-wider mb-2">Who can view this link?</label>
+                      <label className={`${LABEL} !mb-2`} style={LABEL_STYLE}>Who can view this link?</label>
                       <div className="flex flex-col gap-2 mb-4">
                         <label className="flex items-center gap-2 text-[13px] cursor-pointer text-[var(--charcoal)]"><input type="radio" checked={!wRestrict} onChange={() => { setWRestrict(false); setWViewSel([]) }} /> Everyone</label>
                         <label className="flex items-center gap-2 text-[13px] cursor-pointer text-[var(--charcoal)]"><input type="radio" checked={wRestrict} onChange={() => setWRestrict(true)} /> Only staff from specific branches</label>
                         {wRestrict && <div className="sm:pl-6"><BranchPicker selected={wViewSel} onToggle={(b) => setWViewSel((p) => p.includes(b) ? p.filter((x) => x !== b) : [...p, b])} /></div>}
                       </div>
                       <div className="flex gap-2">
-                        <button onClick={saveWeb} disabled={savingWeb} className="btn-primary !py-2 !px-5 !text-[13px] !rounded-lg">
+                        <button type="button" onClick={saveWeb} disabled={savingWeb} className={BTN_PRIMARY} style={PRIMARY_STYLE}>
                           {savingWeb ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />} {editWebId ? 'Save Changes' : 'Add Website'}
                         </button>
-                        <button onClick={resetWebForm} className="btn-secondary !py-2 !px-5 !text-[13px] !rounded-lg">Cancel</button>
+                        <button type="button" onClick={resetWebForm} className={BTN_SECONDARY} style={SECONDARY_STYLE}>Cancel</button>
                       </div>
                     </div>
                   )}
@@ -555,22 +552,22 @@ export default function DirectoryPage() {
 
               {websites.length > 0 && (
                 <div className="relative mb-3 sm:max-w-xs">
-                  <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--mid-gray)]" />
-                  <input value={webQ} onChange={(e) => setWebQ(e.target.value)} placeholder="Filter websites…" className="input text-[13px] !pl-9" />
+                  <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: 'var(--mid-gray)' }} />
+                  <input value={webQ} onChange={(e) => setWebQ(e.target.value)} placeholder="Filter websites…" className={`${CONTROL} w-full pl-9`} style={CONTROL_STYLE} />
                 </div>
               )}
-              <div className="card-static !p-0 overflow-hidden">
+              <div className="rounded-xl overflow-hidden" style={CARD_STYLE}>
                 {websites.length === 0 ? (
-                  <div className="py-12 text-center text-[var(--mid-gray)] text-[13px]"><Globe size={26} className="mx-auto mb-2 opacity-40" />No websites yet.</div>
+                  <EmptyState icon="external" title="No websites yet." />
                 ) : (
                   <div className="overflow-x-auto">
                     <table className="w-full min-w-[600px] text-left border-collapse">
                       <thead>
-                        <tr className="text-[11px] uppercase tracking-wider text-[var(--mid-gray)]" style={{ background: 'var(--off-white)' }}>
+                        <tr>
                           <SortableTh label="Link" col="link" sort={webSort} onToggle={(c) => toggleSort(setWebSort, c)} />
                           <SortableTh label="Description" col="desc" sort={webSort} onToggle={(c) => toggleSort(setWebSort, c)} />
-                          {isAdmin && <th className="px-5 py-3 font-semibold">Visible To</th>}
-                          {isAdmin && <th className="px-5 py-3 font-semibold w-20"></th>}
+                          {isAdmin && <th scope="col" className={`${TH} !px-5`} style={TH_STYLE}>Visible To</th>}
+                          {isAdmin && <th scope="col" className={`${TH} !px-5 w-24`} style={TH_STYLE}><span className="sr-only">Actions</span></th>}
                         </tr>
                       </thead>
                       <tbody>
@@ -578,7 +575,7 @@ export default function DirectoryPage() {
                           <tr><td colSpan={isAdmin ? 4 : 2} className="px-5 py-10 text-center text-[13px] text-[var(--mid-gray)]">No websites match “{webQ}”.</td></tr>
                         )}
                         {visibleWebsites.map((w) => (
-                          <tr key={w.id} className="border-t border-[var(--light-gray)] align-top">
+                          <tr key={w.id} className="align-top transition-colors hover:bg-[#F8FAF2]" style={{ borderTop: '1px solid var(--light-gray)' }}>
                             <td className="px-5 py-3">
                               {w.linkHidden ? (
                                 <span className="text-[13px] text-[var(--mid-gray)] inline-flex items-center gap-1.5"><Lock size={13} /> Restricted</span>
@@ -591,8 +588,8 @@ export default function DirectoryPage() {
                             {isAdmin && (
                               <td className="px-5 py-3">
                                 <div className="flex items-center gap-1">
-                                  <button onClick={() => startEditWeb(w)} className="p-1.5 text-[var(--teal)] hover:bg-[var(--pale-teal)] rounded-md" title="Edit"><Pencil size={14} /></button>
-                                  <button onClick={() => removeWeb(w.id)} className="p-1.5 text-red-500 hover:bg-red-50 rounded-md" title="Remove"><Trash2 size={14} /></button>
+                                  <button type="button" onClick={() => startEditWeb(w)} className={`w-8 h-8 rounded-md flex items-center justify-center hover:bg-[var(--pale-teal)] ${FOCUS}`} style={{ color: 'var(--teal)' }} title="Edit" aria-label={`Edit ${w.link ?? 'website'}`}><Pencil size={14} /></button>
+                                  <button type="button" onClick={() => removeWeb(w.id)} className={`${BTN_DANGER_GHOST} !w-8 !px-0`} style={{ color: DANGER }} title="Remove" aria-label={`Remove ${w.link ?? 'website'}`}><Trash2 size={14} /></button>
                                 </div>
                               </td>
                             )}
