@@ -215,6 +215,14 @@ export default function SpedClassBoard({
   const [adding, setAdding] = useState<string | null>(null)   // "day|start|end"
   const [query, setQuery] = useState('')
   const [results, setResults] = useState<SpedPatient[]>([])
+  // Where to draw the results list.
+  //
+  // It used to be absolutely positioned inside the cell, which put it inside a
+  // card with overflow:hidden AND a horizontally scrolling table — so it was
+  // clipped out of sight. The search worked and found the child; nobody could
+  // see the answer. Fixed positioning, measured from the input itself, is the
+  // only way out of two nested scroll containers.
+  const [menuAt, setMenuAt] = useState<{ left: number; top: number; width: number } | null>(null)
   const [showBlockForm, setShowBlockForm] = useState(false)
   const [form, setForm] = useState({ staffId: '', dayOfWeek: 'MON', startTime: '09:00', endTime: '11:00' })
   const [busy, setBusy] = useState(false)
@@ -294,8 +302,12 @@ export default function SpedClassBoard({
     } finally { setBusy(false) }
   }
 
-  async function search(v: string) {
+  async function search(v: string, el?: HTMLInputElement | null) {
     setQuery(v)
+    if (el) {
+      const r = el.getBoundingClientRect()
+      setMenuAt({ left: r.left, top: r.bottom + 2, width: Math.max(r.width, 190) })
+    }
     if (v.trim().length < 2) { setResults([]); return }
     try {
       const r = await fetch(`/api/patients/search?q=${encodeURIComponent(v)}`)
@@ -506,12 +518,12 @@ export default function SpedClassBoard({
 
                                 {isAdding ? (
                                   <div style={{ position: 'relative', marginTop: 3 }}>
-                                    <input autoFocus value={query} onChange={e => search(e.target.value)}
+                                    <input autoFocus value={query} onChange={e => search(e.target.value, e.currentTarget)}
                                       placeholder="Search child…"
                                       onBlur={() => setTimeout(() => setAdding(null), 200)}
                                       style={{ width: '100%', padding: '0.2rem 0.4rem', fontSize: '0.72rem', border: '1.5px solid var(--teal)', borderRadius: 4, outline: 'none' }} />
                                     {results.length > 0 && (
-                                      <div style={{ position: 'absolute', zIndex: 40, background: '#fff', border: '1px solid #E2E8F0', borderRadius: 6, boxShadow: '0 4px 12px rgba(0,0,0,0.1)', top: '100%', left: 0, right: 0, maxHeight: 150, overflowY: 'auto' }}>
+                                      <div style={{ position: 'fixed', zIndex: 200, background: '#fff', border: '1px solid #E2E8F0', borderRadius: 6, boxShadow: '0 8px 20px rgba(0,0,0,0.16)', left: menuAt?.left ?? 0, top: menuAt?.top ?? 0, width: menuAt?.width ?? 200, maxHeight: 190, overflowY: 'auto' }}>
                                         {results.map(p => (
                                           <button key={p.id} onMouseDown={() => pick(d.key, b, p, g.staffId)}
                                             style={{ display: 'block', width: '100%', textAlign: 'left', padding: '0.25rem 0.5rem', fontSize: '0.72rem', background: 'none', border: 'none', cursor: 'pointer' }}>
@@ -549,11 +561,11 @@ export default function SpedClassBoard({
                                 </select>
                                 {newGroupStaff && (
                                   <>
-                                    <input autoFocus value={query} onChange={e => search(e.target.value)}
+                                    <input autoFocus value={query} onChange={e => search(e.target.value, e.currentTarget)}
                                       placeholder="Search child…"
                                       style={{ width: '100%', padding: '0.2rem 0.4rem', fontSize: '0.72rem', border: '1.5px solid var(--teal)', borderRadius: 4, outline: 'none' }} />
                                     {results.length > 0 && (
-                                      <div style={{ position: 'absolute', zIndex: 40, background: '#fff', border: '1px solid #E2E8F0', borderRadius: 6, boxShadow: '0 4px 12px rgba(0,0,0,0.1)', top: '100%', left: 0, right: 0, maxHeight: 150, overflowY: 'auto' }}>
+                                      <div style={{ position: 'fixed', zIndex: 200, background: '#fff', border: '1px solid #E2E8F0', borderRadius: 6, boxShadow: '0 8px 20px rgba(0,0,0,0.16)', left: menuAt?.left ?? 0, top: menuAt?.top ?? 0, width: menuAt?.width ?? 200, maxHeight: 190, overflowY: 'auto' }}>
                                         {results.map(p => (
                                           <button key={p.id} onMouseDown={() => { pick(d.key, b, p, newGroupStaff); setNewGroupStaff('') }}
                                             style={{ display: 'block', width: '100%', textAlign: 'left', padding: '0.25rem 0.5rem', fontSize: '0.72rem', background: 'none', border: 'none', cursor: 'pointer' }}>

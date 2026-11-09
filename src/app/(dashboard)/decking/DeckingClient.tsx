@@ -412,6 +412,89 @@ function CustomSlotModal({ staff, activeBranch, workDays, onClose, onSave }: {
 }
 
 // ─── Therapist Row ─────────────────────────────────────────────────────────────
+
+/**
+ * Push the board to the branch's Google Sheet and pull front desk's edits back.
+ *
+ * The same sync the scheduler runs, on the same route — a button that took a
+ * different path would eventually behave differently from the unattended run,
+ * and the unattended one is the one nobody watches.
+ *
+ * It reports what it did rather than flashing a tick: `applied` is bookings
+ * that moved, and `conflicts` are cells changed in BOTH places since the last
+ * sync, which are deliberately left alone for a person to settle. A sync that
+ * only ever said "done" would hide exactly the cases worth seeing.
+ */
+function SheetSyncCard({ branch }: { branch: string }) {
+  const [busy, setBusy] = useState(false)
+  const [result, setResult] = useState<{ applied: number; conflicts: number; unknownPatients: number; at: string } | null>(null)
+  const [error, setError] = useState<string | null>(null)
+
+  async function run() {
+    setBusy(true); setError(null)
+    try {
+      const res = await fetch('/api/decking/sheet-sync', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ branch }),
+      })
+      const d = await res.json().catch(() => ({}))
+      if (!res.ok) { setError(d.error ?? `Sync failed (${res.status})`); return }
+      setResult({
+        applied: d.applied ?? 0,
+        conflicts: d.conflicts ?? 0,
+        unknownPatients: d.unknownPatients ?? 0,
+        at: new Date().toLocaleTimeString('en-PH', { hour: 'numeric', minute: '2-digit' }),
+      })
+    } catch (e) {
+      setError((e as Error).message)
+    } finally { setBusy(false) }
+  }
+
+  return (
+    <div className="rounded-xl p-3" style={{ background: '#fff', border: '1px solid var(--light-gray)' }}>
+      <div className="flex items-center gap-2 mb-1.5">
+        <CalendarCheck size={13} style={{ color: 'var(--teal)' }} />
+        <p className="text-[11px] font-semibold uppercase tracking-widest" style={{ color: 'var(--mid-gray)' }}>
+          Google Sheet
+        </p>
+      </div>
+      <p className="text-[11px] mb-2" style={{ color: 'var(--mid-gray)' }}>
+        Runs on a schedule. Press this to bring it up to date now.
+      </p>
+      <button type="button" onClick={run} disabled={busy}
+        className="w-full rounded-lg px-3 py-2 text-xs font-semibold"
+        style={{ background: 'var(--teal)', color: '#fff', opacity: busy ? 0.6 : 1 }}>
+        {busy ? 'Syncing…' : 'Sync sheet now'}
+      </button>
+      {error && (
+        <p className="text-[11px] mt-2 rounded-lg px-2 py-1.5"
+          style={{ background: '#FEF2F2', border: '1px solid #FECACA', color: '#B91C1C' }}>{error}</p>
+      )}
+      {result && !error && (
+        <div className="text-[11px] mt-2" style={{ color: 'var(--mid-gray)' }}>
+          <p>Synced at {result.at}.</p>
+          <p>
+            {result.applied === 0
+              ? 'Nothing had changed in the sheet.'
+              : `${result.applied} booking${result.applied === 1 ? '' : 's'} taken from the sheet.`}
+          </p>
+          {result.conflicts > 0 && (
+            <p style={{ color: '#B45309' }}>
+              {result.conflicts} cell{result.conflicts === 1 ? '' : 's'} changed in both places — left for you to settle.
+            </p>
+          )}
+          {result.unknownPatients > 0 && (
+            <p style={{ color: '#B45309' }}>
+              {result.unknownPatients} name{result.unknownPatients === 1 ? '' : 's'} not recognised.
+            </p>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
 function TherapistRow({ staff, activeBranch, sectionMode, config, slots, defaultHours, onSaveConfig, onClearServiceConfig, onSaveSlot, onDeleteSlot, onOpenLoa, density = 'comfortable', collapsed = false, onToggleCollapse, datedSlots = [], onAddDated }: {
   staff: StaffMember
   /** Row height / padding of the grid. Display only. */
@@ -2220,6 +2303,7 @@ export default function DeckingClient({ role }: { role: string }) {
             </div>
             {hasSideColumn && (
               <div className="min-w-0 flex flex-col gap-3">
+                <SheetSyncCard branch={activeBranch} />
                 {/* Capacity for the current branch / department / section.
                     Open is derived (total - booked - blocked) rather than
                     counted separately, so the three numbers always add up. */}
