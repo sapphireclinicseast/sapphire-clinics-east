@@ -2,8 +2,15 @@
 
 import { useEffect, useState } from 'react'
 import { useSession } from 'next-auth/react'
-import { Settings, Save, Loader2, CheckCircle2, Award, FileText, PenTool, KeyRound, Eye, EyeOff, FileSignature, Download, ExternalLink } from 'lucide-react'
+import { Save, Loader2, CheckCircle2, Award, PenTool, KeyRound, Eye, EyeOff, FileSignature, Download, ExternalLink } from 'lucide-react'
 import SignaturePad from '@/components/SignaturePad'
+import {
+  BTN_PRIMARY, BTN_SECONDARY, CARD_STYLE, CONTROL, CONTROL_STYLE, DANGER, DashCard, LABEL, LABEL_STYLE,
+  PageHeader, PRIMARY_STYLE, RowsSkeleton, SECONDARY_STYLE, Skeleton,
+} from '@/components/hub/ui'
+
+const FORM_PAGE = 'max-w-3xl mx-auto space-y-5 min-w-0 pb-10'
+const ICON_BTN = 'absolute right-1 top-1/2 -translate-y-1/2 w-8 h-8 rounded-md flex items-center justify-center transition-colors hover:bg-[#F8FAF2]'
 
 export default function SettingsPage() {
   const { data: session } = useSession()
@@ -81,192 +88,190 @@ export default function SettingsPage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-20">
-        <Loader2 size={24} className="animate-spin text-[var(--teal)]" />
+      <div className={FORM_PAGE}>
+        <PageHeader eyebrow="My account" title="Settings" description="Your contract, credentials, signature and password." />
+        <div className="rounded-xl p-5 space-y-3" style={CARD_STYLE}><Skeleton className="h-4 w-40" /><Skeleton className="h-3 w-2/3" /></div>
+        <div className="rounded-xl" style={CARD_STYLE}><RowsSkeleton rows={3} label="Loading settings" /></div>
       </div>
     )
   }
 
   return (
-    <div className="max-w-2xl mx-auto">
-      {/* Header */}
-      <div className="mb-8">
-        <h1 className="text-2xl font-bold text-[var(--charcoal)] flex items-center gap-3" style={{ fontFamily: 'var(--font-display)' }}>
-          <div className="w-10 h-10 bg-[var(--pale-teal)] rounded-xl flex items-center justify-center">
-            <Settings size={22} className="text-[var(--teal)]" />
-          </div>
-          Clinician Settings
-        </h1>
-        <p className="text-[13px] text-[var(--mid-gray)] mt-2 ml-[52px]">
-          Configure your credentials and signature. These will auto-fill in session note forms.
-        </p>
-      </div>
+    <div className={FORM_PAGE}>
+      <PageHeader
+        eyebrow="My account"
+        title="Settings"
+        description="Your contract, credentials, signature and password. Credentials and signature auto-fill in session note forms."
+      />
 
       {/* My Contract — read-only copy of the employment contract HR uploaded */}
-      <div className="card-static mb-6">
-        <h2 className="text-[14px] font-bold text-[var(--charcoal)] mb-4 flex items-center gap-2 pb-3 border-b border-[var(--light-gray)]" style={{ fontFamily: 'var(--font-display)' }}>
-          <FileSignature size={18} className="text-[var(--sand-dark)]" />
-          My Contract
-        </h2>
+      <DashCard
+        title="My Contract"
+        icon={<FileSignature size={16} />}
+        footer="This is a read-only copy for your records. For corrections, contact HR."
+      >
         {contract === undefined ? (
-          <div className="flex items-center gap-2 text-[13px] text-[var(--mid-gray)]"><Loader2 size={14} className="animate-spin" /> Checking with HR…</div>
+          <div className="space-y-2" aria-label="Checking with HR"><Skeleton className="h-4 w-56" /><Skeleton className="h-3 w-40" /></div>
         ) : contract === null ? (
-          <p className="text-[13px] text-[var(--mid-gray)]">
+          <p className="text-[13px] leading-relaxed" style={{ color: 'var(--mid-gray)' }}>
             No contract on file yet. HR uploads your signed contract in the HR Hub; it will appear here as soon as it is there.
           </p>
         ) : (
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="min-w-0">
-              <div className="text-[13px] font-semibold text-[var(--charcoal)] truncate max-w-[360px]" title={contract.originalName}>{contract.originalName}</div>
-              <div className="text-[12px] text-[var(--mid-gray)] mt-0.5">
-                Uploaded {new Date(contract.uploadedAt).toLocaleDateString('en-PH', { year: 'numeric', month: 'long', day: 'numeric' })}
-                {contract.size ? ` · ${(contract.size / 1024 / 1024).toFixed(2)} MB` : ''} · PDF
+            <div className="flex items-center gap-3 min-w-0">
+              <span className="w-10 h-10 rounded-lg flex items-center justify-center shrink-0" style={{ background: 'var(--pale-teal)', color: 'var(--teal)' }}>
+                <FileSignature size={18} aria-hidden />
+              </span>
+              <div className="min-w-0">
+                <div className="text-[13.5px] font-semibold truncate max-w-[360px]" style={{ color: 'var(--charcoal)' }} title={contract.originalName}>{contract.originalName}</div>
+                <div className="text-xs mt-0.5" style={{ color: 'var(--mid-gray)' }}>
+                  Uploaded {new Date(contract.uploadedAt).toLocaleDateString('en-PH', { year: 'numeric', month: 'long', day: 'numeric' })}
+                  {contract.size ? ` · ${(contract.size / 1024 / 1024).toFixed(2)} MB` : ''} · PDF
+                </div>
               </div>
             </div>
             <div className="flex items-center gap-2">
-              <a href="/api/contract/file" target="_blank" rel="noopener"
-                 className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-[13px] font-semibold text-white bg-[var(--teal)] hover:opacity-90">
+              <a href="/api/contract/file" target="_blank" rel="noopener" className={BTN_PRIMARY} style={PRIMARY_STYLE}>
                 <ExternalLink size={14} /> View
               </a>
-              <a href="/api/contract/file?download=1"
-                 className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-[13px] font-semibold text-[var(--charcoal)] border border-[var(--light-gray)] hover:bg-[var(--off-white)]">
+              <a href="/api/contract/file?download=1" className={BTN_SECONDARY} style={SECONDARY_STYLE}>
                 <Download size={14} /> Download
               </a>
             </div>
           </div>
         )}
-        <p className="text-[12px] text-[var(--mid-gray)] mt-4">This is a read-only copy for your records. For corrections, contact HR.</p>
-      </div>
+      </DashCard>
 
       {/* PRC License & PTR — hidden for interns (not licensed practitioners) */}
       {!isIntern && (
-      <div className="card-static mb-6">
-        <h2 className="text-[14px] font-bold text-[var(--charcoal)] mb-4 flex items-center gap-2 pb-3 border-b border-[var(--light-gray)]" style={{ fontFamily: 'var(--font-display)' }}>
-          <Award size={18} className="text-[var(--sand-dark)]" />
-          Professional Credentials
-        </h2>
-
+      <DashCard
+        title="Professional Credentials"
+        icon={<Award size={16} />}
+        footer="These will auto-fill in OT Daily Notes and other session forms that require credentials."
+      >
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
-            <label className="block text-[12px] font-semibold text-[var(--charcoal)] uppercase tracking-wider mb-1.5">
-              <FileText size={12} className="inline mr-1 -mt-0.5" />
-              PRC License No.
-            </label>
+            <label htmlFor="set-prc" className={LABEL} style={LABEL_STYLE}>PRC License No.</label>
             <input
+              id="set-prc"
               value={licenseNo}
               onChange={(e) => setLicenseNo(e.target.value)}
               placeholder="Enter your PRC License No."
-              className="input text-[13px]"
+              className={`${CONTROL} w-full`}
+              style={CONTROL_STYLE}
             />
           </div>
           <div>
-            <label className="block text-[12px] font-semibold text-[var(--charcoal)] uppercase tracking-wider mb-1.5">
-              <FileText size={12} className="inline mr-1 -mt-0.5" />
-              PTR No.
-            </label>
+            <label htmlFor="set-ptr" className={LABEL} style={LABEL_STYLE}>PTR No.</label>
             <input
+              id="set-ptr"
               value={ptrNo}
               onChange={(e) => setPtrNo(e.target.value)}
               placeholder="Enter your PTR No."
-              className="input text-[13px]"
+              className={`${CONTROL} w-full`}
+              style={CONTROL_STYLE}
             />
           </div>
         </div>
-
-        <p className="text-[11px] text-[var(--mid-gray)] mt-3">
-          These will auto-fill in OT Daily Notes and other session forms that require credentials.
-        </p>
-      </div>
+      </DashCard>
       )}
 
       {/* Signature */}
-      <div className="card-static mb-6">
-        <h2 className="text-[14px] font-bold text-[var(--charcoal)] mb-4 flex items-center gap-2 pb-3 border-b border-[var(--light-gray)]" style={{ fontFamily: 'var(--font-display)' }}>
-          <PenTool size={18} className="text-[var(--teal)]" />
-          Digital Signature
-        </h2>
-
+      <DashCard
+        title="Digital Signature"
+        icon={<PenTool size={16} />}
+        footer="Your signature will auto-fill in session note forms. You can draw with your mouse, finger (on touchscreen), or upload an image."
+      >
         <SignaturePad
           initialDataUrl={signatureDataUrl}
           onChange={setSignatureDataUrl}
         />
+      </DashCard>
 
-        <p className="text-[11px] text-[var(--mid-gray)] mt-3">
-          Your signature will auto-fill in session note forms. You can draw with your mouse, finger (on touchscreen), or upload an image.
+      {/* Save — covers credentials + signature */}
+      <div className="rounded-xl px-4 sm:px-5 py-3.5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3" style={CARD_STYLE}>
+        <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>
+          {isIntern ? 'Saves your signature.' : 'Saves your credentials and signature.'}
         </p>
+        <button
+          onClick={handleSave}
+          disabled={saving}
+          className={`${BTN_PRIMARY} !h-10 !px-5`}
+          style={PRIMARY_STYLE}
+        >
+          {saving ? (
+            <><Loader2 size={16} className="animate-spin" /> Saving...</>
+          ) : saved ? (
+            <><CheckCircle2 size={16} /> Saved!</>
+          ) : (
+            <><Save size={16} /> Save Settings</>
+          )}
+        </button>
       </div>
 
-      {/* Save Button */}
-      <button
-        onClick={handleSave}
-        disabled={saving}
-        className="btn-primary w-full py-3.5 rounded-xl flex items-center justify-center gap-2 text-[14px] font-semibold"
-      >
-        {saving ? (
-          <><Loader2 size={18} className="animate-spin" /> Saving...</>
-        ) : saved ? (
-          <><CheckCircle2 size={18} /> Saved!</>
-        ) : (
-          <><Save size={18} /> Save Settings</>
-        )}
-      </button>
-
       {/* ── Change Password Section ──────────────────────────────── */}
-      <div className="mt-8 pt-6 border-t border-[var(--light-gray)]">
-        <h3 className="font-semibold text-[var(--charcoal)] mb-4 flex items-center gap-2" style={{ fontFamily: 'var(--font-display)' }}>
-          <KeyRound size={18} className="text-[var(--teal)]" />
-          Change Password
-        </h3>
-
-        <div className="space-y-3">
+      <DashCard title="Change Password" icon={<KeyRound size={16} />} description="At least 6 characters.">
+        <div className="space-y-4">
           <div>
-            <label className="block text-[12px] font-semibold text-[var(--charcoal)] mb-1">Current Password</label>
+            <label htmlFor="set-pw-current" className={LABEL} style={LABEL_STYLE}>Current password</label>
             <div className="relative">
               <input
+                id="set-pw-current"
                 type={showCurrentPw ? 'text' : 'password'}
                 value={currentPassword}
                 onChange={(e) => setCurrentPassword(e.target.value)}
-                className="input text-[13px] pr-10"
+                className={`${CONTROL} w-full pr-10`}
+                style={CONTROL_STYLE}
                 placeholder="Enter current password"
+                autoComplete="current-password"
               />
-              <button type="button" onClick={() => setShowCurrentPw(!showCurrentPw)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-[var(--mid-gray)] hover:text-[var(--charcoal)]">
+              <button type="button" onClick={() => setShowCurrentPw(!showCurrentPw)} aria-label={showCurrentPw ? 'Hide password' : 'Show password'}
+                className={ICON_BTN} style={{ color: 'var(--mid-gray)' }}>
                 {showCurrentPw ? <EyeOff size={16} /> : <Eye size={16} />}
               </button>
             </div>
           </div>
 
-          <div>
-            <label className="block text-[12px] font-semibold text-[var(--charcoal)] mb-1">New Password</label>
-            <div className="relative">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label htmlFor="set-pw-new" className={LABEL} style={LABEL_STYLE}>New password</label>
+              <div className="relative">
+                <input
+                  id="set-pw-new"
+                  type={showNewPw ? 'text' : 'password'}
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  className={`${CONTROL} w-full pr-10`}
+                  style={CONTROL_STYLE}
+                  placeholder="Min 6 characters"
+                  autoComplete="new-password"
+                />
+                <button type="button" onClick={() => setShowNewPw(!showNewPw)} aria-label={showNewPw ? 'Hide password' : 'Show password'}
+                  className={ICON_BTN} style={{ color: 'var(--mid-gray)' }}>
+                  {showNewPw ? <EyeOff size={16} /> : <Eye size={16} />}
+                </button>
+              </div>
+            </div>
+
+            <div>
+              <label htmlFor="set-pw-confirm" className={LABEL} style={LABEL_STYLE}>Confirm new password</label>
               <input
-                type={showNewPw ? 'text' : 'password'}
-                value={newPassword}
-                onChange={(e) => setNewPassword(e.target.value)}
-                className="input text-[13px] pr-10"
-                placeholder="Enter new password (min 6 characters)"
+                id="set-pw-confirm"
+                type="password"
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                className={`${CONTROL} w-full`}
+                style={confirmPassword && newPassword !== confirmPassword ? { ...CONTROL_STYLE, borderColor: '#FECACA' } : CONTROL_STYLE}
+                placeholder="Re-enter new password"
+                autoComplete="new-password"
               />
-              <button type="button" onClick={() => setShowNewPw(!showNewPw)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-[var(--mid-gray)] hover:text-[var(--charcoal)]">
-                {showNewPw ? <EyeOff size={16} /> : <Eye size={16} />}
-              </button>
+              {confirmPassword && newPassword !== confirmPassword && (
+                <p role="alert" className="text-xs mt-1" style={{ color: DANGER }}>Passwords do not match</p>
+              )}
             </div>
           </div>
 
-          <div>
-            <label className="block text-[12px] font-semibold text-[var(--charcoal)] mb-1">Confirm New Password</label>
-            <input
-              type="password"
-              value={confirmPassword}
-              onChange={(e) => setConfirmPassword(e.target.value)}
-              className="input text-[13px]"
-              placeholder="Re-enter new password"
-            />
-            {confirmPassword && newPassword !== confirmPassword && (
-              <p className="text-[11px] text-red-500 mt-1">Passwords do not match</p>
-            )}
-          </div>
-
+          <div className="flex justify-end">
           <button
             onClick={async () => {
               if (!currentPassword || !newPassword) {
@@ -303,7 +308,8 @@ export default function SettingsPage() {
               setChangingPassword(false)
             }}
             disabled={changingPassword || !currentPassword || !newPassword || newPassword !== confirmPassword}
-            className="btn-primary w-full py-3 rounded-xl flex items-center justify-center gap-2"
+            className={`${BTN_PRIMARY} !h-10 !px-5`}
+            style={PRIMARY_STYLE}
           >
             {changingPassword ? (
               <><Loader2 size={16} className="animate-spin" /> Changing...</>
@@ -311,12 +317,13 @@ export default function SettingsPage() {
               <><KeyRound size={16} /> Change Password</>
             )}
           </button>
+          </div>
         </div>
-      </div>
+      </DashCard>
 
       {/* Toast */}
       {toast && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-[var(--charcoal)] text-white px-6 py-3 rounded-2xl shadow-2xl text-[13px] font-medium animate-fade-up z-50">
+        <div role="status" className="fixed bottom-6 left-1/2 -translate-x-1/2 px-5 py-3 rounded-xl shadow-2xl text-[13px] font-medium animate-fade-up z-50 text-white" style={{ background: 'var(--deep-teal)' }}>
           {toast}
         </div>
       )}
