@@ -13,7 +13,6 @@
 
 import { useEffect, useState } from 'react'
 import {
-  Loader2,
   CreditCard,
   Video as VideoIcon,
   Mic,
@@ -24,6 +23,10 @@ import {
   ChevronDown,
   ChevronUp,
 } from 'lucide-react'
+import {
+  Banner, BTN_SM, CARD_STYLE, CONTROL_SM, CONTROL_STYLE, DashCard, EmptyState, FOCUS, RowsSkeleton,
+  SECONDARY_STYLE, SUBTLE_BG, Tag,
+} from '@/components/hub/ui'
 
 interface HPFile {
   id: string
@@ -92,127 +95,136 @@ export default function PatientUploads({
     return t >= from && t < to
   })
 
+  const totalFiles = (entries ?? []).reduce((n, e) => n + e.files.length, 0)
+
   return (
-    <div className="rounded-xl border border-[var(--light-gray)] bg-white overflow-hidden">
-      <div className="px-4 py-3 border-b border-[var(--light-gray)] bg-[var(--off-white)]">
-        <h3 className="text-sm font-bold text-[var(--deep-teal)] flex items-center gap-2">
-          <Inbox className="w-4 h-4" /> Patient Uploads
-        </h3>
-        <p className="text-[11px] text-[var(--mid-gray)] mt-0.5">PWD/Senior ID and home-practice media the patient submitted.</p>
-      </div>
+    <div className="space-y-4 min-w-0">
+      <p className="text-xs px-0.5" style={{ color: 'var(--mid-gray)' }}>
+        What the patient submitted: their PWD / Senior ID and home-practice media from the client portal. Read-only.
+      </p>
 
-      <div className="p-4 space-y-5">
-        {/* ── PWD / Senior ID ──────────────────────────────────── */}
-        <section>
-          <p className="text-[11px] font-bold uppercase tracking-wide text-[var(--mid-gray)] mb-2">PWD / Senior ID</p>
-          {pwdIdUrl ? (
-            <a href={pwdIdUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-sm text-[var(--deep-teal)] hover:underline">
-              <CreditCard className="w-4 h-4 shrink-0" /> PWD ID
-              {pwdSeniorId && <span className="text-[var(--mid-gray)] font-normal">· {pwdSeniorId}</span>}
-            </a>
-          ) : pwdSeniorId ? (
-            <p className="flex items-center gap-2 text-sm text-[var(--charcoal)]">
-              <CreditCard className="w-4 h-4 shrink-0" /> <span className="font-medium">{pwdSeniorId}</span>
-            </p>
-          ) : (
-            <p className="text-[13px] text-[var(--mid-gray)] italic">None on file.</p>
-          )}
-        </section>
+      {/* ── PWD / Senior ID ──────────────────────────────────── */}
+      <DashCard title="PWD / Senior ID" icon={<CreditCard size={16} />}>
+        {pwdIdUrl ? (
+          <a href={pwdIdUrl} target="_blank" rel="noopener noreferrer"
+            className={`flex items-center gap-3 p-3 rounded-lg transition-colors hover:bg-[#F8FAF2] ${FOCUS}`}
+            style={{ border: '1px solid var(--light-gray)' }}>
+            <span className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0" style={{ background: 'var(--pale-teal)', color: 'var(--teal)' }}>
+              <CreditCard size={17} aria-hidden />
+            </span>
+            <span className="flex-1 min-w-0">
+              <span className="block text-[13.5px] font-semibold" style={{ color: 'var(--charcoal)' }}>View PWD ID</span>
+              {pwdSeniorId && <span className="block text-xs" style={{ color: 'var(--mid-gray)' }}>ID no. {pwdSeniorId}</span>}
+            </span>
+            <span className="text-xs font-semibold" style={{ color: 'var(--teal)' }}>Open ↗</span>
+          </a>
+        ) : pwdSeniorId ? (
+          <p className="flex items-center gap-2 text-[13.5px]" style={{ color: 'var(--charcoal)' }}>
+            <CreditCard size={16} className="shrink-0" style={{ color: 'var(--teal)' }} />
+            <span className="font-semibold">{pwdSeniorId}</span>
+            <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>· no ID photo uploaded</span>
+          </p>
+        ) : (
+          <p className="text-[13px] italic" style={{ color: 'var(--mid-gray)' }}>None on file.</p>
+        )}
+      </DashCard>
 
-        {/* ── Home Progress — per-date rows + date filter ──────── */}
-        <section>
-          <p className="text-[11px] font-bold uppercase tracking-wide text-[var(--mid-gray)] mb-2">Home Progress</p>
+      {/* ── Home Progress — per-date rows + date filter ──────── */}
+      <DashCard
+        title="Home Progress"
+        icon={<Inbox size={16} />}
+        description="Videos, audio and photos the patient posts between sessions."
+        action={entries && entries.length > 0 ? <Tag tone="brand">{totalFiles} file{totalFiles === 1 ? '' : 's'}</Tag> : undefined}
+        flush
+      >
+        {error && <div className="p-4"><Banner tone="error">{error}</Banner></div>}
 
-          {error && <p className="text-[13px] text-[var(--clay)]">{error}</p>}
+        {!entries && !error && <RowsSkeleton rows={3} label="Loading uploads" />}
 
-          {!entries && !error && (
-            <p className="text-[13px] text-[var(--mid-gray)] flex items-center gap-2">
-              <Loader2 className="w-4 h-4 animate-spin" /> Loading…
-            </p>
-          )}
+        {entries && entries.length === 0 && (
+          <EmptyState icon="upload" title="No home-practice media yet" hint="When the patient uploads videos, audio or photos from the client portal, they'll appear here by date." />
+        )}
 
-          {entries && entries.length === 0 && (
-            <p className="text-[13px] text-[var(--mid-gray)] italic">The patient hasn&apos;t uploaded any home-practice media yet.</p>
-          )}
+        {entries && entries.length > 0 && (
+          <>
+            {/* Date filter (matches Session History) */}
+            <div className="px-4 sm:px-5 py-3 flex flex-wrap items-center gap-x-3 gap-y-2" style={{ background: SUBTLE_BG, borderBottom: '1px solid var(--light-gray)' }}>
+              <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider" style={{ color: 'var(--mid-gray)', fontFamily: 'var(--font-display)' }}>
+                <Calendar size={13} aria-hidden /> Filter by date
+              </span>
+              <label className="flex items-center gap-1.5 text-xs" style={{ color: 'var(--mid-gray)' }}>
+                From
+                <input type="date" value={filterFrom} onChange={(e) => setFilterFrom(e.target.value)} className={CONTROL_SM} style={CONTROL_STYLE} />
+              </label>
+              <label className="flex items-center gap-1.5 text-xs" style={{ color: 'var(--mid-gray)' }}>
+                To
+                <input type="date" value={filterTo} onChange={(e) => setFilterTo(e.target.value)} className={CONTROL_SM} style={CONTROL_STYLE} />
+              </label>
+              {(filterFrom || filterTo) && (
+                <button onClick={() => { setFilterFrom(''); setFilterTo('') }} className={`${BTN_SM} sm:ml-auto`} style={SECONDARY_STYLE}>Clear</button>
+              )}
+            </div>
 
-          {entries && entries.length > 0 && (
-            <>
-              {/* Date filter (matches Session History) */}
-              <div className="rounded-lg border border-[var(--light-gray)] bg-[var(--off-white)] p-3 mb-3 flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-3">
-                <div className="flex items-center gap-1.5 text-[12px] font-semibold text-[var(--mid-gray)] uppercase tracking-wider shrink-0">
-                  <Calendar size={13} /> Filter by date
-                </div>
-                <div className="flex flex-wrap items-center gap-2 flex-1 w-full">
-                  <div className="flex items-center gap-1.5">
-                    <label className="text-[11px] text-[var(--mid-gray)]">From</label>
-                    <input type="date" value={filterFrom} onChange={(e) => setFilterFrom(e.target.value)} className="px-2 py-1 text-[12px] rounded-lg border border-[var(--light-gray)] bg-white" />
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    <label className="text-[11px] text-[var(--mid-gray)]">To</label>
-                    <input type="date" value={filterTo} onChange={(e) => setFilterTo(e.target.value)} className="px-2 py-1 text-[12px] rounded-lg border border-[var(--light-gray)] bg-white" />
-                  </div>
-                  {(filterFrom || filterTo) && (
-                    <button onClick={() => { setFilterFrom(''); setFilterTo('') }} className="text-[11px] text-[var(--mid-gray)] hover:text-[var(--deep-teal)] underline ml-auto">Clear</button>
-                  )}
-                </div>
-              </div>
+            {filtered.length === 0 ? (
+              <EmptyState icon="calendar" title="No uploads in this date range" />
+            ) : (
+              <ul>
+                {filtered.map((e, i) => {
+                  const isOpen = expanded === e.id
+                  return (
+                    <li key={e.id} style={{ borderTop: i ? '1px solid var(--light-gray)' : undefined }}>
+                      <button
+                        onClick={() => setExpanded(isOpen ? null : e.id)}
+                        aria-expanded={isOpen}
+                        className={`w-full flex items-center gap-3 px-4 sm:px-5 py-3 transition-colors text-left hover:bg-[#F8FAF2] ${FOCUS}`}
+                      >
+                        <Calendar size={15} className="shrink-0" style={{ color: 'var(--teal)' }} />
+                        <span className="text-[13.5px] font-semibold" style={{ color: 'var(--charcoal)' }}>{fmtDate(e.date)}</span>
+                        <Tag>{e.files.length} file{e.files.length === 1 ? '' : 's'}</Tag>
+                        <span className="ml-auto" style={{ color: 'var(--mid-gray)' }}>{isOpen ? <ChevronUp size={18} /> : <ChevronDown size={18} />}</span>
+                      </button>
 
-              {filtered.length === 0 ? (
-                <p className="text-[13px] text-[var(--mid-gray)] italic">No uploads in this date range.</p>
-              ) : (
-                <div className="space-y-2">
-                  {filtered.map((e) => {
-                    const isOpen = expanded === e.id
-                    return (
-                      <div key={e.id} className="rounded-lg border border-[var(--light-gray)] overflow-hidden">
-                        <button
-                          onClick={() => setExpanded(isOpen ? null : e.id)}
-                          className="w-full flex items-center gap-3 p-3 hover:bg-[var(--off-white)] transition-colors text-left"
-                        >
-                          <Calendar size={15} className="text-[var(--mid-gray)] shrink-0" />
-                          <span className="text-[13px] font-semibold text-[var(--charcoal)]">{fmtDate(e.date)}</span>
-                          <span className="text-[11px] text-[var(--mid-gray)]">{e.files.length} file{e.files.length === 1 ? '' : 's'}</span>
-                          <span className="ml-auto text-[var(--mid-gray)]">{isOpen ? <ChevronUp size={18} /> : <ChevronDown size={18} />}</span>
-                        </button>
-
-                        {isOpen && (
-                          <div className="p-3 border-t border-[var(--light-gray)] space-y-3">
-                            {e.remarks && <p className="text-[13px] text-[var(--charcoal)] whitespace-pre-wrap">{e.remarks}</p>}
+                      {isOpen && (
+                        <div className="px-4 sm:px-5 pb-4 pt-1 space-y-3">
+                          {e.remarks && (
+                            <p className="text-[13px] leading-relaxed whitespace-pre-wrap rounded-lg px-3 py-2" style={{ color: 'var(--charcoal)', background: SUBTLE_BG, border: '1px solid var(--light-gray)' }}>{e.remarks}</p>
+                          )}
+                          <div className="grid gap-3 sm:grid-cols-2">
                             {e.files.map((f) => {
                               const src = fileSrc(f.id)
                               const kind = (f.kind || '').toUpperCase()
                               return (
-                                <div key={f.id}>
+                                <figure key={f.id} className={`rounded-lg overflow-hidden min-w-0 ${kind === 'VIDEO' ? 'sm:col-span-2' : ''}`} style={CARD_STYLE}>
                                   {kind === 'VIDEO' ? (
-                                    <video controls preload="metadata" className="w-full max-w-2xl rounded-lg bg-black max-h-80" src={src} />
+                                    <video controls preload="metadata" className="w-full bg-black max-h-80" src={src} />
                                   ) : kind === 'AUDIO' ? (
-                                    <audio controls preload="metadata" className="w-full max-w-lg" src={src} />
+                                    <div className="p-3" style={{ background: SUBTLE_BG }}><audio controls preload="metadata" className="w-full" src={src} /></div>
                                   ) : kind === 'PHOTO' ? (
                                     // eslint-disable-next-line @next/next/no-img-element
-                                    <img src={src} alt={f.fileName} className="max-h-80 rounded-lg border border-[var(--light-gray)]" />
+                                    <img src={src} alt={f.fileName} className="w-full max-h-80 object-contain" style={{ background: SUBTLE_BG }} />
                                   ) : null}
-                                  <div className="flex items-center gap-2 mt-1 text-[11px] text-[var(--mid-gray)]">
-                                    {kind === 'VIDEO' ? <VideoIcon className="w-3.5 h-3.5" /> : kind === 'AUDIO' ? <Mic className="w-3.5 h-3.5" /> : <ImageIcon className="w-3.5 h-3.5" />}
-                                    <span className="truncate">{f.fileName}</span>
-                                    {f.sizeBytes ? <span>· {fmtSize(f.sizeBytes)}</span> : null}
-                                    <a href={src} download={f.fileName} className="ml-auto inline-flex items-center gap-1 text-[var(--deep-teal)] hover:underline">
-                                      <Download className="w-3.5 h-3.5" /> Save
+                                  <figcaption className="flex items-center gap-2 px-3 py-2 text-[11.5px]" style={{ color: 'var(--mid-gray)', borderTop: kind === 'OTHER' || !kind ? undefined : '1px solid var(--light-gray)' }}>
+                                    {kind === 'VIDEO' ? <VideoIcon size={14} aria-hidden /> : kind === 'AUDIO' ? <Mic size={14} aria-hidden /> : <ImageIcon size={14} aria-hidden />}
+                                    <span className="truncate flex-1 min-w-0" title={f.fileName}>{f.fileName}</span>
+                                    {f.sizeBytes ? <span className="shrink-0" style={{ fontVariantNumeric: 'tabular-nums' }}>{fmtSize(f.sizeBytes)}</span> : null}
+                                    <a href={src} download={f.fileName} className={`${BTN_SM} shrink-0`} style={SECONDARY_STYLE}>
+                                      <Download size={13} /> Save
                                     </a>
-                                  </div>
-                                </div>
+                                  </figcaption>
+                                </figure>
                               )
                             })}
                           </div>
-                        )}
-                      </div>
-                    )
-                  })}
-                </div>
-              )}
-            </>
-          )}
-        </section>
-      </div>
+                        </div>
+                      )}
+                    </li>
+                  )
+                })}
+              </ul>
+            )}
+          </>
+        )}
+      </DashCard>
     </div>
   )
 }
