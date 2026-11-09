@@ -5,6 +5,13 @@
 
 import { useEffect, useState } from 'react'
 import HomecareView from '@/components/HomecareAdmin'
+import {
+  PAGE, PageHeader, DashCard, KpiCard, GroupLabel, PillTabs, StatusPill, Tag, Banner, EmptyState, ErrorCard,
+  RowsSkeleton, Icon, type Tone,
+  CONTROL, CONTROL_STYLE, TEXTAREA, LABEL, LABEL_STYLE,
+  BTN_PRIMARY, BTN_SECONDARY, BTN_SM, BTN_DANGER_GHOST, PRIMARY_STYLE, SECONDARY_STYLE, DANGER,
+  TH, TH_STYLE, TD, TR, TR_STYLE, CARD_STYLE, SUBTLE_BG,
+} from '@/components/hub/ui'
 
 interface Faq {
   id: string
@@ -38,7 +45,7 @@ export default function AdminPage() {
   }, [])
 
   if (authed === null) {
-    return <div className="py-20 text-center text-[color:var(--mid-gray)]">Loading…</div>
+    return <div role="status" className="py-20 text-center text-sm" style={{ color: 'var(--mid-gray)' }}>Loading…</div>
   }
   if (!authed) return <LoginGate onSuccess={() => setAuthed(true)} />
   return <Console onLogout={() => setAuthed(false)} />
@@ -72,38 +79,55 @@ function LoginGate({ onSuccess }: { onSuccess: () => void }) {
     }
   }
 
-  const inputCls =
-    'w-full px-3 py-2.5 rounded-xl border border-[color:var(--light-gray)] text-sm focus:outline-none focus:border-[color:var(--teal)] focus:ring-2 focus:ring-[color:var(--teal)]/20'
+  const inputCls = `${CONTROL} w-full !h-11 !rounded-xl`
 
   return (
-    <div className="max-w-sm mx-auto mt-16 bg-white rounded-3xl shadow-[0_24px_60px_rgba(46,94,90,0.12)] border border-[color:var(--light-gray)] p-7">
-      <h1 className="text-xl font-semibold text-[color:var(--charcoal)] mb-1" style={{ fontFamily: 'var(--font-display)' }}>
-        Admin Console
-      </h1>
-      <p className="text-sm text-[color:var(--mid-gray)] mb-5">Sign in to view sessions and manage Aurora.</p>
-      <form onSubmit={submit} className="space-y-3">
-        <input
-          value={username}
-          onChange={(e) => setUsername(e.target.value)}
-          placeholder="Username"
-          autoCapitalize="none"
-          autoCorrect="off"
-          autoFocus
-          className={inputCls}
-        />
-        <input
-          type="password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          placeholder="Password"
-          className={inputCls}
-        />
-        {err && <div className="text-sm text-red-600">{err}</div>}
+    <div
+      className="max-w-sm mx-auto mt-8 sm:mt-16 rounded-[18px] px-5 py-8 sm:px-8"
+      style={{ background: '#fff', border: '1px solid var(--light-gray)', boxShadow: '0 2px 12px rgba(25,72,80,0.06)' }}
+    >
+      <div className="mb-6">
+        <div className="text-[11px] font-semibold uppercase tracking-wider mb-1" style={{ fontFamily: 'var(--font-display)', color: 'var(--teal)' }}>
+          Internal
+        </div>
+        <h1 className="text-[22px] font-bold leading-tight tracking-tight" style={{ fontFamily: 'var(--font-display)', color: 'var(--deep-teal)' }}>
+          Admin Console
+        </h1>
+        <p className="text-sm mt-1.5" style={{ color: 'var(--mid-gray)' }}>Sign in to view sessions and manage Aurora.</p>
+      </div>
+      <form onSubmit={submit} className="space-y-4">
+        <div>
+          <label htmlFor="admin-username" className={LABEL} style={LABEL_STYLE}>Username</label>
+          <input
+            id="admin-username"
+            value={username}
+            onChange={(e) => setUsername(e.target.value)}
+            placeholder="Username"
+            autoCapitalize="none"
+            autoCorrect="off"
+            autoFocus
+            className={inputCls}
+            style={CONTROL_STYLE}
+          />
+        </div>
+        <div>
+          <label htmlFor="admin-password" className={LABEL} style={LABEL_STYLE}>Password</label>
+          <input
+            id="admin-password"
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            placeholder="Password"
+            className={inputCls}
+            style={CONTROL_STYLE}
+          />
+        </div>
+        {err && <Banner tone="error">{err}</Banner>}
         <button
           type="submit"
           disabled={busy || !username || !password}
-          className="w-full py-2.5 rounded-xl text-white font-medium disabled:opacity-40"
-          style={{ background: 'linear-gradient(135deg, var(--teal), var(--deep-teal))' }}
+          className={`${BTN_PRIMARY} w-full !h-11 !rounded-xl`}
+          style={PRIMARY_STYLE}
         >
           {busy ? 'Signing in…' : 'Sign in'}
         </button>
@@ -217,32 +241,24 @@ function Console({ onLogout }: { onLogout: () => void }) {
   }
 
   return (
-    <div>
-      <div className="flex items-center justify-between mb-4">
-        <div>
-          <h1 className="text-2xl font-semibold text-[color:var(--charcoal)]" style={{ fontFamily: 'var(--font-display)' }}>
-            Admin Console
-          </h1>
-          <p className="text-sm text-[color:var(--mid-gray)]">Consultant sessions and Aurora chatbot management.</p>
-        </div>
-        <button onClick={logout} className="text-sm px-3 py-2 rounded-lg border border-[color:var(--light-gray)] text-[color:var(--mid-gray)] hover:bg-[color:var(--off-white)]">
-          Log out
-        </button>
-      </div>
-
-      <div className="flex gap-1 mb-6 p-1 bg-[color:var(--off-white)] rounded-xl w-fit">
-        {([['sessions', 'Sessions'], ['payments', 'Payment History'], ['users', 'Users'], ['tickets', 'Tickets'], ['homecare', 'Homecare'], ['aurora', 'Aurora Assistant']] as const).map(([k, label]) => (
-          <button
-            key={k}
-            onClick={() => setTab(k)}
-            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-              tab === k ? 'bg-white text-[color:var(--deep-teal)] shadow-sm' : 'text-[color:var(--mid-gray)]'
-            }`}
-          >
-            {label}
+    <div className={PAGE}>
+      <PageHeader
+        eyebrow="Aura Health · Internal"
+        title="Admin Console"
+        description="Consultant sessions and Aurora chatbot management."
+        actions={
+          <button type="button" onClick={logout} className={BTN_SECONDARY} style={SECONDARY_STYLE}>
+            Log out
           </button>
-        ))}
-      </div>
+        }
+      />
+
+      <PillTabs
+        label="Admin sections"
+        value={tab}
+        onChange={(id) => setTab(id as typeof tab)}
+        tabs={([['sessions', 'Sessions'], ['payments', 'Payment History'], ['users', 'Users'], ['tickets', 'Tickets'], ['homecare', 'Homecare'], ['aurora', 'Aurora Assistant']] as const).map(([k, label]) => ({ id: k, label }))}
+      />
 
       {tab === 'sessions' && <SessionsView onUnauthorized={onLogout} />}
 
@@ -256,53 +272,57 @@ function Console({ onLogout }: { onLogout: () => void }) {
 
       {tab === 'aurora' && (
         <>
-          {error && <div className="mb-4 text-sm text-red-600">{error}</div>}
+          {error && <Banner tone="error">{error}</Banner>}
           {loading ? (
-            <div className="py-20 text-center text-[color:var(--mid-gray)]">Loading templates…</div>
+            <div className="rounded-xl overflow-hidden" style={CARD_STYLE}><RowsSkeleton rows={4} label="Loading templates" /></div>
           ) : (
-            <div className="space-y-8">
+            <div className="space-y-5">
           {/* Settings */}
-          <section className="bg-white rounded-2xl border border-[color:var(--light-gray)] p-5">
-            <h2 className="font-semibold text-[color:var(--charcoal)] mb-4" style={{ fontFamily: 'var(--font-display)' }}>
-              General messages
-            </h2>
+          <DashCard
+            title="General messages"
+            description="What Aurora says when the chat opens, when nothing matches, and how the AI behaves."
+            icon={<Icon name="edit" size={16} />}
+          >
             <div className="space-y-4">
               {(Object.keys(SETTING_LABELS) as (keyof Settings)[]).map((k) => (
                 <div key={k}>
-                  <label className="block text-sm font-medium text-[color:var(--charcoal)]">{SETTING_LABELS[k].title}</label>
-                  <p className="text-xs text-[color:var(--mid-gray)] mb-1.5">{SETTING_LABELS[k].hint}</p>
+                  <label htmlFor={`setting-${k}`} className={LABEL} style={LABEL_STYLE}>{SETTING_LABELS[k].title}</label>
+                  <p className="text-xs mb-1.5" style={{ color: 'var(--mid-gray)' }}>{SETTING_LABELS[k].hint}</p>
                   <textarea
+                    id={`setting-${k}`}
                     value={settings[k]}
                     onChange={(e) => setSettings((s) => ({ ...s, [k]: e.target.value }))}
                     rows={k === 'system_prompt' ? 8 : 3}
-                    className="w-full px-3 py-2 rounded-xl border border-[color:var(--light-gray)] text-sm font-mono focus:outline-none focus:border-[color:var(--teal)] focus:ring-2 focus:ring-[color:var(--teal)]/20"
+                    className={`${TEXTAREA} font-mono`}
+                    style={CONTROL_STYLE}
                   />
                 </div>
               ))}
             </div>
             <button
+              type="button"
               onClick={saveSettings}
-              className="mt-4 px-4 py-2 rounded-xl text-white text-sm font-medium"
-              style={{ background: 'linear-gradient(135deg, var(--teal), var(--deep-teal))' }}
+              className={`${BTN_PRIMARY} mt-4`}
+              style={PRIMARY_STYLE}
             >
               Save messages
             </button>
-          </section>
+          </DashCard>
 
           {/* FAQ entries */}
-          <section>
-            <div className="flex items-center justify-between mb-3">
-              <h2 className="font-semibold text-[color:var(--charcoal)]" style={{ fontFamily: 'var(--font-display)' }}>
-                Standard questions ({faqs.length})
-              </h2>
+          <section className="space-y-3">
+            <div className="flex items-center justify-between gap-3">
+              <GroupLabel hint={`${faqs.length}`}>Standard questions</GroupLabel>
               <button
+                type="button"
                 onClick={addFaq}
-                className="text-sm px-3 py-2 rounded-lg text-[color:var(--deep-teal)] bg-[color:var(--pale-teal)] hover:opacity-80 font-medium"
+                className={BTN_SECONDARY}
+                style={SECONDARY_STYLE}
               >
-                + Add question
+                <Icon name="plus" size={14} /> Add question
               </button>
             </div>
-            <div className="space-y-4">
+            <div className="space-y-3">
               {faqs.map((f) => (
                 <FaqCard
                   key={f.id}
@@ -321,7 +341,7 @@ function Console({ onLogout }: { onLogout: () => void }) {
       )}
 
       {toast && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 px-4 py-2 rounded-full text-white text-sm shadow-lg z-50"
+        <div role="status" className="fixed bottom-6 left-1/2 -translate-x-1/2 px-4 py-2 rounded-lg text-white text-sm font-semibold shadow-lg z-50"
           style={{ background: 'var(--deep-teal)' }}>
           {toast}
         </div>
@@ -340,45 +360,55 @@ function FaqCard({
   onDelete: () => void
 }) {
   return (
-    <div className={`bg-white rounded-2xl border p-5 ${faq.enabled ? 'border-[color:var(--light-gray)]' : 'border-dashed border-[color:var(--light-gray)] opacity-70'}`}>
+    <div className="rounded-xl p-4 sm:p-5 min-w-0"
+      style={faq.enabled ? CARD_STYLE : { background: SUBTLE_BG, border: '1px dashed var(--light-gray)' }}>
       <div className="grid sm:grid-cols-2 gap-3 mb-3">
-        <div>
-          <label className="block text-xs font-medium text-[color:var(--mid-gray)] mb-1">Quick-reply button label</label>
+        <div className="min-w-0">
+          <label htmlFor={`faq-label-${faq.id}`} className={LABEL} style={LABEL_STYLE}>Quick-reply button label</label>
           <input
+            id={`faq-label-${faq.id}`}
             value={faq.label}
             onChange={(e) => onChange({ label: e.target.value })}
             placeholder="(leave blank to hide as a button)"
-            className="w-full px-3 py-2 rounded-xl border border-[color:var(--light-gray)] text-sm focus:outline-none focus:border-[color:var(--teal)] focus:ring-2 focus:ring-[color:var(--teal)]/20"
+            className={`${CONTROL} w-full`}
+            style={CONTROL_STYLE}
           />
         </div>
-        <div>
-          <label className="block text-xs font-medium text-[color:var(--mid-gray)] mb-1">Trigger keywords (comma-separated)</label>
+        <div className="min-w-0">
+          <label htmlFor={`faq-keywords-${faq.id}`} className={LABEL} style={LABEL_STYLE}>Trigger keywords (comma-separated)</label>
           <input
+            id={`faq-keywords-${faq.id}`}
             value={faq.keywords}
             onChange={(e) => onChange({ keywords: e.target.value })}
             placeholder="book, schedule, appointment"
-            className="w-full px-3 py-2 rounded-xl border border-[color:var(--light-gray)] text-sm focus:outline-none focus:border-[color:var(--teal)] focus:ring-2 focus:ring-[color:var(--teal)]/20"
+            className={`${CONTROL} w-full`}
+            style={CONTROL_STYLE}
           />
         </div>
       </div>
-      <label className="block text-xs font-medium text-[color:var(--mid-gray)] mb-1">Answer</label>
+      <label htmlFor={`faq-answer-${faq.id}`} className={LABEL} style={LABEL_STYLE}>Answer</label>
       <textarea
+        id={`faq-answer-${faq.id}`}
         value={faq.answer}
         onChange={(e) => onChange({ answer: e.target.value })}
         rows={5}
-        className="w-full px-3 py-2 rounded-xl border border-[color:var(--light-gray)] text-sm focus:outline-none focus:border-[color:var(--teal)] focus:ring-2 focus:ring-[color:var(--teal)]/20 whitespace-pre-wrap"
+        className={`${TEXTAREA} whitespace-pre-wrap`}
+        style={CONTROL_STYLE}
       />
-      <div className="flex items-center justify-between mt-3">
-        <label className="flex items-center gap-2 text-sm text-[color:var(--mid-gray)] cursor-pointer">
-          <input type="checkbox" checked={faq.enabled} onChange={onToggle} className="accent-[color:var(--teal)]" />
-          {faq.enabled ? 'Active' : 'Disabled'}
+      <div className="flex flex-wrap items-center justify-between gap-2 mt-3">
+        <label className="flex items-center gap-2 text-sm cursor-pointer" style={{ color: 'var(--mid-gray)' }}>
+          <input type="checkbox" checked={faq.enabled} onChange={onToggle} className="w-4 h-4 accent-[color:var(--teal)]" />
+          <StatusPill tone={faq.enabled ? 'success' : 'neutral'}>{faq.enabled ? 'Active' : 'Disabled'}</StatusPill>
         </label>
         <div className="flex gap-2">
-          <button onClick={onDelete} className="text-sm px-3 py-1.5 rounded-lg text-red-600 hover:bg-red-50">Delete</button>
+          <button type="button" onClick={onDelete} className={`${BTN_DANGER_GHOST} !h-9 !text-sm`} style={{ color: DANGER }}>
+            <Icon name="trash" size={14} /> Delete
+          </button>
           <button
+            type="button"
             onClick={onSave}
-            className="text-sm px-4 py-1.5 rounded-lg text-white font-medium"
-            style={{ background: 'linear-gradient(135deg, var(--teal), var(--deep-teal))' }}
+            className={BTN_PRIMARY}
+            style={PRIMARY_STYLE}
           >
             Save
           </button>
@@ -409,6 +439,38 @@ interface Consultant {
 
 function statusLabel(s: string): string {
   return s.replace(/_/g, ' ').toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase())
+}
+
+// Session status → StatusPill tone. Display only; unknown values read neutral.
+function sessionTone(s: string): Tone {
+  const v = s.toUpperCase()
+  if (/COMPLETE|DONE|ATTENDED/.test(v)) return 'success'
+  if (/NO_?SHOW|ABSENT|LATE/.test(v)) return 'warn'
+  if (/CANCEL/.test(v)) return 'neutral'
+  if (/SCHEDULED|CONFIRMED|BOOKED|PENDING/.test(v)) return 'info'
+  return 'neutral'
+}
+
+/** Count / summary text that sits beside a toolbar's filters. */
+function ToolbarCount({ children }: { children: React.ReactNode }) {
+  return <span className="text-sm tabular-nums" style={{ color: 'var(--mid-gray)' }}>{children}</span>
+}
+
+/** Search box: kit control with a leading magnifier. */
+function SearchBox({ value, onChange, placeholder, minWidth }: { value: string; onChange: (v: string) => void; placeholder: string; minWidth: number }) {
+  return (
+    <div className="relative flex-1" style={{ minWidth: Math.min(minWidth, 240) }}>
+      <Icon name="search" size={14} className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: 'var(--mid-gray)' }} />
+      <input
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        aria-label={placeholder}
+        className={`${CONTROL} w-full pl-8`}
+        style={CONTROL_STYLE}
+      />
+    </div>
+  )
 }
 
 // ── Payment History: PayMongo booking-downpayment payments ───────────────────
@@ -459,103 +521,92 @@ function PaymentsView({ onUnauthorized }: { onUnauthorized: () => void }) {
   }, [branch, onUnauthorized])
 
   return (
-    <div>
-      <div className="flex flex-wrap gap-3 items-center mb-4">
-        <div className="flex gap-1 p-1 bg-[color:var(--off-white)] rounded-lg">
-          {(
-            [
-              ['', 'All branches'],
-              ['SBEA', 'East'],
-              ['SBGH', 'Greenhills'],
-            ] as const
-          ).map(([v, l]) => (
-            <button
-              key={v}
-              onClick={() => setBranch(v)}
-              className={`px-3 py-1.5 rounded-md text-sm ${branch === v ? 'bg-white text-[color:var(--deep-teal)] shadow-sm font-medium' : 'text-[color:var(--mid-gray)]'}`}
-            >
-              {l}
-            </button>
-          ))}
-        </div>
-        <span className="text-sm text-[color:var(--mid-gray)]">
+    <div className="space-y-4">
+      <div className="flex flex-wrap gap-3 items-center">
+        <PillTabs
+          label="Branch"
+          value={branch}
+          onChange={(id) => setBranch(id)}
+          tabs={([
+            ['', 'All branches'],
+            ['SBEA', 'East'],
+            ['SBGH', 'Greenhills'],
+          ] as const).map(([v, l]) => ({ id: v, label: l }))}
+        />
+        <ToolbarCount>
           {payments.length} payments · {totals.paidCount} paid
-        </span>
+        </ToolbarCount>
       </div>
 
-      <div className="grid grid-cols-3 gap-3 mb-5">
-        {(
-          [
-            ['Gross charged', totals.gross, 'var(--deep-teal)'],
-            ['PayMongo fees', totals.fee, 'var(--clay)'],
-            ['Net', totals.net, 'var(--moss)'],
-          ] as const
-        ).map(([label, val, color]) => (
-          <div key={label} className="bg-white rounded-2xl border border-[color:var(--light-gray)] p-4">
-            <div className="text-[11px] uppercase tracking-wide text-[color:var(--mid-gray)]">{label}</div>
-            <div className="text-[20px] font-semibold mt-1" style={{ color }}>{peso(val)}</div>
-          </div>
-        ))}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <KpiCard label="Gross charged" value={peso(totals.gross)} icon={<Icon name="wallet" size={16} />} />
+        <KpiCard label="PayMongo fees" value={peso(totals.fee)} accent="var(--clay)" icon={<Icon name="tag" size={16} />} />
+        <KpiCard label="Net" value={peso(totals.net)} icon={<Icon name="check" size={16} />} />
       </div>
 
       {loading ? (
-        <div className="py-16 text-center text-[color:var(--mid-gray)]">Loading payments…</div>
+        <div className="rounded-xl overflow-hidden" style={CARD_STYLE}><RowsSkeleton rows={4} label="Loading payments" /></div>
       ) : error ? (
-        <div className="text-sm text-red-600">{error}</div>
+        <ErrorCard title={error} />
       ) : payments.length === 0 ? (
-        <div className="py-16 text-center text-[color:var(--mid-gray)]">No payments yet.</div>
+        <div className="rounded-xl" style={CARD_STYLE}><EmptyState icon="wallet" title="No payments yet." /></div>
       ) : (
-        <div className="bg-white rounded-2xl border border-[color:var(--light-gray)] overflow-x-auto">
+        <DashCard
+          title="Booking downpayments"
+          description="PayMongo payments for booking downpayments."
+          icon={<Icon name="wallet" size={16} />}
+          flush
+          footer={<>
+            &ldquo;For Clearing&rdquo; = the payment cleared on PayMongo but isn&rsquo;t yet reconciled to a bank payout. Live
+            &ldquo;Remitted to Bank&rdquo; tracking (PayMongo Payouts API) is the next phase.
+          </>}
+        >
+          <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="text-left text-[11px] uppercase tracking-wide text-[color:var(--mid-gray)] bg-[color:var(--off-white)]">
-                <th className="px-4 py-2 font-semibold">Date</th>
-                <th className="px-3 py-2 font-semibold">Patient</th>
-                <th className="px-3 py-2 font-semibold">Branch</th>
-                <th className="px-3 py-2 font-semibold text-right">Amount</th>
-                <th className="px-3 py-2 font-semibold text-right">Fee</th>
-                <th className="px-3 py-2 font-semibold text-right">Net</th>
-                <th className="px-4 py-2 font-semibold">Status</th>
+              <tr>
+                <th scope="col" className={`${TH} !pl-4 sm:!pl-5`} style={TH_STYLE}>Date</th>
+                <th scope="col" className={TH} style={TH_STYLE}>Patient</th>
+                <th scope="col" className={TH} style={TH_STYLE}>Branch</th>
+                <th scope="col" className={`${TH} !text-right`} style={TH_STYLE}>Amount</th>
+                <th scope="col" className={`${TH} !text-right`} style={TH_STYLE}>Fee</th>
+                <th scope="col" className={`${TH} !text-right`} style={TH_STYLE}>Net</th>
+                <th scope="col" className={`${TH} !pr-4 sm:!pr-5`} style={TH_STYLE}>Status</th>
               </tr>
             </thead>
             <tbody>
               {payments.map((p) => (
-                <tr key={p.id} className="border-t border-[color:var(--light-gray)]">
-                  <td className="px-4 py-2 whitespace-nowrap">
+                <tr key={p.id} className={TR} style={TR_STYLE}>
+                  <td className={`${TD} !pl-4 sm:!pl-5 whitespace-nowrap`}>
                     {new Date(p.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
                   </td>
-                  <td className="px-3 py-2">
+                  <td className={TD} style={{ color: 'var(--charcoal)' }}>
                     {p.patientName}
-                    {p.department && <div className="text-[11px] text-[color:var(--mid-gray)]">{p.department}</div>}
+                    {p.department && <div className="text-[11px]" style={{ color: 'var(--mid-gray)' }}>{p.department}</div>}
                   </td>
-                  <td className="px-3 py-2 text-[color:var(--mid-gray)] whitespace-nowrap">{p.branch || '—'}</td>
-                  <td className="px-3 py-2 text-right whitespace-nowrap">{peso(p.gross)}</td>
-                  <td className="px-3 py-2 text-right whitespace-nowrap text-[color:var(--clay)]">
+                  <td className={`${TD} whitespace-nowrap`} style={{ color: 'var(--mid-gray)' }}>{p.branch || '—'}</td>
+                  <td className={`${TD} text-right whitespace-nowrap tabular-nums`}>{peso(p.gross)}</td>
+                  <td className={`${TD} text-right whitespace-nowrap tabular-nums`} style={{ color: 'var(--clay)' }}>
                     {p.fee == null ? '—' : `−${peso(p.fee)}`}
                   </td>
-                  <td className="px-3 py-2 text-right whitespace-nowrap font-medium">{peso(p.net)}</td>
-                  <td className="px-4 py-2 whitespace-nowrap">
+                  <td className={`${TD} text-right whitespace-nowrap tabular-nums font-semibold`} style={{ color: 'var(--charcoal)' }}>{peso(p.net)}</td>
+                  <td className={`${TD} !pr-4 sm:!pr-5 whitespace-nowrap`}>
                     {p.status === 'Paid' ? (
-                      <>
-                        <span className="inline-block px-2 py-0.5 rounded text-[11px] font-semibold bg-emerald-50 text-emerald-700">Paid</span>
-                        {p.remittance && (
-                          <span className="ml-1 inline-block px-2 py-0.5 rounded text-[11px] font-semibold bg-amber-50 text-amber-700">{p.remittance}</span>
-                        )}
-                      </>
+                      <span className="inline-flex items-center gap-1.5">
+                        <StatusPill tone="success">Paid</StatusPill>
+                        {p.remittance && <Tag tone="warn">{p.remittance}</Tag>}
+                      </span>
                     ) : (
-                      <span className="inline-block px-2 py-0.5 rounded text-[11px] font-semibold bg-[color:var(--off-white)] text-[color:var(--mid-gray)]">Pending</span>
+                      <StatusPill tone="neutral">Pending</StatusPill>
                     )}
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
-        </div>
+          </div>
+        </DashCard>
       )}
-      <p className="text-[11px] text-[color:var(--mid-gray)] mt-3 leading-relaxed">
-        &ldquo;For Clearing&rdquo; = the payment cleared on PayMongo but isn&rsquo;t yet reconciled to a bank payout. Live
-        &ldquo;Remitted to Bank&rdquo; tracking (PayMongo Payouts API) is the next phase.
-      </p>
     </div>
   )
 }
@@ -629,81 +680,78 @@ function TicketsView({ onUnauthorized }: { onUnauthorized: () => void }) {
   const shown = tickets.filter((t) => (filter === 'open' ? t.status !== 'RESOLVED' : true))
 
   return (
-    <div>
-      <div className="flex flex-wrap gap-3 items-center mb-4">
-        <div className="flex gap-1 p-1 bg-[color:var(--off-white)] rounded-lg">
-          {([['open', 'Open'], ['all', 'All']] as const).map(([v, l]) => (
-            <button key={v} onClick={() => setFilter(v)}
-              className={`px-3 py-1.5 rounded-md text-sm ${filter === v ? 'bg-white text-[color:var(--deep-teal)] shadow-sm font-medium' : 'text-[color:var(--mid-gray)]'}`}>
-              {l}
-            </button>
-          ))}
-        </div>
-        <span className="text-sm text-[color:var(--mid-gray)]">{openCount} open · {tickets.length} total</span>
+    <div className="space-y-4">
+      <div className="flex flex-wrap gap-3 items-center">
+        <PillTabs
+          label="Ticket filter"
+          value={filter}
+          onChange={(id) => setFilter(id as 'open' | 'all')}
+          tabs={([['open', 'Open'], ['all', 'All']] as const).map(([v, l]) => ({ id: v, label: l }))}
+        />
+        <ToolbarCount>{openCount} open · {tickets.length} total</ToolbarCount>
       </div>
 
       {loading ? (
-        <div className="py-16 text-center text-[color:var(--mid-gray)]">Loading tickets…</div>
+        <div className="rounded-xl overflow-hidden" style={CARD_STYLE}><RowsSkeleton rows={3} label="Loading tickets" /></div>
       ) : error ? (
-        <div className="text-sm text-red-600">{error}</div>
+        <ErrorCard title={error} />
       ) : shown.length === 0 ? (
-        <div className="py-16 text-center text-[color:var(--mid-gray)]">No {filter === 'open' ? 'open ' : ''}tickets.</div>
+        <div className="rounded-xl" style={CARD_STYLE}><EmptyState icon="check" title={`No ${filter === 'open' ? 'open ' : ''}tickets.`} /></div>
       ) : (
         <div className="space-y-3">
           {shown.map((t) => {
             const resolved = t.status === 'RESOLVED'
             return (
-              <div key={t.id} className="bg-white rounded-2xl border border-[color:var(--light-gray)] p-5">
+              <div key={t.id} className="rounded-xl p-4 sm:p-5 min-w-0" style={CARD_STYLE}>
                 <div className="flex items-start justify-between gap-3 flex-wrap">
                   <div className="min-w-0">
-                    <div className="font-semibold text-[color:var(--charcoal)]">{t.subject}</div>
-                    <div className="text-xs text-[color:var(--mid-gray)] mt-0.5">
+                    <div className="text-[14px] font-bold leading-snug" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>{t.subject}</div>
+                    <div className="text-xs mt-0.5 break-words" style={{ color: 'var(--mid-gray)' }}>
                       {t.patientName}{t.patientEmail ? ` · ${t.patientEmail}` : ''} · {t.branch} · {new Date(t.createdAt).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
                     </div>
                   </div>
-                  <span className={`shrink-0 text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded ${resolved ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>
-                    {resolved ? 'Resolved' : 'Open'}
-                  </span>
+                  <StatusPill tone={resolved ? 'success' : 'warn'}>{resolved ? 'Resolved' : 'Open'}</StatusPill>
                 </div>
 
-                <p className="text-sm text-gray-700 mt-2 whitespace-pre-wrap">{t.description}</p>
+                <p className="text-sm mt-2 whitespace-pre-wrap break-words" style={{ color: 'var(--charcoal)' }}>{t.description}</p>
 
                 {t.screenshot && (
                   <a href={t.screenshot} target="_blank" rel="noreferrer" className="inline-block mt-2">
                     {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={t.screenshot} alt="Screenshot" className="max-h-40 rounded-lg border border-[color:var(--light-gray)]" />
+                    <img src={t.screenshot} alt="Screenshot" className="max-h-40 rounded-lg" style={{ border: '1px solid var(--light-gray)' }} />
                   </a>
                 )}
 
                 {resolved && t.adminResponse && (
-                  <div className="mt-2 rounded-lg bg-[color:var(--off-white)] px-3 py-2">
-                    <div className="text-[10px] font-bold uppercase tracking-wide text-[color:var(--teal)]">Your response</div>
-                    <div className="text-[13px] text-gray-700 mt-0.5 whitespace-pre-wrap">{t.adminResponse}</div>
+                  <div className="mt-2.5 rounded-lg px-3 py-2" style={{ background: SUBTLE_BG, border: '1px solid var(--light-gray)' }}>
+                    <div className={`${LABEL} !mb-0`} style={{ ...LABEL_STYLE, color: 'var(--teal)' }}>Your response</div>
+                    <div className="text-[13px] mt-0.5 whitespace-pre-wrap" style={{ color: 'var(--charcoal)' }}>{t.adminResponse}</div>
                   </div>
                 )}
 
                 <div className="mt-3">
                   {resolved ? (
-                    <button onClick={() => act(t.id, { reopen: true })} disabled={busy} className="text-sm px-3 py-1.5 rounded-lg text-[color:var(--mid-gray)] border border-[color:var(--light-gray)] hover:bg-[color:var(--off-white)]">
+                    <button type="button" onClick={() => act(t.id, { reopen: true })} disabled={busy} className={BTN_SECONDARY} style={SECONDARY_STYLE}>
                       Reopen
                     </button>
                   ) : replyFor === t.id ? (
                     <div className="space-y-2">
                       <textarea value={replyText} onChange={(e) => setReplyText(e.target.value)} rows={2}
                         placeholder="Optional reply shown to the patient…"
-                        className="w-full px-3 py-2 rounded-xl border border-[color:var(--light-gray)] text-sm focus:outline-none focus:border-[color:var(--teal)]" />
+                        aria-label="Reply to the patient"
+                        className={TEXTAREA} style={CONTROL_STYLE} />
                       <div className="flex gap-2">
-                        <button onClick={() => act(t.id, { response: replyText })} disabled={busy}
-                          className="text-sm px-4 py-1.5 rounded-lg text-white font-medium" style={{ background: 'linear-gradient(135deg, var(--teal), var(--deep-teal))' }}>
+                        <button type="button" onClick={() => act(t.id, { response: replyText })} disabled={busy}
+                          className={BTN_PRIMARY} style={PRIMARY_STYLE}>
                           {busy ? 'Saving…' : 'Mark resolved'}
                         </button>
-                        <button onClick={() => { setReplyFor(null); setReplyText('') }} className="text-sm px-3 py-1.5 rounded-lg text-[color:var(--mid-gray)]">Cancel</button>
+                        <button type="button" onClick={() => { setReplyFor(null); setReplyText('') }} className={BTN_SECONDARY} style={SECONDARY_STYLE}>Cancel</button>
                       </div>
                     </div>
                   ) : (
-                    <button onClick={() => { setReplyFor(t.id); setReplyText('') }}
-                      className="text-sm px-4 py-1.5 rounded-lg text-[color:var(--deep-teal)] bg-[color:var(--pale-teal)] hover:opacity-80 font-medium">
-                      Resolve…
+                    <button type="button" onClick={() => { setReplyFor(t.id); setReplyText('') }}
+                      className={BTN_SECONDARY} style={{ ...SECONDARY_STYLE, color: 'var(--deep-teal)' }}>
+                      <Icon name="check" size={14} /> Resolve…
                     </button>
                   )}
                 </div>
@@ -754,69 +802,59 @@ function UsersView({ onUnauthorized }: { onUnauthorized: () => void }) {
     .filter((g) => g.users.length > 0)
 
   return (
-    <div>
-      <div className="flex flex-wrap gap-3 items-center mb-4">
-        <input
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-          placeholder="Search name, email, or username…"
-          className="px-3 py-2 rounded-lg border border-[color:var(--light-gray)] text-sm flex-1 min-w-[200px] focus:outline-none focus:border-[color:var(--teal)]"
-        />
-        <span className="text-sm text-[color:var(--mid-gray)]">{total} accounts</span>
+    <div className="space-y-4">
+      <div className="flex flex-wrap gap-3 items-center">
+        <SearchBox value={q} onChange={setQ} placeholder="Search name, email, or username…" minWidth={200} />
+        <ToolbarCount>{total} accounts</ToolbarCount>
       </div>
 
-      <div className="mb-4 px-4 py-2.5 rounded-xl bg-amber-50 border border-amber-200 text-[12.5px] text-amber-900 leading-relaxed">
+      <Banner tone="warn">
         Passwords are stored encrypted (one-way hashed) and cannot be displayed — not even here. To give a
         patient a known password, reset it from their record. Contact the developer to enable a reset button here.
-      </div>
+      </Banner>
 
       {loading ? (
-        <div className="py-16 text-center text-[color:var(--mid-gray)]">Loading users…</div>
+        <div className="rounded-xl overflow-hidden" style={CARD_STYLE}><RowsSkeleton rows={4} label="Loading users" /></div>
       ) : error ? (
-        <div className="text-sm text-red-600">{error}</div>
+        <ErrorCard title={error} />
       ) : filteredGroups.length === 0 ? (
-        <div className="py-16 text-center text-[color:var(--mid-gray)]">No accounts found.</div>
+        <div className="rounded-xl" style={CARD_STYLE}><EmptyState icon="users" title="No accounts found." /></div>
       ) : (
-        <div className="space-y-6">
+        <div className="space-y-5">
           {filteredGroups.map((g) => (
-            <section key={g.branch}>
-              <div className="flex items-center gap-2 mb-2">
-                <h3 className="text-sm font-semibold text-[color:var(--deep-teal)]" style={{ fontFamily: 'var(--font-display)' }}>
-                  {g.branchLabel}
-                </h3>
-                <span className="text-xs text-[color:var(--mid-gray)]">({g.users.length})</span>
-              </div>
-              <div className="bg-white rounded-2xl border border-[color:var(--light-gray)] overflow-x-auto">
+            <DashCard key={g.branch} title={g.branchLabel} icon={<Icon name="building" size={16} />} action={<Tag>{g.users.length} accounts</Tag>} flush>
+              <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
-                    <tr className="text-left text-[11px] uppercase tracking-wide text-[color:var(--mid-gray)] bg-[color:var(--off-white)]">
-                      <th className="px-4 py-2 font-semibold">Patient</th>
-                      <th className="px-3 py-2 font-semibold">Username</th>
-                      <th className="px-3 py-2 font-semibold">Email</th>
-                      <th className="px-3 py-2 font-semibold text-right">Sessions</th>
-                      <th className="px-3 py-2 font-semibold">Last session</th>
-                      <th className="px-4 py-2 font-semibold">Registered</th>
-                      <th className="px-4 py-2 font-semibold text-right">Preview</th>
+                    <tr>
+                      <th scope="col" className={`${TH} !pl-4 sm:!pl-5`} style={TH_STYLE}>Patient</th>
+                      <th scope="col" className={TH} style={TH_STYLE}>Username</th>
+                      <th scope="col" className={TH} style={TH_STYLE}>Email</th>
+                      <th scope="col" className={`${TH} !text-right`} style={TH_STYLE}>Sessions</th>
+                      <th scope="col" className={TH} style={TH_STYLE}>Last session</th>
+                      <th scope="col" className={TH} style={TH_STYLE}>Registered</th>
+                      <th scope="col" className={`${TH} !text-right !pr-4 sm:!pr-5`} style={TH_STYLE}>Preview</th>
                     </tr>
                   </thead>
                   <tbody>
                     {g.users.map((u) => (
-                      <tr key={u.id} className="border-t border-[color:var(--light-gray)]">
-                        <td className="px-4 py-2 font-medium text-[color:var(--charcoal)] whitespace-nowrap">{u.name}</td>
-                        <td className="px-3 py-2 whitespace-nowrap">{u.username || <span className="text-[color:var(--mid-gray)]">—</span>}</td>
-                        <td className="px-3 py-2 text-[color:var(--mid-gray)]">{u.email || '—'}</td>
-                        <td className="px-3 py-2 text-right whitespace-nowrap">{u.sessionCount}</td>
-                        <td className="px-3 py-2 text-[color:var(--mid-gray)] whitespace-nowrap">{u.lastSession || '—'}</td>
-                        <td className="px-4 py-2 text-[color:var(--mid-gray)] whitespace-nowrap">{u.createdAt}</td>
-                        <td className="px-4 py-2 text-right whitespace-nowrap">
+                      <tr key={u.id} className={TR} style={TR_STYLE}>
+                        <td className={`${TD} !pl-4 sm:!pl-5 font-semibold whitespace-nowrap`} style={{ color: 'var(--charcoal)' }}>{u.name}</td>
+                        <td className={`${TD} whitespace-nowrap`}>{u.username || <span style={{ color: 'var(--mid-gray)' }}>—</span>}</td>
+                        <td className={TD} style={{ color: 'var(--mid-gray)' }}>{u.email || '—'}</td>
+                        <td className={`${TD} text-right whitespace-nowrap tabular-nums`}>{u.sessionCount}</td>
+                        <td className={`${TD} whitespace-nowrap`} style={{ color: 'var(--mid-gray)' }}>{u.lastSession || '—'}</td>
+                        <td className={`${TD} whitespace-nowrap`} style={{ color: 'var(--mid-gray)' }}>{u.createdAt}</td>
+                        <td className={`${TD} !pr-4 sm:!pr-5 text-right whitespace-nowrap`}>
                           <a
                             href={`/impersonate/${u.id}`}
                             target="_blank"
                             rel="noreferrer"
                             title="Open this patient's portal exactly as they see it (new tab)"
-                            className="inline-block px-2.5 py-1 rounded-lg text-[12px] font-semibold text-[color:var(--deep-teal)] bg-[color:var(--pale-teal)] hover:opacity-80"
+                            className={BTN_SM}
+                            style={{ background: 'var(--pale-teal)', color: 'var(--deep-teal)' }}
                           >
-                            Open portal ↗
+                            Open portal <Icon name="external" size={12} />
                           </a>
                         </td>
                       </tr>
@@ -824,7 +862,7 @@ function UsersView({ onUnauthorized }: { onUnauthorized: () => void }) {
                   </tbody>
                 </table>
               </div>
-            </section>
+            </DashCard>
           ))}
         </div>
       )}
@@ -862,83 +900,73 @@ function SessionsView({ onUnauthorized }: { onUnauthorized: () => void }) {
   const filtered = consultants.filter((c) => c.name.toLowerCase().includes(q.trim().toLowerCase()))
 
   return (
-    <div>
-      <div className="flex flex-wrap gap-3 items-center mb-4">
-        <div className="flex gap-1 p-1 bg-[color:var(--off-white)] rounded-lg">
-          {(
-            [
-              ['', 'All branches'],
-              ['SANDBOX_EAST', 'East'],
-              ['SANDBOX_GREENHILLS', 'Greenhills'],
-            ] as const
-          ).map(([v, l]) => (
-            <button
-              key={v}
-              onClick={() => setBranch(v)}
-              className={`px-3 py-1.5 rounded-md text-sm ${branch === v ? 'bg-white text-[color:var(--deep-teal)] shadow-sm font-medium' : 'text-[color:var(--mid-gray)]'}`}
-            >
-              {l}
-            </button>
-          ))}
-        </div>
-        <input
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-          placeholder="Search consultant…"
-          className="px-3 py-2 rounded-lg border border-[color:var(--light-gray)] text-sm flex-1 min-w-[180px] focus:outline-none focus:border-[color:var(--teal)]"
+    <div className="space-y-4">
+      <div className="flex flex-wrap gap-3 items-center">
+        <PillTabs
+          label="Branch"
+          value={branch}
+          onChange={(id) => setBranch(id)}
+          tabs={([
+            ['', 'All branches'],
+            ['SANDBOX_EAST', 'East'],
+            ['SANDBOX_GREENHILLS', 'Greenhills'],
+          ] as const).map(([v, l]) => ({ id: v, label: l }))}
         />
-        <span className="text-sm text-[color:var(--mid-gray)]">
+        <SearchBox value={q} onChange={setQ} placeholder="Search consultant…" minWidth={180} />
+        <ToolbarCount>
           {filtered.length} consultants · {total} sessions
-        </span>
+        </ToolbarCount>
       </div>
 
       {loading ? (
-        <div className="py-16 text-center text-[color:var(--mid-gray)]">Loading sessions…</div>
+        <div className="rounded-xl overflow-hidden" style={CARD_STYLE}><RowsSkeleton rows={5} label="Loading sessions" /></div>
       ) : error ? (
-        <div className="text-sm text-red-600">{error}</div>
+        <ErrorCard title={error} />
       ) : filtered.length === 0 ? (
-        <div className="py-16 text-center text-[color:var(--mid-gray)]">No consultants found.</div>
+        <div className="rounded-xl" style={CARD_STYLE}><EmptyState icon="users" title="No consultants found." /></div>
       ) : (
-        <div className="space-y-3">
+        <div className="space-y-2.5">
           {filtered.map((c) => {
             const open = openId === c.staffId
             return (
-              <div key={c.staffId} className="bg-white rounded-2xl border border-[color:var(--light-gray)] overflow-hidden">
+              <div key={c.staffId} className="rounded-xl overflow-hidden min-w-0" style={CARD_STYLE}>
                 <button
+                  type="button"
+                  aria-expanded={open}
                   onClick={() => setOpenId(open ? null : c.staffId)}
-                  className="w-full flex items-center justify-between px-5 py-3.5 text-left hover:bg-[color:var(--off-white)]"
+                  className="w-full flex items-center justify-between gap-3 px-4 sm:px-5 py-3 text-left transition-colors hover:bg-[#F8FAF2] focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-[color:var(--teal)]"
                 >
                   <div className="min-w-0">
-                    <div className="font-semibold text-[color:var(--charcoal)] truncate">{c.name}</div>
-                    <div className="text-xs text-[color:var(--mid-gray)] truncate">
+                    <div className="text-[14px] font-bold truncate" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>{c.name}</div>
+                    <div className="text-xs truncate" style={{ color: 'var(--mid-gray)' }}>
                       {[c.department, c.branch].filter(Boolean).join(' · ') || '—'}
                     </div>
                   </div>
                   <div className="flex items-center gap-3 shrink-0">
-                    <span className="text-sm text-[color:var(--mid-gray)]">{c.sessions.length} sessions</span>
-                    <span className="text-[color:var(--mid-gray)] text-xs">{open ? '▲' : '▼'}</span>
+                    <Tag>{c.sessions.length} sessions</Tag>
+                    <Icon name="chevronRight" size={16} className={`transition-transform ${open ? 'rotate-90' : ''}`} style={{ color: 'var(--mid-gray)' }} />
                   </div>
                 </button>
                 {open && (
-                  <div className="border-t border-[color:var(--light-gray)] overflow-x-auto">
+                  <div className="overflow-x-auto" style={{ borderTop: '1px solid var(--light-gray)' }}>
                     <table className="w-full text-sm">
                       <thead>
-                        <tr className="text-left text-[11px] uppercase tracking-wide text-[color:var(--mid-gray)] bg-[color:var(--off-white)]">
-                          <th className="px-5 py-2 font-semibold">Date</th>
-                          <th className="px-3 py-2 font-semibold">Time</th>
-                          <th className="px-3 py-2 font-semibold">Patient</th>
-                          <th className="px-3 py-2 font-semibold">Type</th>
-                          <th className="px-5 py-2 font-semibold">Status</th>
+                        <tr>
+                          <th scope="col" className={`${TH} !pl-4 sm:!pl-5`} style={TH_STYLE}>Date</th>
+                          <th scope="col" className={TH} style={TH_STYLE}>Time</th>
+                          <th scope="col" className={TH} style={TH_STYLE}>Patient</th>
+                          <th scope="col" className={TH} style={TH_STYLE}>Type</th>
+                          <th scope="col" className={`${TH} !pr-4 sm:!pr-5`} style={TH_STYLE}>Status</th>
                         </tr>
                       </thead>
                       <tbody>
                         {c.sessions.map((s) => (
-                          <tr key={s.id} className="border-t border-[color:var(--light-gray)]">
-                            <td className="px-5 py-2 whitespace-nowrap">{s.date}</td>
-                            <td className="px-3 py-2 whitespace-nowrap text-[color:var(--mid-gray)]">{s.startTime}–{s.endTime}</td>
-                            <td className="px-3 py-2">{s.patientName}</td>
-                            <td className="px-3 py-2 text-[color:var(--mid-gray)]">{s.isTeletherapy ? 'Teletherapy' : 'In-clinic'}</td>
-                            <td className="px-5 py-2">{statusLabel(s.status)}</td>
+                          <tr key={s.id} className={TR} style={TR_STYLE}>
+                            <td className={`${TD} !pl-4 sm:!pl-5 whitespace-nowrap tabular-nums`}>{s.date}</td>
+                            <td className={`${TD} whitespace-nowrap tabular-nums`} style={{ color: 'var(--mid-gray)' }}>{s.startTime}–{s.endTime}</td>
+                            <td className={TD} style={{ color: 'var(--charcoal)' }}>{s.patientName}</td>
+                            <td className={TD}>{s.isTeletherapy ? <Tag tone="brand">Teletherapy</Tag> : <span style={{ color: 'var(--mid-gray)' }}>In-clinic</span>}</td>
+                            <td className={`${TD} !pr-4 sm:!pr-5 whitespace-nowrap`}><StatusPill tone={sessionTone(s.status)}>{statusLabel(s.status)}</StatusPill></td>
                           </tr>
                         ))}
                       </tbody>

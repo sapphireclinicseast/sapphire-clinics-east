@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { getSession } from '@/lib/session'
 import { getPaymentUrl } from '@/lib/api'
+import { CARD_STYLE, DANGER, BTN_SECONDARY, SECONDARY_STYLE, Icon } from '@/components/hub/ui'
 
 export default function PayPage() {
   const router = useRouter()
@@ -25,23 +26,26 @@ export default function PayPage() {
   }, [router, params])
 
   return (
-    <div className="max-w-md mx-auto text-center py-16 animate-fade-up">
+    <div className="max-w-md mx-auto text-center py-10 sm:py-16 animate-fade-up">
       {err ? (
-        <div className="card-static">
-          <div className="text-4xl mb-3">⚠️</div>
-          <h1 className="text-[22px] text-rose-700">Unable to open payment</h1>
-          <p className="text-sm text-[color:var(--mid-gray)] mt-1 mb-5">{err}</p>
-          <a href="/bookings" className="btn-secondary">← Back to my bookings</a>
+        <div role="alert" className="rounded-xl px-6 py-8" style={{ background: '#fff', border: '1px solid #FECACA' }}>
+          <span className="mx-auto mb-3 w-11 h-11 rounded-full flex items-center justify-center" style={{ background: '#FEF2F2', color: DANGER }}>
+            <Icon name="alert" size={20} />
+          </span>
+          <h1 className="text-[18px] font-bold tracking-normal" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>Unable to open payment</h1>
+          <p className="text-sm mt-1 mb-5 break-words" style={{ color: 'var(--mid-gray)' }}>{err}</p>
+          <a href="/bookings" className={BTN_SECONDARY} style={SECONDARY_STYLE}>← Back to my bookings</a>
         </div>
       ) : (
-        <div className="card-static">
-          <div className="relative inline-flex w-16 h-16 rounded-full bg-gradient-to-br from-[color:var(--gold)] to-[color:var(--gold-light)] items-center justify-center text-white text-2xl mb-4 animate-pulse-ring">
+        <div role="status" className="rounded-xl px-6 py-8" style={CARD_STYLE}>
+          <span className="mx-auto mb-4 w-14 h-14 rounded-full flex items-center justify-center text-xl font-bold animate-pulse-ring"
+            style={{ background: 'var(--pale-teal)', color: 'var(--deep-teal)', fontFamily: 'var(--font-display)' }}>
             ₱
-          </div>
-          <h1 className="text-[22px] text-[color:var(--deep-teal)]">Redirecting to PayMongo…</h1>
-          <p className="text-sm text-[color:var(--mid-gray)] mt-1">If you&apos;re not redirected, check your popup blocker and tap the button below.</p>
+          </span>
+          <h1 className="text-[18px] font-bold tracking-normal" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>Redirecting to PayMongo…</h1>
+          <p className="text-sm mt-1" style={{ color: 'var(--mid-gray)' }}>If you&apos;re not redirected, check your popup blocker and tap the button below.</p>
           <div className="mt-5">
-            <a href="/bookings" className="btn-secondary">← Back to my bookings</a>
+            <a href="/bookings" className={BTN_SECONDARY} style={SECONDARY_STYLE}>← Back to my bookings</a>
           </div>
         </div>
       )}

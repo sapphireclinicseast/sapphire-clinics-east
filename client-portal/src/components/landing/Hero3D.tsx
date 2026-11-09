@@ -1,20 +1,28 @@
 'use client'
 
-// Landing-page hero — a tall vertical card for the LEFT column, so the sign-in
-// card sits beside it on the right (no scrolling to reach sign-in). Carries the
-// Aura Health Rehab brand: dark Narra→Moss gradient with the logo lockup,
-// "Care for the whole human." headline, value props, and a compact rotator of
-// real, anonymized praise from our client satisfaction surveys.
+// Landing-page brand panel — the LEFT half of the landing's Get-started card,
+// in the Class Portal sign-in brand-panel treatment (class-portal/src/app/
+// sign-in/page.tsx): dark Narra→Moss gradient, mark + tagline, headline,
+// check list, and a quiet footer strip — here the rotator of real, anonymized
+// praise from our client satisfaction surveys, with the waving alpaca.
 // Quotes come from /api/booking-proxy/survey-praise.
 
 import { useEffect, useState } from 'react'
-import { Card } from '@/components/ui/card'
 import { Spotlight } from '@/components/ui/spotlight'
+import { Icon } from '@/components/hub/ui'
+
+const POINTS = [
+  'View your patient profile at a glance',
+  'Book a session and pay securely via PayMongo',
+  'Revisit your full session history anytime',
+  'Check your Reward Points available',
+  'Give feedback and raise concerns that go straight to the HR Department',
+]
 
 export function Hero3D() {
   return (
-    <Card
-      className="w-full min-h-[520px] relative overflow-hidden border-0 rounded-3xl text-white"
+    <aside
+      className="h-full w-full min-h-[480px] lg:min-h-[600px] relative overflow-hidden text-white"
       style={{
         background:
           'radial-gradient(800px 360px at 110% -10%, rgba(198,152,73,0.30), transparent 60%),' +
@@ -24,56 +32,49 @@ export function Hero3D() {
     >
       <Spotlight className="-top-40 left-0 md:left-60 md:-top-20" fill="rgb(198, 152, 73)" />
 
-      <div className="relative z-10 flex flex-col h-full p-8 md:p-10">
-        {/* Aura cream arch mark on the left, brand tagline on its right */}
-        <div className="flex items-center gap-4 self-start mb-2">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src="/aura-mark-cream.png"
-            alt="Aura Health Rehab"
-            className="h-16 w-auto shrink-0"
-          />
-          <div
-            className="text-[color:var(--paper)] text-[16px] md:text-[17px] font-semibold leading-[1.3]"
-            style={{ fontFamily: 'var(--font-display)' }}
-          >
-            <div>Feeling Seen.</div>
-            <div>Finding Footing.</div>
-            <div>Moving Forward.</div>
+      <div className="relative z-10 flex flex-col h-full gap-8 px-6 py-8 sm:px-10 sm:py-10">
+        <div>
+          {/* Aura cream arch mark on the left, brand tagline on its right */}
+          <div className="flex items-center gap-3.5">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/aura-mark-cream.png" alt="Aura Health Rehab" className="h-12 w-auto shrink-0" />
+            <div className="text-[13px] font-semibold leading-[1.35] text-white/90" style={{ fontFamily: 'var(--font-display)' }}>
+              <div>Feeling Seen.</div>
+              <div>Finding Footing.</div>
+              <div>Moving Forward.</div>
+            </div>
           </div>
+
+          <h1
+            className="mt-9 text-[34px] sm:text-[38px] xl:text-[42px] font-bold leading-[1.06] tracking-tight"
+            style={{ fontFamily: 'var(--font-display)', color: '#ffffff' }}
+          >
+            Care for the<br />whole human.
+          </h1>
+
+          <p className="mt-4 text-[15px] leading-relaxed text-white/90 max-w-md">
+            Aura Health Rehab — keep your profile and full session history in one calm place.
+          </p>
+
+          <ul className="mt-7 space-y-3 text-[13.5px] text-white/90 max-w-md">
+            {POINTS.map((line) => (
+              <li key={line} className="flex items-start gap-2.5">
+                <Icon name="check" size={16} className="mt-0.5 text-white/80" />
+                <span>{line}</span>
+              </li>
+            ))}
+          </ul>
         </div>
 
-        <h1
-          className="mt-6 text-[38px] md:text-[46px] leading-[1.04] tracking-[-0.02em] font-bold bg-clip-text text-transparent"
-          style={{ backgroundImage: 'linear-gradient(180deg, #EDF3D9 0%, rgba(237,243,217,0.65) 100%)' }}
-        >
-          Care for the<br />whole human.
-        </h1>
-
-        <p className="mt-5 text-[15px] md:text-[16px] text-white/75 leading-relaxed max-w-md">
-          Aura Health Rehab — keep your profile and full session history in one calm place.
-        </p>
-
-        <div
-          className="mt-7 flex flex-col gap-2 text-[13px] text-white/85 max-w-md"
-          style={{ fontFamily: 'var(--font-display)' }}
-        >
-          <div className="flex items-center gap-2"><Check /> View your patient profile at a glance</div>
-          <div className="flex items-center gap-2"><Check /> Book a session and pay securely via PayMongo</div>
-          <div className="flex items-center gap-2"><Check /> Revisit your full session history anytime</div>
-          <div className="flex items-center gap-2"><Check /> Check your Reward Points available</div>
-          <div className="flex items-start gap-2"><span className="mt-0.5"><Check /></span> Give feedback and raise concerns that go straight to the HR Department</div>
-        </div>
-
-        {/* Compact praise rotator pinned to the bottom of the card */}
-        <div className="mt-auto pt-8 max-w-[200px]">
+        {/* Praise rotator pinned to the bottom, beside the alpaca. */}
+        <div className="mt-auto pt-6 border-t border-white/20 md:pr-[190px]">
           <PraiseRotator />
         </div>
       </div>
 
       {/* Waving alpaca mascot in the lower-right, Aura logo on its body */}
-      <AlpacaMascot className="hidden md:block absolute right-2 bottom-2 w-[184px] z-[5] pointer-events-none" />
-    </Card>
+      <AlpacaMascot className="hidden md:block absolute right-3 bottom-3 w-[176px] z-[5] pointer-events-none" />
+    </aside>
   )
 }
 
@@ -153,7 +154,7 @@ function PraiseRotator() {
   }, [quotes])
 
   return (
-    <figure className="rounded-2xl bg-white/10 backdrop-blur-sm border border-white/10 p-5">
+    <figure className="rounded-xl bg-white/10 backdrop-blur-sm border border-white/15 p-4">
       <figcaption
         className="text-[10.5px] uppercase tracking-[0.16em] text-[color:var(--sun)] mb-2.5 flex items-center gap-2"
         style={{ fontFamily: 'var(--font-display)' }}
@@ -162,7 +163,7 @@ function PraiseRotator() {
         From our random client surveys
       </figcaption>
       <blockquote
-        className="text-[15px] md:text-[16px] leading-[1.45] text-[#EDF3D9] transition-opacity duration-[600ms] ease-in-out min-h-[3.2em]"
+        className="text-[14px] sm:text-[15px] leading-[1.45] text-[#EDF3D9] transition-opacity duration-[600ms] ease-in-out min-h-[3.2em]"
         style={{ opacity: visible ? 1 : 0 }}
       >
         <span className="text-[color:var(--sun)] text-2xl leading-none align-[-0.3em] mr-0.5">“</span>
@@ -170,13 +171,5 @@ function PraiseRotator() {
         <span className="text-[color:var(--sun)] text-2xl leading-none align-[-0.3em] ml-0.5">”</span>
       </blockquote>
     </figure>
-  )
-}
-
-function Check() {
-  return (
-    <span className="inline-flex w-4 h-4 rounded-full bg-white/15 items-center justify-center text-[10px]">
-      ✓
-    </span>
   )
 }

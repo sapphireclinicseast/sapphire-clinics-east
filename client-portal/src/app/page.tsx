@@ -22,6 +22,10 @@ import {
 import { branchLabel } from '@/lib/branch-label'
 import { getSession, setSession, clearSession, recoverSession } from '@/lib/session'
 import { Hero3D } from '@/components/landing/Hero3D'
+// Namespaced on purpose: the signed-out landing (AuthCard and friends) and the
+// signed-in dashboard are restyled in separate changes, so a namespace import
+// keeps the two from colliding on named imports from the same kit.
+import * as Kit from '@/components/hub/ui'
 import RewardsPanel from '@/components/RewardsPanel'
 import { DirectorySection } from '@/components/Directory'
 import PortalConcerns from '@/components/PortalConcerns'
@@ -84,29 +88,29 @@ function HomeInner() {
       ) : (
         <section
           id="get-started"
-          className="max-w-5xl mx-auto animate-fade-up grid gap-6 lg:grid-cols-[minmax(0,420px)_minmax(0,1fr)] items-start scroll-mt-24"
+          className="max-w-5xl mx-auto animate-fade-up grid gap-5 md:grid-cols-2 scroll-mt-24"
         >
-          {/* Left column — brand hero + feedback. items-start keeps this
-              column anchored to the top so the alpaca and complaint card stay
-              put even when the New-patient form grows the right column.
-              On mobile this whole column drops BELOW the right column (order-2)
-              so the flow reads Homecare → Get started → hero → complaint. */}
-          <div className="space-y-6 order-2 lg:order-1">
-            <Hero3D />
-            <ComplaintCard />
+          {/* Brand panel + Get started in one card, the Class Portal sign-in
+              layout: panel left, form right, equal height. Phones read
+              Homecare → Get started → brand panel → complaint (order-*). */}
+          <div
+            className="order-2 md:order-1 md:col-span-2 grid lg:grid-cols-[minmax(0,1fr)_minmax(0,1.05fr)] rounded-[18px] overflow-hidden min-w-0"
+            style={{ background: '#fff', border: '1px solid var(--light-gray)', boxShadow: '0 2px 12px rgba(25,72,80,0.06)' }}
+          >
+            <div className="order-2 lg:order-1 min-w-0">
+              <Hero3D />
+            </div>
+            <div className="order-1 lg:order-2 min-w-0 flex items-center px-5 py-7 sm:px-10 sm:py-10">
+              <div className="w-full max-w-[460px] mx-auto">
+                <AuthCard expired={expired} onAuthed={handleAuthed} />
+              </div>
+            </div>
           </div>
-          {/* Right column — the (larger) Get started / sign-in + register form,
-              with the Homecare PT promo filling the space beneath it. On mobile
-              this column comes first (order-1) and the Homecare promo is pulled
-              ABOVE the Get-started card. flex+order lets us flip that pair on
-              mobile while keeping Get-started-then-Homecare on desktop. */}
-          <div className="flex flex-col gap-6 order-1 lg:order-2">
-            <div className="order-2 lg:order-1">
-              <AuthCard expired={expired} onAuthed={handleAuthed} />
-            </div>
-            <div className="order-1 lg:order-2">
-              <HomecareBanner />
-            </div>
+          <div className="order-1 md:order-2 min-w-0">
+            <HomecareBanner />
+          </div>
+          <div className="order-3 min-w-0">
+            <ComplaintCard />
           </div>
         </section>
       )}
@@ -117,6 +121,13 @@ function HomeInner() {
 // ─────────────────────────────────────────────────────────────────────────────
 // Auth card — returning (login / claim account) + new patient (register)
 // ─────────────────────────────────────────────────────────────────────────────
+
+// Kit controls one size up (44px) for the public auth forms — same as the
+// Class Portal sign-in — so they are comfortable tap targets on phones.
+const AUTH_INPUT = `${Kit.CONTROL} w-full !h-11 !rounded-xl`
+const AUTH_BTN = `${Kit.BTN_PRIMARY} w-full !h-11 !rounded-xl`
+const AUTH_BTN_SECONDARY = `${Kit.BTN_SECONDARY} w-full !h-11 !rounded-xl`
+const AUTH_LINK = `font-semibold rounded-sm hover:underline ${Kit.FOCUS}`
 
 function AuthCard({
   expired,
@@ -221,57 +232,63 @@ function AuthCard({
   }
 
   return (
-    <div className="card-static">
-      <div className="flex items-end justify-between mb-5">
-        <div>
-          <h2 className="text-[26px] leading-tight text-[color:var(--deep-teal)]">Get started</h2>
-          <p className="text-sm text-[color:var(--mid-gray)] mt-1">Returning or new? Choose below.</p>
-        </div>
+    <div>
+      <div className="mb-6">
+        <p className="text-[11px] font-semibold uppercase tracking-wider mb-1" style={{ fontFamily: 'var(--font-display)', color: 'var(--teal)' }}>
+          Patient portal
+        </p>
+        <h2 className="text-[24px] sm:text-[26px] font-bold leading-tight tracking-tight" style={{ fontFamily: 'var(--font-display)', color: 'var(--deep-teal)' }}>
+          Get started
+        </h2>
+        <p className="text-sm mt-1.5" style={{ color: 'var(--mid-gray)' }}>Returning or new? Choose below.</p>
       </div>
 
-      <div className="flex gap-2 mb-6 p-1 bg-[color:var(--pale-teal)] rounded-xl" style={{ fontFamily: 'var(--font-display)' }}>
-        <button
-          onClick={() => switchTab('returning')}
-          className={`flex-1 py-2.5 rounded-lg text-sm font-semibold transition-all ${tab === 'returning' ? 'bg-white text-[color:var(--deep-teal)] shadow-sm' : 'text-[color:var(--mid-gray)] hover:text-[color:var(--teal)]'}`}
-        >Returning patient</button>
-        <button
-          onClick={() => switchTab('new')}
-          className={`flex-1 py-2.5 rounded-lg text-sm font-semibold transition-all ${tab === 'new' ? 'bg-white text-[color:var(--deep-teal)] shadow-sm' : 'text-[color:var(--mid-gray)] hover:text-[color:var(--teal)]'}`}
-        >New patient</button>
+      <div className="mb-5">
+        <Kit.PillTabs
+          label="Returning or new patient"
+          value={tab}
+          onChange={(id) => switchTab(id as Tab)}
+          tabs={[
+            { id: 'returning', label: 'Returning patient' },
+            { id: 'new', label: 'New patient' },
+          ]}
+        />
       </div>
 
       {expired && !err && (
-        <div className="mb-4 px-4 py-3 rounded-xl bg-amber-50 border border-amber-200 text-sm text-amber-900 animate-fade-in">
-          Your session expired. Please sign in again to continue.
+        <div className="mb-4 animate-fade-in">
+          <Kit.Banner tone="warn">Your session expired. Please sign in again to continue.</Kit.Banner>
         </div>
       )}
       {err && (
-        <div className="mb-4 px-4 py-3 rounded-xl bg-rose-50 border border-rose-100 text-sm text-rose-800 animate-fade-in">
-          {err}
+        <div className="mb-4 animate-fade-in">
+          <Kit.Banner tone="error">{err}</Kit.Banner>
         </div>
       )}
 
       {tab === 'returning' ? (
         hasAccount === null ? (
           <div className="space-y-4" key="returning-ask">
-            <p className="text-sm text-[color:var(--deep-teal)]">
+            <p className="text-sm leading-relaxed" style={{ color: 'var(--charcoal)' }}>
               Do you already have a portal account (a username &amp; password)?
             </p>
             <div className="grid grid-cols-2 gap-3">
               <button
                 type="button"
                 onClick={() => { setHasAccount(true); setErr(null) }}
-                className="btn-primary w-full"
+                className={AUTH_BTN}
+                style={Kit.PRIMARY_STYLE}
               >Yes, sign in</button>
               <button
                 type="button"
                 onClick={() => { setHasAccount(false); setErr(null) }}
-                className="btn-secondary w-full"
+                className={AUTH_BTN_SECONDARY}
+                style={Kit.SECONDARY_STYLE}
               >No, set one up</button>
             </div>
-            <p className="text-xs text-[color:var(--mid-gray)] text-center pt-1">
+            <p className="text-xs text-center pt-1" style={{ color: 'var(--mid-gray)' }}>
               Brand new here?{' '}
-              <button type="button" className="text-[color:var(--teal)] font-semibold hover:underline" onClick={() => switchTab('new')}>
+              <button type="button" className={AUTH_LINK} style={{ color: 'var(--teal)' }} onClick={() => switchTab('new')}>
                 Register as a new patient
               </button>
             </p>
@@ -279,57 +296,59 @@ function AuthCard({
         ) : hasAccount ? (
           <form className="space-y-4" onSubmit={handleLogin} key="returning-login">
             <Field label="Username">
-              <input required name="username" autoCapitalize="none" autoCorrect="off" className="input" placeholder="your username" />
+              <input required name="username" autoCapitalize="none" autoCorrect="off" className={AUTH_INPUT} style={Kit.CONTROL_STYLE} placeholder="your username" />
             </Field>
             <Field label="Password">
-              <input required name="password" type="password" className="input" placeholder="••••••••" />
+              <input required name="password" type="password" className={AUTH_INPUT} style={Kit.CONTROL_STYLE} placeholder="••••••••" />
             </Field>
-            <button type="submit" disabled={busy} className="btn-primary w-full mt-2">
-              {busy ? 'Signing in…' : 'Sign in'}
+            <button type="submit" disabled={busy} className={`${AUTH_BTN} mt-1`} style={Kit.PRIMARY_STYLE}>
+              {busy ? 'Signing in…' : <>Sign in <Kit.Icon name="chevronRight" size={16} /></>}
             </button>
-            <p className="text-xs text-[color:var(--mid-gray)] text-center pt-1">
+            <p className="text-xs text-center pt-1" style={{ color: 'var(--mid-gray)' }}>
               Don&apos;t have a password yet?{' '}
-              <button type="button" className="text-[color:var(--teal)] font-semibold hover:underline" onClick={() => { setHasAccount(false); setErr(null) }}>
+              <button type="button" className={AUTH_LINK} style={{ color: 'var(--teal)' }} onClick={() => { setHasAccount(false); setErr(null) }}>
                 Set up your account
               </button>
             </p>
           </form>
         ) : (
           <form className="space-y-4" onSubmit={handleClaim} key="returning-claim">
-            <p className="text-sm text-[color:var(--mid-gray)] -mt-1">
+            <p className="text-sm leading-relaxed -mt-1" style={{ color: 'var(--mid-gray)' }}>
               You&apos;re already in our records — verify with your email, first name and last name, then choose a username &amp; password.
             </p>
             <Field label="Email">
-              <input required name="email" type="email" className="input" placeholder="you@example.com" />
+              <input required name="email" type="email" className={AUTH_INPUT} style={Kit.CONTROL_STYLE} placeholder="you@example.com" />
             </Field>
             <div className="grid grid-cols-2 gap-3">
               <Field label="First name">
-                <input required name="firstName" className="input" placeholder="Juan" />
+                <input required name="firstName" className={AUTH_INPUT} style={Kit.CONTROL_STYLE} placeholder="Juan" />
               </Field>
               <Field label="Last name">
-                <input required name="lastName" className="input" placeholder="Dela Cruz" />
+                <input required name="lastName" className={AUTH_INPUT} style={Kit.CONTROL_STYLE} placeholder="Dela Cruz" />
               </Field>
             </div>
-            <Field label="Choose a username">
-              <input required name="username" autoCapitalize="none" autoCorrect="off" className="input" placeholder="e.g. juan.delacruz" />
-            </Field>
-            <p className="text-[11px] text-[color:var(--mid-gray)] -mt-2" style={{ fontFamily: 'var(--font-display)' }}>
-              Your username is how you&apos;ll sign in — pick your own, even if you share an email with a family member.
-            </p>
+            <div>
+              <Field label="Choose a username">
+                <input required name="username" autoCapitalize="none" autoCorrect="off" className={AUTH_INPUT} style={Kit.CONTROL_STYLE} placeholder="e.g. juan.delacruz" />
+              </Field>
+              <p className="text-[11px] mt-1.5 leading-snug" style={{ color: 'var(--mid-gray)' }}>
+                Your username is how you&apos;ll sign in — pick your own, even if you share an email with a family member.
+              </p>
+            </div>
             <div className="grid grid-cols-2 gap-3">
               <Field label="New password">
-                <input required name="password" type="password" className="input" placeholder="At least 8 characters" />
+                <input required name="password" type="password" className={AUTH_INPUT} style={Kit.CONTROL_STYLE} placeholder="At least 8 characters" />
               </Field>
               <Field label="Confirm password">
-                <input required name="confirm" type="password" className="input" placeholder="Re-enter password" />
+                <input required name="confirm" type="password" className={AUTH_INPUT} style={Kit.CONTROL_STYLE} placeholder="Re-enter password" />
               </Field>
             </div>
-            <button type="submit" disabled={busy} className="btn-primary w-full mt-2">
+            <button type="submit" disabled={busy} className={`${AUTH_BTN} mt-1`} style={Kit.PRIMARY_STYLE}>
               {busy ? 'Setting up…' : 'Create account'}
             </button>
-            <p className="text-xs text-[color:var(--mid-gray)] text-center pt-1">
+            <p className="text-xs text-center pt-1" style={{ color: 'var(--mid-gray)' }}>
               Already have a password?{' '}
-              <button type="button" className="text-[color:var(--teal)] font-semibold hover:underline" onClick={() => { setHasAccount(true); setErr(null) }}>
+              <button type="button" className={AUTH_LINK} style={{ color: 'var(--teal)' }} onClick={() => { setHasAccount(true); setErr(null) }}>
                 Sign in instead
               </button>
             </p>
@@ -339,21 +358,21 @@ function AuthCard({
         <form className="space-y-3.5" onSubmit={handleNew} key="new">
           <SectionLabel>Basic info</SectionLabel>
           <div className="grid grid-cols-2 gap-3">
-            <Field label="First name"><input required name="firstName" className="input" /></Field>
-            <Field label="Last name"><input required name="lastName" className="input" /></Field>
+            <Field label="First name"><input required name="firstName" className={AUTH_INPUT} style={Kit.CONTROL_STYLE} /></Field>
+            <Field label="Last name"><input required name="lastName" className={AUTH_INPUT} style={Kit.CONTROL_STYLE} /></Field>
           </div>
           <div className="grid grid-cols-2 gap-3">
-            <Field label="Email"><input required name="email" type="email" className="input" placeholder="you@example.com" /></Field>
-            <Field label="Cellphone no."><input name="phone" className="input" placeholder="+63 9XX XXX XXXX" /></Field>
+            <Field label="Email"><input required name="email" type="email" className={AUTH_INPUT} style={Kit.CONTROL_STYLE} placeholder="you@example.com" /></Field>
+            <Field label="Cellphone no."><input name="phone" className={AUTH_INPUT} style={Kit.CONTROL_STYLE} placeholder="+63 9XX XXX XXXX" /></Field>
           </div>
           <div className="grid grid-cols-2 gap-3">
-            <Field label="Create password"><input required name="password" type="password" className="input" placeholder="At least 8 characters" /></Field>
-            <Field label="Confirm password"><input required name="confirm" type="password" className="input" placeholder="Re-enter password" /></Field>
+            <Field label="Create password"><input required name="password" type="password" className={AUTH_INPUT} style={Kit.CONTROL_STYLE} placeholder="At least 8 characters" /></Field>
+            <Field label="Confirm password"><input required name="confirm" type="password" className={AUTH_INPUT} style={Kit.CONTROL_STYLE} placeholder="Re-enter password" /></Field>
           </div>
           <div className="grid grid-cols-2 gap-3">
-            <Field label="Date of birth"><input name="dob" type="date" className="input" /></Field>
+            <Field label="Date of birth"><input name="dob" type="date" className={AUTH_INPUT} style={Kit.CONTROL_STYLE} /></Field>
             <Field label="Sex">
-              <select name="sex" className="select" defaultValue="">
+              <select name="sex" className={AUTH_INPUT} style={Kit.CONTROL_STYLE} defaultValue="">
                 <option value="">—</option>
                 <option value="Male">Male</option>
                 <option value="Female">Female</option>
@@ -362,13 +381,13 @@ function AuthCard({
           </div>
           <div className="grid grid-cols-2 gap-3">
             <Field label="Patient type">
-              <select required name="patientType" className="select" defaultValue="ADULT">
+              <select required name="patientType" className={AUTH_INPUT} style={Kit.CONTROL_STYLE} defaultValue="ADULT">
                 <option value="PEDIATRIC">Pediatric</option>
                 <option value="ADULT">Adult</option>
               </select>
             </Field>
             <Field label="Branch">
-              <select required name="branch" className="select" defaultValue="SANDBOX_EAST">
+              <select required name="branch" className={AUTH_INPUT} style={Kit.CONTROL_STYLE} defaultValue="SANDBOX_EAST">
                 <option value="SANDBOX_EAST">{branchLabel('SANDBOX_EAST')}</option>
                 <option value="SANDBOX_GREENHILLS">{branchLabel('SANDBOX_GREENHILLS')}</option>
               </select>
@@ -376,29 +395,29 @@ function AuthCard({
           </div>
 
           <SectionLabel>Address</SectionLabel>
-          <div className="grid grid-cols-2 gap-3">
-            <Field label="Barangay / Address"><input name="address" className="input" /></Field>
-            <Field label="City"><input name="city" className="input" /></Field>
+          <div className="grid grid-cols-2 gap-3 items-end">
+            <Field label="Barangay / Address"><input name="address" className={AUTH_INPUT} style={Kit.CONTROL_STYLE} /></Field>
+            <Field label="City"><input name="city" className={AUTH_INPUT} style={Kit.CONTROL_STYLE} /></Field>
           </div>
 
           <SectionLabel>Additional</SectionLabel>
-          <Field label="Diagnosis / Condition"><input name="diagnosis" className="input" placeholder="Optional" /></Field>
+          <Field label="Diagnosis / Condition"><input name="diagnosis" className={AUTH_INPUT} style={Kit.CONTROL_STYLE} placeholder="Optional" /></Field>
           <div className="grid grid-cols-2 gap-3">
-            <Field label="Civil status"><input name="civilStatus" className="input" placeholder="Single / Married / …" /></Field>
-            <Field label="Religion"><input name="religion" className="input" /></Field>
+            <Field label="Civil status"><input name="civilStatus" className={AUTH_INPUT} style={Kit.CONTROL_STYLE} placeholder="Single / Married / …" /></Field>
+            <Field label="Religion"><input name="religion" className={AUTH_INPUT} style={Kit.CONTROL_STYLE} /></Field>
           </div>
           <div className="grid grid-cols-2 gap-3">
-            <Field label="Nationality"><input name="nationality" className="input" placeholder="e.g. Filipino" /></Field>
+            <Field label="Nationality"><input name="nationality" className={AUTH_INPUT} style={Kit.CONTROL_STYLE} placeholder="e.g. Filipino" /></Field>
             <Field label="PWD / Senior ID">
-              <input name="pwdSeniorId" className="input" placeholder="ID number" />
-              <span className="block text-[11px] text-[color:var(--clay)] mt-1" style={{ fontFamily: 'var(--font-display)' }}>
+              <input name="pwdSeniorId" className={AUTH_INPUT} style={Kit.CONTROL_STYLE} placeholder="ID number" />
+              <span className="block text-[11px] mt-1 leading-snug" style={{ color: 'var(--clay)' }}>
                 Required to receive the 20% PWD / Senior Citizen discount.
               </span>
             </Field>
           </div>
 
           <SectionLabel>Documents (optional)</SectionLabel>
-          <p className="text-[11.5px] text-[color:var(--mid-gray)] -mt-1" style={{ fontFamily: 'var(--font-display)' }}>
+          <p className="text-xs -mt-1 leading-snug" style={{ color: 'var(--mid-gray)' }}>
             You may upload these now or bring them to the clinic. JPG, PNG, or PDF (max 12 MB).
           </p>
           <div className="grid grid-cols-1 gap-3">
@@ -407,16 +426,16 @@ function AuthCard({
             </Field>
             <Field label="PWD ID / Senior ID">
               <input name="pwdIdFile" type="file" accept="image/*,application/pdf" className="input-file" />
-              <span className="block text-[11px] text-[color:var(--clay)] mt-1" style={{ fontFamily: 'var(--font-display)' }}>
+              <span className="block text-[11px] mt-1 leading-snug" style={{ color: 'var(--clay)' }}>
                 Required to receive the 20% PWD / Senior Citizen discount.
               </span>
             </Field>
           </div>
 
-          <button type="submit" disabled={busy} className="btn-primary w-full mt-2">
-            {busy ? 'Creating…' : 'Create account & continue'}
+          <button type="submit" disabled={busy} className={`${AUTH_BTN} mt-2`} style={Kit.PRIMARY_STYLE}>
+            {busy ? 'Creating…' : <>Create account &amp; continue <Kit.Icon name="chevronRight" size={16} /></>}
           </button>
-          <p className="text-[11px] text-[color:var(--mid-gray)] text-center" style={{ fontFamily: 'var(--font-display)' }}>
+          <p className="text-[11px] text-center" style={{ fontFamily: 'var(--font-display)', color: 'var(--mid-gray)' }}>
             Your info will be saved to Patient CRM once the clinic confirms.
           </p>
         </form>
@@ -1243,82 +1262,83 @@ function fmtStatus(s: string): string {
 
 const COMPLAINT_FORM_URL = 'https://hr.sapphireclinicseast.org/patient-complaint-form.html'
 
-// Promo card under the Get-started panel: announces Homecare PT and routes to
-// the /homecare booking flow. The whole card is the link; "Schedule Now" is the
-// visual affordance.
+// Promo card beside the complaint card: announces Homecare PT and routes to
+// Nickel. The whole card is the link; "Schedule Now" is the visual affordance.
 function HomecareBanner() {
   return (
     <a
       href="https://nickelcare.com"
       aria-label="Schedule Homecare Physical Therapy on Nickel"
-      className="group relative block overflow-hidden rounded-[18px] p-6 text-white shadow-[0_10px_30px_rgba(27,63,56,0.25)] transition-transform duration-200 hover:-translate-y-0.5"
-      style={{ background: 'linear-gradient(135deg, var(--deep-teal), var(--teal))' }}
+      className={`group flex h-full flex-col rounded-xl p-4 sm:p-5 transition-shadow hover:shadow-[0_4px_14px_rgba(27,63,56,0.08)] ${Kit.FOCUS}`}
+      style={Kit.CARD_STYLE}
     >
-      <span className="pointer-events-none absolute -right-8 -top-10 h-32 w-32 rounded-full opacity-20" style={{ background: 'var(--gold)' }} />
-      <span className="pointer-events-none absolute -bottom-12 right-8 h-24 w-24 rounded-full bg-white opacity-10" />
-      <div className="relative flex items-start gap-4">
-        <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-white/15">
-          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <div className="flex items-start gap-3.5">
+        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl" style={{ background: 'var(--pale-teal)', color: 'var(--deep-teal)' }}>
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
             <path d="M3 10.5 12 3l9 7.5" />
             <path d="M5 9.5V20a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V9.5" />
             <path d="M12 21v-5a2 2 0 0 1 2-2h0a2 2 0 0 1 2 2" />
             <path d="M9.2 12.3c.9-.9 2.2-.2 2.8.4.6-.6 1.9-1.3 2.8-.4.7.8.5 1.8-.2 2.5L12 17.2l-2.6-2.4c-.7-.7-.9-1.7-.2-2.5Z" />
           </svg>
-        </div>
+        </span>
         <div className="min-w-0">
-          <div className="text-[11px] font-bold uppercase tracking-[0.14em]" style={{ color: 'var(--gold)' }}>New · Aura at Home</div>
-          <h3 className="mt-1 text-[20px] font-bold leading-tight text-white">Physiotherapy at your doorstep</h3>
-          <p className="mt-1.5 text-[13px] leading-snug text-white/80">
+          <div className="flex flex-wrap items-center gap-2">
+            <Kit.Tag tone="brand">New</Kit.Tag>
+            <span className="text-[11px] font-semibold uppercase tracking-wider" style={{ fontFamily: 'var(--font-display)', color: 'var(--deep-teal)' }}>
+              Aura at Home
+            </span>
+          </div>
+          <h3 className="mt-1.5 text-[17px] font-bold leading-tight tracking-normal" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>
+            Physiotherapy at your doorstep
+          </h3>
+          <p className="mt-1 text-sm leading-relaxed" style={{ color: 'var(--mid-gray)' }}>
             A licensed physical therapist comes to your home. Pick your city, choose a time — we&apos;ll be there.
           </p>
-          <span className="mt-4 inline-flex items-center gap-2 rounded-full bg-white px-5 py-2.5 text-[14px] font-semibold transition-transform duration-200 group-hover:gap-3" style={{ color: 'var(--deep-teal)' }}>
-            Schedule Now
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-              <path d="M5 12h14" />
-              <path d="m13 6 6 6-6 6" />
-            </svg>
-          </span>
         </div>
       </div>
+      <span className={`${Kit.BTN_PRIMARY} mt-4 sm:ml-[54px] self-start group-hover:opacity-90`} style={Kit.PRIMARY_STYLE}>
+        Schedule Now
+        <Kit.Icon name="chevronRight" size={16} className="transition-transform group-hover:translate-x-0.5" />
+      </span>
     </a>
   )
 }
 
 function ComplaintCard() {
   return (
-    <aside className="card-static lg:sticky lg:top-6">
-      <h2 className="text-[20px] leading-tight text-[color:var(--deep-teal)]">
-        Have a concern or complaint?
-      </h2>
-      <p className="text-sm text-[color:var(--mid-gray)] mt-1.5">
-        Your feedback is confidential and helps us care better. Submit it now.
-      </p>
-
-      <a
-        href={COMPLAINT_FORM_URL}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="btn-primary w-full mt-4 inline-flex items-center justify-center"
-      >
-        Submit now →
-      </a>
-
-      <div className="mt-5 flex flex-col items-center">
-        <div className="rounded-2xl bg-white p-3 border border-[color:var(--light-gray)] shadow-sm">
+    <Kit.DashCard
+      className="h-full"
+      title="Have a concern or complaint?"
+      description="Your feedback is confidential and helps us care better. Submit it now."
+      icon={<Kit.Icon name="shield" size={16} />}
+    >
+      <div className="flex items-center gap-4">
+        <div className="min-w-0 flex-1 space-y-2">
+          <a
+            href={COMPLAINT_FORM_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            className={`${Kit.BTN_PRIMARY} w-full`}
+            style={Kit.PRIMARY_STYLE}
+          >
+            Submit now <Kit.Icon name="external" size={14} />
+          </a>
+          <p className="text-[11px] leading-snug" style={{ fontFamily: 'var(--font-display)', color: 'var(--mid-gray)' }}>
+            Or scan the code to open the form on your phone.
+          </p>
+        </div>
+        <div className="shrink-0 rounded-xl bg-white p-2" style={{ border: '1px solid var(--light-gray)' }}>
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src="/complaint-qr.svg"
             alt="QR code to the patient complaint form"
             width={140}
             height={140}
-            className="w-[140px] h-[140px]"
+            className="w-[96px] h-[96px] sm:w-[112px] sm:h-[112px]"
           />
         </div>
-        <p className="text-[11px] text-[color:var(--mid-gray)] mt-2 text-center" style={{ fontFamily: 'var(--font-display)' }}>
-          Or scan to open on your phone
-        </p>
       </div>
-    </aside>
+    </Kit.DashCard>
   )
 }
 
@@ -1332,8 +1352,8 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <label className="block">
-      <span className="label">{label}</span>
+    <label className="block min-w-0">
+      <span className={Kit.LABEL} style={Kit.LABEL_STYLE}>{label}</span>
       {children}
     </label>
   )

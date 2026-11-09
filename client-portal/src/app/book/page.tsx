@@ -4,6 +4,11 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { getSession } from '@/lib/session'
 import { branchLabel } from '@/lib/branch-label'
+import { BookingSteps } from '@/components/booking/BookingSteps'
+import {
+  PAGE, PageHeader, DashCard, GroupLabel, PillTabs, Tag, Icon as KitIcon,
+  BTN_PRIMARY, PRIMARY_STYLE, LABEL, LABEL_STYLE, SUBTLE_BG, FOCUS,
+} from '@/components/hub/ui'
 
 // At both branches the "Medical Doctor" service is delivered through specific
 // sub-specialties — there's no generic-MD tile any more. SBEA splits across
@@ -98,49 +103,45 @@ export default function BookStep1Page() {
   }
 
   return (
-    <div className="animate-fade-up">
-      <StepHeader active={1} />
+    <div className={`${PAGE} animate-fade-up`}>
+      <BookingSteps steps={['Service', 'Slot', 'Confirm']} active={1} />
 
-      <div className="card-static">
-        <h1 className="text-[28px] leading-tight">Pick a service</h1>
-        <p className="text-sm text-[color:var(--mid-gray)] mt-1 mb-7">Start by choosing a branch and the service you need.</p>
+      <PageHeader
+        eyebrow="Book an appointment"
+        title="Pick a service"
+        description="Start by choosing a branch and the service you need."
+      />
 
-        <div className="mb-7">
-          <div className="label">Branch</div>
-          <div className="flex gap-2 flex-wrap">
-            {(['SBEA', 'SBGH'] as const).map((b) => (
-              <button
-                key={b}
-                onClick={() => { setBranch(b); setService(null) }}
-                className={`pill ${branch === b ? 'pill-active' : ''}`}
-              >
-                <span className="w-1.5 h-1.5 rounded-full bg-current opacity-70"></span>
-                {branchLabel(b)}
-              </button>
-            ))}
-          </div>
+      <DashCard
+        title="Branch and service"
+        description="Services on the left book online. For the rest, our front desk will set you up."
+        icon={<KitIcon name="calendar" size={16} />}
+      >
+        <div className="mb-6">
+          <div className={LABEL} style={LABEL_STYLE} id="book-branch-label">Branch</div>
+          <PillTabs
+            label="Branch"
+            value={branch}
+            onChange={(id) => { setBranch(id as 'SBEA' | 'SBGH'); setService(null) }}
+            tabs={(['SBEA', 'SBGH'] as const).map((b) => ({ id: b, label: branchLabel(b) }))}
+          />
         </div>
 
         {/* Two columns: enabled services on the left, "contact clinic" on
-            the right. Previously every service was rendered into one grid
-            and the visual mix of online/offline tiles was confusing.
-            On phones the columns stack. */}
+            the right. On phones the columns stack. */}
         {(() => {
           const enabledList = services.filter((s) => isEnabled(s))
           const disabledList = services.filter((s) => !isEnabled(s))
           return (
             <>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <section>
-                <div className="flex items-center justify-between mb-2">
-                  <div className="label !mb-0">Book Online</div>
-                  <span className="text-[10.5px] font-semibold uppercase tracking-[0.1em] text-[color:var(--moss)]">
-                    {enabledList.length} available
-                  </span>
+              <section className="min-w-0">
+                <div className="mb-2">
+                  <GroupLabel hint={`${enabledList.length} available`}>Book online</GroupLabel>
                 </div>
                 <div className="flex flex-col gap-2">
                   {enabledList.length === 0 && (
-                    <div className="text-xs italic text-[color:var(--mid-gray)] px-1 py-2">
+                    <div className="text-xs px-1 py-2" style={{ color: 'var(--mid-gray)' }}>
                       No services bookable online for this branch yet.
                     </div>
                   )}
@@ -157,16 +158,13 @@ export default function BookStep1Page() {
                 </div>
               </section>
 
-              <section>
-                <div className="flex items-center justify-between mb-2">
-                  <div className="label !mb-0">Contact the Clinic</div>
-                  <span className="text-[10.5px] font-semibold uppercase tracking-[0.1em] text-[color:var(--clay)]">
-                    {disabledList.length} services
-                  </span>
+              <section className="min-w-0">
+                <div className="mb-2">
+                  <GroupLabel hint={`${disabledList.length} services`}>Contact the clinic</GroupLabel>
                 </div>
                 <div className="flex flex-col gap-2">
                   {disabledList.length === 0 && (
-                    <div className="text-xs italic text-[color:var(--mid-gray)] px-1 py-2">
+                    <div className="text-xs px-1 py-2" style={{ color: 'var(--mid-gray)' }}>
                       All services at this branch are bookable online.
                     </div>
                   )}
@@ -193,16 +191,19 @@ export default function BookStep1Page() {
           <ContactPanel branch={branch} serviceLabel={SERVICE_LABELS[service] ?? service} />
         )}
 
-        <div className="flex justify-end mt-8">
+        <div className="flex justify-end mt-6 pt-4" style={{ borderTop: '1px solid var(--light-gray)' }}>
           <button
+            type="button"
             disabled={!service || !selectedIsEnabled}
             onClick={next}
-            className="btn-cta"
+            className={`${BTN_PRIMARY} max-sm:w-full max-sm:h-11`}
+            style={PRIMARY_STYLE}
           >
-            {selectedIsTele ? 'Continue → Choose a service' : 'Continue → Pick a slot'}
+            {selectedIsTele ? 'Continue — Choose a service' : 'Continue — Pick a slot'}
+            <KitIcon name="chevronRight" size={16} />
           </button>
         </div>
-      </div>
+      </DashCard>
     </div>
   )
 }
@@ -211,10 +212,11 @@ function BranchQuickContact({ branch }: { branch: 'SBEA' | 'SBGH' }) {
   const c = BRANCH_CONTACTS[branch]
   const phoneClean = c.phone.replace(/\s+/g, '')
   const viber = `viber://chat?number=${encodeURIComponent('+63' + phoneClean.replace(/^0/, ''))}`
-  const pill = 'inline-flex items-center gap-1.5 rounded-full px-3.5 py-2 text-[13px] font-semibold text-white hover:opacity-90 transition-opacity'
+  // Messenger / Viber keep their own brand colours so they read at a glance.
+  const pill = `inline-flex items-center gap-1.5 h-9 rounded-lg px-3.5 text-sm font-semibold text-white hover:opacity-90 transition-opacity ${FOCUS}`
   return (
-    <div className="mt-6 pt-5 border-t border-[color:var(--paper-3)]">
-      <p className="text-[12px] text-[color:var(--mid-gray)] mb-2">Prefer to message us? Contact {c.name} directly — our front desk will help you book.</p>
+    <div className="mt-6 pt-5" style={{ borderTop: '1px solid var(--light-gray)' }}>
+      <p className="text-xs mb-2.5" style={{ color: 'var(--mid-gray)' }}>Prefer to message us? Contact {c.name} directly — our front desk will help you book.</p>
       <div className="flex flex-wrap gap-2">
         <a href={c.messenger} target="_blank" rel="noreferrer" className={pill} style={{ background: '#0A7CFF' }} aria-label={`Message ${c.name} on Messenger`}>
           <IconMessengerSolid /> Messenger
@@ -231,22 +233,22 @@ function ContactPanel({ branch, serviceLabel }: { branch: 'SBEA' | 'SBGH'; servi
   const c = BRANCH_CONTACTS[branch]
   const phoneClean = c.phone.replace(/\s+/g, '')
   return (
-    <div className="mt-6 rounded-2xl border border-[color:var(--paper-3)] bg-gradient-to-br from-[color:var(--paper-2)] to-white p-5 animate-slide-down">
+    <div role="status" className="mt-6 rounded-xl p-4 sm:p-5 animate-slide-down" style={{ background: SUBTLE_BG, border: '1px solid var(--light-gray)' }}>
       <div className="flex items-start gap-3 mb-3">
-        <div className="w-10 h-10 rounded-xl bg-[color:var(--sun-tint)] text-[color:var(--clay)] flex items-center justify-center shrink-0">
+        <span className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0" style={{ background: '#FBF3E8', color: '#7A4E21' }}>
           <IconInfo />
-        </div>
-        <div>
-          <h3 className="text-[16px] font-semibold text-[color:var(--narra)]">
+        </span>
+        <div className="min-w-0">
+          <h3 className="text-[15px] font-bold leading-tight tracking-normal" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>
             {serviceLabel} isn&apos;t bookable online yet
           </h3>
-          <p className="text-[13px] text-[color:var(--mid-gray)] mt-0.5">
-            We&apos;re still rolling out online booking for this service. For now, please reach out to <strong className="text-[color:var(--narra)]">{c.name}</strong> through any of the channels below — our front desk will set you up.
+          <p className="text-[13px] mt-1 leading-relaxed" style={{ color: 'var(--mid-gray)' }}>
+            We&apos;re still rolling out online booking for this service. For now, please reach out to <strong style={{ color: 'var(--charcoal)' }}>{c.name}</strong> through any of the channels below — our front desk will set you up.
           </p>
         </div>
       </div>
 
-      <div className="grid sm:grid-cols-2 gap-2 mt-4" style={{ fontFamily: 'var(--font-display)' }}>
+      <div className="grid sm:grid-cols-2 gap-2 mt-4">
         <ContactRow
           icon={<IconPhone />}
           label="Call or SMS"
@@ -283,22 +285,24 @@ function ContactRow({ icon, label, value, href, external }: { icon: React.ReactN
       href={href}
       target={external ? '_blank' : undefined}
       rel={external ? 'noreferrer' : undefined}
-      className="flex items-center gap-3 px-3 py-2.5 rounded-xl bg-white border border-[color:var(--paper-3)] hover:border-[color:var(--sage)] hover:shadow-[0_4px_12px_rgba(27,63,56,0.06)] transition-all"
+      className={`flex items-center gap-3 px-3 py-2.5 rounded-lg bg-white transition-colors hover:bg-[color:var(--paper)] min-w-0 ${FOCUS}`}
+      style={{ border: '1px solid var(--light-gray)' }}
     >
-      <span className="w-9 h-9 rounded-lg bg-[color:var(--paper-2)] text-[color:var(--narra)] flex items-center justify-center shrink-0">
+      <span className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0" style={{ background: 'var(--pale-teal)', color: 'var(--deep-teal)' }}>
         {icon}
       </span>
       <span className="min-w-0 flex-1">
-        <span className="block text-[10.5px] uppercase tracking-[0.1em] text-[color:var(--mid-gray)]">{label}</span>
-        <span className="block text-[13px] font-semibold text-[color:var(--narra)] truncate">{value}</span>
+        <span className={`${LABEL} !mb-0`} style={LABEL_STYLE}>{label}</span>
+        <span className="block text-[13px] font-semibold truncate" style={{ color: 'var(--charcoal)' }}>{value}</span>
       </span>
     </a>
   )
 }
 
-// Single service tile — used in both the "Book Online" and "Contact Clinic"
-// columns on /book. The visual treatment changes based on the `online` flag
-// (solid white card vs dashed paper-tinted card) and the selected state.
+// Single service tile — used in both the "Book online" and "Contact the
+// clinic" columns on /book. Same choice-tile treatment as the Class Portal's
+// enrollment picker: a radio mark plus a heavier teal border when selected,
+// and a dashed border for services that are booked through the clinic.
 function ServiceTile({
   s, i, online, active, onClick,
 }: {
@@ -311,97 +315,58 @@ function ServiceTile({
   const Icon = SERVICE_ICONS[s] ?? IconSparkle
   const showMdTag = MD_SUBSPECIALTIES.has(s)
   const showTeleTag = TELETHERAPY_ONLY.has(s)
+  const style: React.CSSProperties = active
+    ? { background: 'var(--moss-tint)', border: '1.5px solid var(--teal)' }
+    : online
+    ? { background: '#fff', border: '1.5px solid var(--light-gray)' }
+    : { background: SUBTLE_BG, border: '1.5px dashed var(--light-gray)' }
   return (
     <button
+      type="button"
       onClick={onClick}
-      className={`text-left group rounded-2xl border-[1.5px] p-3.5 transition-all animate-fade-up stagger-${Math.min(i + 1, 7)} relative ${
-        active
-          ? online
-            ? 'bg-[color:var(--narra)] border-transparent text-white shadow-[0_8px_20px_rgba(27,63,56,0.25)]'
-            : 'bg-[color:var(--paper-2)] border-[color:var(--paper-3)] text-[color:var(--narra)]'
-          : online
-            ? 'bg-white border-[color:var(--paper-3)] hover:border-[color:var(--sage)] hover:shadow-[0_4px_14px_rgba(27,63,56,0.08)]'
-            : 'bg-[color:var(--paper-2)]/60 border-dashed border-[color:var(--paper-3)] hover:bg-[color:var(--paper-2)]'
-      }`}
-      style={{ fontFamily: 'var(--font-display)' }}
+      aria-pressed={active}
+      className={`text-left rounded-xl p-3 transition-colors animate-fade-up stagger-${Math.min(i + 1, 7)} min-w-0 ${active ? '' : 'hover:bg-[color:var(--paper)]'} ${FOCUS}`}
+      style={style}
     >
-      <div className="flex items-start justify-between mb-1.5">
-        <div
-          className={`w-9 h-9 rounded-lg flex items-center justify-center ${
-            active
-              ? online ? 'bg-white/15 text-white' : 'bg-white/60 text-[color:var(--moss)]'
-              : online ? 'bg-[color:var(--paper-2)] text-[color:var(--narra)]' : 'bg-white/60 text-[color:var(--mid-gray)]'
-          }`}
+      <div className="flex items-start gap-3">
+        <span
+          className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0"
+          style={online
+            ? { background: active ? 'var(--deep-teal)' : 'var(--pale-teal)', color: active ? '#fff' : 'var(--deep-teal)' }
+            : { background: '#fff', color: 'var(--mid-gray)', border: '1px solid var(--light-gray)' }}
         >
           <Icon />
-        </div>
-        <div className="flex flex-col items-end gap-1">
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="flex items-start justify-between gap-2">
+            <span className="block text-sm font-semibold leading-snug" style={{ fontFamily: 'var(--font-display)', color: active ? 'var(--deep-teal)' : 'var(--charcoal)' }}>
+              {SERVICE_LABELS[s] ?? s}
+            </span>
+            <span aria-hidden className="mt-0.5 w-4 h-4 rounded-full flex-shrink-0 flex items-center justify-center"
+              style={{ border: `1.5px solid ${active ? 'var(--deep-teal)' : 'var(--light-gray)'}`, background: '#fff' }}>
+              {active && <span className="w-2 h-2 rounded-full" style={{ background: 'var(--deep-teal)' }} />}
+            </span>
+          </span>
+          <span className="block text-[11px] mt-0.5" style={{ color: 'var(--mid-gray)' }}>
+            {/* Department code with underscores → spaces (e.g.
+                DEVELOPMENTAL PEDIATRICIAN). */}
+            {s.replace(/_/g, ' ')}
+          </span>
+          {(showTeleTag || showMdTag || !online) && (
+            <span className="flex flex-wrap gap-1 mt-1.5">
+              {showTeleTag && <Tag tone="brand">Teletherapy</Tag>}
+              {showMdTag && <Tag>Medical Doctor</Tag>}
+              {!online && <Tag tone="warn">Contact clinic</Tag>}
+            </span>
+          )}
           {showTeleTag && (
-            <span
-              className={`text-[9px] font-bold uppercase tracking-[0.08em] px-1.5 py-0.5 rounded ${
-                active && online
-                  ? 'bg-white/20 text-white'
-                  : 'bg-[color:var(--pale-teal)] text-[color:var(--teal)]'
-              }`}
-            >
-              Teletherapy
+            <span className="block text-[11px] mt-1.5 leading-snug" style={{ color: 'var(--mid-gray)' }}>
+              Online sessions are teletherapy. For face-to-face sessions, please contact the clinic branch.
             </span>
           )}
-          {showMdTag && (
-            <span
-              className={`text-[9px] font-bold uppercase tracking-[0.08em] px-1.5 py-0.5 rounded ${
-                active && online
-                  ? 'bg-white/20 text-white'
-                  : 'bg-[color:var(--paper-3)] text-[color:var(--mid-gray)]'
-              }`}
-            >
-              Medical Doctor
-            </span>
-          )}
-          {!online && (
-            <span className="text-[9px] font-bold uppercase tracking-[0.08em] px-1.5 py-0.5 rounded bg-[color:var(--clay-tint)] text-[color:var(--clay)]">
-              Contact clinic
-            </span>
-          )}
-        </div>
+        </span>
       </div>
-      <div className={`text-[13.5px] font-semibold leading-tight ${active && online ? 'text-white' : 'text-[color:var(--narra)]'}`}>
-        {SERVICE_LABELS[s] ?? s}
-      </div>
-      <div className={`text-[11px] mt-0.5 ${active && online ? 'text-white/70' : 'text-[color:var(--mid-gray)]'}`}>
-        {/* Department code with underscores → spaces (e.g.
-            DEVELOPMENTAL PEDIATRICIAN). */}
-        {s.replace(/_/g, ' ')}
-      </div>
-      {showTeleTag && (
-        <div className={`text-[10.5px] mt-1.5 leading-snug ${active && online ? 'text-white/75' : 'text-[color:var(--clay)]'}`}>
-          Online sessions are teletherapy. For face-to-face sessions, please contact the clinic branch.
-        </div>
-      )}
     </button>
-  )
-}
-
-function StepHeader({ active }: { active: 1 | 2 | 3 }) {
-  const steps = ['Service', 'Slot', 'Confirm']
-  return (
-    <div className="flex items-center gap-3 mb-6" style={{ fontFamily: 'var(--font-display)' }}>
-      {steps.map((label, i) => {
-        const n = (i + 1) as 1 | 2 | 3
-        const state = n === active ? 'active' : n < active ? 'done' : 'todo'
-        return (
-          <div key={label} className="flex items-center gap-3">
-            <div className="flex items-center gap-2">
-              <span className={`step-dot ${state === 'active' ? 'step-dot-active' : state === 'done' ? 'step-dot-done' : ''}`}></span>
-              <span className={`text-[11.5px] uppercase tracking-[0.12em] ${state === 'active' ? 'text-[color:var(--clay)] font-semibold' : state === 'done' ? 'text-[color:var(--moss)]' : 'text-[color:var(--mid-gray)]'}`}>
-                {n}. {label}
-              </span>
-            </div>
-            {i < steps.length - 1 && <span className="w-6 h-px bg-[color:var(--paper-3)]"></span>}
-          </div>
-        )
-      })}
-    </div>
   )
 }
 
