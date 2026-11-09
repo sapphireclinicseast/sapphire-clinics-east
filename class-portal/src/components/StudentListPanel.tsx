@@ -329,7 +329,7 @@ export default function StudentListPanel({ viewer, viewerBranch }: Props) {
                     <button
                       type="button"
                       onClick={() => setSelected(s)}
-                      className={`w-full text-left grid grid-cols-[minmax(0,1fr)_auto] ${ROW_GRID} gap-x-3 gap-y-2 items-center px-4 sm:px-5 py-3 transition-colors hover:bg-[#FBF9F5] focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-[color:var(--teal)]`}
+                      className={`w-full text-left grid grid-cols-[minmax(0,1fr)_auto] ${ROW_GRID} gap-x-3 gap-y-2 items-center px-4 sm:px-5 py-3 transition-colors hover:bg-[#F8FAF2] focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-[color:var(--teal)]`}
                     >
                       {/* Who */}
                       <span className="flex items-center gap-3 min-w-0">

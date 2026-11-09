@@ -490,7 +490,7 @@ function ClassEditor({ existing, students, defaultBranch, onClose, onSaved }: {
                   const checked = roster.includes(s.id)
                   return (
                     <li key={s.id} style={i ? TR_STYLE : undefined}>
-                      <label className="flex items-center gap-3 px-3 py-2 cursor-pointer hover:bg-[#FBF9F5]">
+                      <label className="flex items-center gap-3 px-3 py-2 cursor-pointer hover:bg-[#F8FAF2]">
                         <input type="checkbox" className="w-4 h-4 flex-shrink-0 accent-[color:var(--deep-teal)]" checked={checked} onChange={() => toggleStudent(s.id)} />
                         <span className="min-w-0 flex-1 sm:flex sm:items-baseline sm:gap-3">
                           <span className="block text-sm font-semibold truncate" style={{ color: 'var(--charcoal)' }}>{[s.firstName, s.lastName].filter(Boolean).join(' ') || '—'}</span>

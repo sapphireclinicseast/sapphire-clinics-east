@@ -228,7 +228,7 @@ function NextStep({ icon, title, hint, primary = false, onClick }: {
     <button
       type="button"
       onClick={onClick}
-      className={`group flex items-center gap-3 rounded-xl px-4 py-3.5 text-left transition-[opacity,background-color] ${primary ? 'hover:opacity-95' : 'hover:bg-[#FBF9F5]'} ${FOCUS}`}
+      className={`group flex items-center gap-3 rounded-xl px-4 py-3.5 text-left transition-[opacity,background-color] ${primary ? 'hover:opacity-95' : 'hover:bg-[#F8FAF2]'} ${FOCUS}`}
       style={primary
         ? { background: 'var(--deep-teal)', color: '#fff', border: '1px solid var(--deep-teal)' }
         : { background: '#fff', color: 'var(--charcoal)', border: '1px solid var(--light-gray)' }}

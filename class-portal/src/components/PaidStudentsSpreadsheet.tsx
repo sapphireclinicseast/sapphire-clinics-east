@@ -262,11 +262,11 @@ export default function PaidStudentsSpreadsheet({ canEdit = false }: Props) {
                   // the top-level user record. Treat as read-only here for now.
                   const isEditable = canEdit && c.key !== 'level' && c.key !== 'branch' && c.key !== 'fullName'
                   const isFullName = canEdit && c.key === 'fullName'
-                  const editCls = 'w-full bg-transparent text-[12.5px] outline-none rounded-md px-1.5 py-1 -mx-1.5 border border-transparent hover:border-[color:var(--light-gray)] focus:border-[color:var(--teal)] focus:bg-white focus:shadow-[0_0_0_3px_rgba(84,125,114,0.18)]'
+                  const editCls = 'w-full bg-transparent text-[12.5px] outline-none rounded-md px-1.5 py-1 -mx-1.5 border border-transparent hover:border-[color:var(--light-gray)] focus:border-[color:var(--teal)] focus:bg-white focus:shadow-[0_0_0_3px_rgba(74,128,115,0.18)]'
                   return (
                     <td
                       key={String(c.key)}
-                      className={`px-3 py-1.5 align-top ${i === 0 ? 'sticky left-0 z-[1] bg-white group-hover:bg-[#FBF9F5] font-semibold' : ''}`}
+                      className={`px-3 py-1.5 align-top ${i === 0 ? 'sticky left-0 z-[1] bg-white group-hover:bg-[#F8FAF2] font-semibold' : ''}`}
                       style={{ minWidth: c.width, ...(i === 0 ? { boxShadow: 'inset -1px 0 0 var(--light-gray)', color: 'var(--charcoal)' } : {}) }}
                     >
                       {isEditable && c.options ? (

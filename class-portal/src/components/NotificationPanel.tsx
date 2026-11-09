@@ -386,7 +386,7 @@ export default function NotificationPanel({ viewer, header }: Props) {
                   <button
                     type="button"
                     onClick={() => setOpenId(a.id)}
-                    className={`w-full text-left px-4 sm:px-5 py-3.5 flex items-start gap-3 transition-colors hover:bg-[#FBF9F5] focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-[color:var(--teal)]`}
+                    className={`w-full text-left px-4 sm:px-5 py-3.5 flex items-start gap-3 transition-colors hover:bg-[#F8FAF2] focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-[color:var(--teal)]`}
                     title="Open announcement details"
                   >
                     <span aria-hidden className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0" style={{ background: 'var(--pale-teal)', color: 'var(--deep-teal)' }}>

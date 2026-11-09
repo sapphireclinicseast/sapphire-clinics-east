@@ -251,7 +251,7 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   return <label className="block min-w-0"><span className={LABEL} style={LABEL_STYLE}>{label}</span>{children}</label>
 }
 function Input({ value, onChange, readOnly, placeholder }: { value: string; onChange?: (v: string) => void; readOnly?: boolean; placeholder?: string }) {
-  return <input className={`${CONTROL} w-full`} style={readOnly ? { ...CONTROL_STYLE, background: '#FAF7F1' } : CONTROL_STYLE} value={value} onChange={onChange ? e => onChange(e.target.value) : undefined} readOnly={readOnly} placeholder={placeholder} />
+  return <input className={`${CONTROL} w-full`} style={readOnly ? { ...CONTROL_STYLE, background: '#F6F8EE' } : CONTROL_STYLE} value={value} onChange={onChange ? e => onChange(e.target.value) : undefined} readOnly={readOnly} placeholder={placeholder} />
 }
 /** `label` is the accessible name for the name-part boxes that sit under
  *  a SubHead instead of their own visible label. */

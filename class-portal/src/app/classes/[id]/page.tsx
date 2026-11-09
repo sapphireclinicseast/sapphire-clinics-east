@@ -585,7 +585,7 @@ function LessonCard({ lesson, roster, viewerRole, viewerId, canEdit, onEdit, onD
   const myAttendance = viewerRole === 'STUDENT' && viewerId ? lesson.attendance[viewerId] : undefined
 
   return (
-    <li className="rounded-xl p-4 transition-colors hover:bg-[#FBF9F5]" style={{ border: '1px solid var(--light-gray)' }}>
+    <li className="rounded-xl p-4 transition-colors hover:bg-[#F8FAF2]" style={{ border: '1px solid var(--light-gray)' }}>
       <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider" style={{ color: 'var(--deep-teal)', fontFamily: 'var(--font-display)' }}>

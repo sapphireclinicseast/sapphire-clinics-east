@@ -24,7 +24,7 @@ const FOCUS = 'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visi
 const BTN_PRIMARY = `inline-flex items-center justify-center gap-1.5 h-9 px-3.5 rounded-lg text-sm font-semibold text-white whitespace-nowrap transition-opacity hover:opacity-90 ${FOCUS}`
 const PRIMARY_STYLE: CSSProperties = { background: 'var(--deep-teal)' }
 const CARD_STYLE: CSSProperties = { background: '#fff', border: '1px solid var(--light-gray)' }
-const SUBTLE_BG = '#FAF7F1'
+const SUBTLE_BG = '#F6F8EE'
 const SUBTLE_STYLE: CSSProperties = { background: SUBTLE_BG, border: '1px solid var(--light-gray)' }
 const DISPLAY: CSSProperties = { fontFamily: 'var(--font-display)' }
 /** Warm highlight for key phrases, from the kit's "warn" tone (AA contrast). */
@@ -170,7 +170,7 @@ export default function AboutPage() {
         <ul className="flex flex-col gap-2">
           {FAQS.map((item, i) => (
             <li key={i}>
-              <details className="group rounded-lg border border-[color:var(--light-gray)] bg-white overflow-hidden transition-colors hover:border-[color:var(--teal)]/40 open:bg-[#FAF7F1]">
+              <details className="group rounded-lg border border-[color:var(--light-gray)] bg-white overflow-hidden transition-colors hover:border-[color:var(--teal)]/40 open:bg-[#F6F8EE]">
                 <summary
                   className={`cursor-pointer list-none [&::-webkit-details-marker]:hidden px-3.5 py-3 sm:px-4 flex items-center justify-between gap-3 text-sm leading-snug font-semibold rounded-lg ${FOCUS}`}
                   style={{ ...DISPLAY, color: 'var(--charcoal)' }}

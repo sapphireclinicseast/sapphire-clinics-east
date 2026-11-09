@@ -774,7 +774,7 @@ function QRUploadModal({ docKey, title, onClose, onFile }: {
         const portalOrigin = window.location.origin
         const url = `${portalOrigin}/upload/${encodeURIComponent(tk)}`
         const qr = (await import('qrcode')).default
-        const data = await qr.toDataURL(url, { margin: 1, width: 256, color: { dark: '#3D6B62', light: '#FFFFFF' } })
+        const data = await qr.toDataURL(url, { margin: 1, width: 256, color: { dark: '#244952', light: '#FFFFFF' } })
         if (cancelled) return
         setToken(tk)
         setUploadUrl(url)
