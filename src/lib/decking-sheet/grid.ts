@@ -95,6 +95,8 @@ export interface SheetStaff {
 }
 
 export interface SheetSlot {
+  /** The DeckingSlot row id. A one-off sheet row IS one of these. */
+  id?: string
   staffId: string
   dayOfWeek: string
   startTime: string
@@ -118,6 +120,20 @@ export interface CellRef {
   staffId: string
   dayOfWeek: string
   startTime: string
+  /**
+   * For a ONE-OFF, the DeckingSlot row this cell is: its identity.
+   *
+   * A consultant can hold two one-offs on the same date with the same start AND
+   * the same end — a 10:30–11:00 left over from an earlier split sitting beside
+   * the real 10:30–11:00. No combination of times tells those apart, so keying
+   * on times merged them in the map: one row's typed name was dropped on every
+   * pull, and an edit to one could be applied to the other. That is how the
+   * same patient comes to be shown against two rows.
+   *
+   * Empty for weekly cells, which are not one row but a CELL that may hold
+   * several patients, and whose (staff, day, start) is already unique.
+   */
+  slotId: string
   /** YYYY-MM-DD for a one-off, empty for the weekly pattern. */
   date: string
   /** Which of the three lines this is. */
@@ -406,7 +422,7 @@ export function buildGrid(
             : line === 'name2' ? name2
             : line === 'pay2' ? pay2
             : remark
-          cells.push({ row: top + r, col: base + c, staffId: blk.st.id, dayOfWeek: day.key, startTime: h.startTime, date: '', line, wrote: value })
+          cells.push({ row: top + r, col: base + c, staffId: blk.st.id, dayOfWeek: day.key, startTime: h.startTime, slotId: '', date: '', line, wrote: value })
 
           if (line === 'name' || line === 'name2') validate.push({ row: top + r, col: base + c, kind: 'name' })
           else if (line === 'pay' || line === 'pay2') validate.push({ row: top + r, col: base + c, kind: 'pay' })
@@ -545,7 +561,7 @@ export function buildGrid(
           const remark = remarkFor(occupants, blocked)
           const value = line === 'name' ? name : line === 'pay' ? pay : remark
 
-          cells.push({ row: top + r, col: base + 1, staffId, dayOfWeek: slot.dayOfWeek, startTime: slot.startTime, date: dateStr, line, wrote: value })
+          cells.push({ row: top + r, col: base + 1, staffId, dayOfWeek: slot.dayOfWeek, startTime: slot.startTime, slotId: slot.id ?? '', date: dateStr, line, wrote: value })
           if (line !== 'remark') validate.push({ row: top + r, col: base + 1, kind: line })
           if (line === 'name' && !blocked) {
             editable.push({ startRowIndex: top + r, endRowIndex: top + r + ROWS_PER_HOUR, startColumnIndex: base + 1, endColumnIndex: base + 2 })
