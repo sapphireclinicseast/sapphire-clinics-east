@@ -7,6 +7,11 @@ import {
   migrateLocalTemplatesToServer,
   type TemplateRecord, type CurriculumFile,
 } from '@/lib/session'
+import {
+  Banner, DashCard, EmptyState, Icon, RowsSkeleton, Tag,
+  BTN_DANGER_GHOST, BTN_PRIMARY, BTN_SM, CONTROL, CONTROL_STYLE, DANGER, FILE_FOCUS, FOCUS,
+  LABEL, LABEL_STYLE, PRIMARY_STYLE, SECONDARY_STYLE, SUBTLE_BG,
+} from '@/components/hub/ui'
 
 const PDF_ACCEPT = '.pdf,application/pdf'
 const DOC_ACCEPT = '.doc,.docx,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document'
@@ -29,6 +34,9 @@ export default function TemplatesPanel({ viewer }: Props) {
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
   const [search, setSearch] = useState('')
+  // False until the first server pull lands, so an empty cache shows a
+  // skeleton instead of "No templates yet".
+  const [synced, setSynced] = useState(false)
 
   async function refresh() {
     setItems(getTemplates())
@@ -37,6 +45,7 @@ export default function TemplatesPanel({ viewer }: Props) {
     await migrateLocalTemplatesToServer()
     const fresh = await hydrateTemplatesFromServer()
     setItems(fresh)
+    setSynced(true)
   }
   useEffect(() => { void refresh() }, [])
 
@@ -104,41 +113,64 @@ export default function TemplatesPanel({ viewer }: Props) {
     setTimeout(() => URL.revokeObjectURL(url), 5_000)
   }
 
-  return (
-    <div className="space-y-4">
-      <div className="card-static">
-        <h2 className="text-[18px] leading-tight mb-1">Upload template</h2>
-        <p className="text-[12.5px] text-[color:var(--mid-gray)] mb-4">
-          Reusable documents — lesson plans, IEPs, sample forms. Attach a PDF, a Word version, or both. They&apos;ll be linked under one template entry.
-        </p>
-        {err && <div className="mb-3 px-4 py-3 rounded-xl bg-rose-50 border border-rose-100 text-sm text-rose-800">{err}</div>}
-        <label className="block mb-3">
-          <span className="label">Title</span>
-          <input className="input" value={title} onChange={e => setTitle(e.target.value)} placeholder="e.g. Quarterly IEP review template" />
-        </label>
-        <div className="grid sm:grid-cols-2 gap-3">
-          <FileSlot label="PDF version" accept={PDF_ACCEPT} file={pdfFile} onPick={setPdfFile} />
-          <FileSlot label="Word version (.doc / .docx)" accept={DOC_ACCEPT} file={docFile} onPick={setDocFile} />
-        </div>
-        <button type="button" className="btn-primary text-xs mt-4" onClick={handleSave} disabled={busy || (!pdfFile && !docFile) || !title.trim()}>
-          {busy ? 'Uploading…' : 'Save template'}
-        </button>
-      </div>
+  const kb = (n: number) => `${Math.max(1, Math.round(n / 1024)).toLocaleString()} KB`
+  const fmtDate = (iso: string) => {
+    const d = new Date(iso)
+    return Number.isNaN(d.getTime()) ? '' : d.toLocaleDateString('en-PH', { timeZone: 'Asia/Manila', month: 'short', day: 'numeric', year: 'numeric' })
+  }
 
-      <div className="card-static">
-        <div className="flex items-start justify-between gap-3 flex-wrap mb-3">
-          <h2 className="text-[18px] leading-tight">All templates</h2>
-          <div className="flex items-center gap-2 flex-wrap">
-            <input
-              className="input"
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-              placeholder="Search by title, file name, or uploader"
-              style={{ width: 280 }}
-            />
+  return (
+    <div className="space-y-5">
+      <DashCard
+        title="Upload template"
+        icon={<Icon name="upload" size={16} />}
+        description="Reusable documents — lesson plans, IEPs, sample forms. Attach a PDF, a Word version, or both; they're linked under one template entry."
+      >
+        <div className="space-y-4">
+          {err && <Banner tone="error">{err}</Banner>}
+          <div>
+            <label htmlFor="tpl-title" className={LABEL} style={LABEL_STYLE}>Title</label>
+            <input id="tpl-title" className={`${CONTROL} w-full h-10`} style={CONTROL_STYLE}
+              value={title} onChange={e => setTitle(e.target.value)} placeholder="e.g. Quarterly IEP review template" />
+          </div>
+          <div className="grid sm:grid-cols-2 gap-3">
+            <FileSlot label="PDF version" format="PDF" accept={PDF_ACCEPT} file={pdfFile} onPick={setPdfFile} />
+            <FileSlot label="Word version" format=".doc / .docx" accept={DOC_ACCEPT} file={docFile} onPick={setDocFile} />
+          </div>
+          <div className="flex flex-wrap items-center gap-3">
+            <button type="button" className={BTN_PRIMARY} style={PRIMARY_STYLE} onClick={handleSave} disabled={busy || (!pdfFile && !docFile) || !title.trim()}>
+              <Icon name="upload" size={14} /> {busy ? 'Uploading…' : 'Save template'}
+            </button>
+            {!busy && (!title.trim() || (!pdfFile && !docFile)) && (
+              <span className="text-[12px]" style={{ color: 'var(--mid-gray)' }}>
+                {!title.trim() ? 'Add a title' : 'Attach a file'} to save.
+              </span>
+            )}
+          </div>
+        </div>
+      </DashCard>
+
+      <DashCard
+        title={<>All templates{items.length > 0 && <span className="ml-1.5 text-[12px] font-semibold tabular-nums" style={{ color: 'var(--mid-gray)' }}>{items.length}</span>}</>}
+        icon={<Icon name="file" size={16} />}
+        flush
+        action={
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="relative">
+              <Icon name="search" size={14} className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: 'var(--mid-gray)' }} />
+              <input
+                className={`${CONTROL} pl-8 w-[min(280px,70vw)]`}
+                style={CONTROL_STYLE}
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                placeholder="Search title, file, uploader"
+                aria-label="Search templates"
+              />
+            </div>
             <button
               type="button"
-              className="btn-secondary text-xs"
+              className={BTN_SM}
+              style={{ ...SECONDARY_STYLE, color: 'var(--mid-gray)' }}
               title="Wipe this browser's cached template list and pull a fresh copy from the server. Use after deleting a stale local-only entry."
               onClick={() => {
                 if (typeof window === 'undefined') return
@@ -146,44 +178,54 @@ export default function TemplatesPanel({ viewer }: Props) {
                 void refresh()
               }}
             >
-              Reset & resync
+              <Icon name="refresh" size={12} /> Reset &amp; resync
             </button>
           </div>
-        </div>
+        }
+      >
         {items.length === 0 ? (
-          <p className="text-sm text-[color:var(--mid-gray)] text-center py-8">No templates yet.</p>
+          synced
+            ? <EmptyState icon="file" title="No templates yet" hint="Upload a lesson plan, IEP or sample form above and it appears here for every teacher." />
+            : <RowsSkeleton rows={3} label="Loading templates" />
         ) : filtered.length === 0 ? (
-          <p className="text-sm text-[color:var(--mid-gray)] text-center py-8">No templates match this search.</p>
+          <EmptyState icon="search" title="No templates match this search" hint="Try a different title, file name or uploader." />
         ) : (
-          <ul className="divide-y rounded-xl border" style={{ borderColor: 'var(--paper-3)' }}>
-            {filtered.map(t => (
-              <li key={t.id} className="flex items-center justify-between gap-3 px-4 py-2.5 text-sm">
-                <div className="min-w-0 flex-1">
-                  <div className="font-semibold text-[color:var(--narra)] truncate" style={{ fontFamily: 'var(--font-display)' }}>{t.title}</div>
-                  <div className="text-[11.5px] text-[color:var(--mid-gray)] truncate">
-                    {[
-                      t.pdf ? `PDF ${(t.pdf.fileSize / 1024).toFixed(0)} KB` : null,
-                      t.doc ? `Word ${(t.doc.fileSize / 1024).toFixed(0)} KB` : null,
-                    ].filter(Boolean).join(' · ')} · uploaded by {t.uploadedBy} on {new Date(t.uploadedAt).toLocaleDateString()}
+          <ul>
+            {filtered.map((t, i) => (
+              <li key={t.id} className="flex flex-wrap items-center gap-x-4 gap-y-2 px-4 sm:px-5 py-3 transition-colors hover:bg-[#FBF9F5]"
+                style={{ borderTop: i ? '1px solid var(--light-gray)' : undefined }}>
+                <span className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0" style={{ background: 'var(--pale-teal)', color: 'var(--deep-teal)' }}>
+                  <Icon name="file" size={16} />
+                </span>
+                <div className="min-w-0 flex-1 basis-48">
+                  <div className="text-sm font-semibold leading-tight break-words" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>{t.title}</div>
+                  <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1 mt-1 text-[11.5px]" style={{ color: 'var(--mid-gray)' }}>
+                    {t.pdf && <Tag tone="neutral">PDF · {kb(t.pdf.fileSize)}</Tag>}
+                    {t.doc && <Tag tone="info">Word · {kb(t.doc.fileSize)}</Tag>}
+                    <span className="break-all">by {t.uploadedBy}</span>
+                    {fmtDate(t.uploadedAt) && <><span aria-hidden>·</span><span>{fmtDate(t.uploadedAt)}</span></>}
                   </div>
                 </div>
-                <div className="flex flex-wrap gap-1.5 shrink-0 justify-end">
+                <div className="flex flex-wrap items-center gap-1.5 justify-end ml-auto">
                   {t.pdf && <FileChip label="PDF" file={t.pdf} onOpen={openBlob} onDownload={downloadBlob} />}
                   {t.doc && <FileChip label="Word" file={t.doc} onOpen={openBlob} onDownload={downloadBlob} />}
                   {(viewer.role === 'ADMIN' || t.uploadedBy === viewer.email) && (
-                    <button className="text-xs px-2 py-1 rounded-md text-[color:var(--clay)] hover:bg-[color:var(--clay-tint)]" onClick={() => handleDelete(t)}>Delete</button>
+                    <button type="button" className={BTN_DANGER_GHOST} style={{ color: DANGER }} onClick={() => handleDelete(t)}
+                      aria-label={`Delete template ${t.title}`} title="Delete template">
+                      <Icon name="trash" size={13} /> <span className="hidden sm:inline">Delete</span>
+                    </button>
                   )}
                 </div>
               </li>
             ))}
           </ul>
         )}
-      </div>
+      </DashCard>
     </div>
   )
 }
 
-function FileSlot({ label, accept, file, onPick }: { label: string; accept: string; file: File | null; onPick: (f: File | null) => void }) {
+function FileSlot({ label, format, accept, file, onPick }: { label: string; format: string; accept: string; file: File | null; onPick: (f: File | null) => void }) {
   function pick(e: React.ChangeEvent<HTMLInputElement>) {
     const f = e.target.files?.[0] ?? null
     e.target.value = ''
@@ -191,52 +233,59 @@ function FileSlot({ label, accept, file, onPick }: { label: string; accept: stri
   }
   return (
     <div
-      className="rounded-xl p-3 border flex items-start justify-between gap-3"
-      style={{ borderColor: file ? 'var(--sage)' : 'var(--paper-3)', background: file ? 'var(--sage-tint)' : 'var(--paper-2)' }}
+      className="rounded-xl p-3.5 flex items-center gap-3 min-w-0 transition-colors"
+      style={{ border: `1px ${file ? 'solid' : 'dashed'} ${file ? '#9FC08A' : 'var(--light-gray)'}`, background: file ? '#F6FAF2' : SUBTLE_BG }}
     >
-      <div className="min-w-0">
-        <div className="text-[11.5px] uppercase tracking-[0.08em] text-[color:var(--mid-gray)] font-semibold mb-1" style={{ fontFamily: 'var(--font-display)' }}>{label}</div>
-        <div className="text-[13px] text-[color:var(--ink)] truncate">{file ? `${file.name} · ${(file.size / 1024).toFixed(0)} KB` : 'No file selected.'}</div>
+      <span className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0"
+        style={file ? { background: '#EEF5E8', color: '#2F5A28' } : { background: '#fff', color: 'var(--mid-gray)', border: '1px solid var(--light-gray)' }}>
+        <Icon name={file ? 'check' : 'file'} size={16} />
+      </span>
+      <div className="min-w-0 flex-1">
+        <div className="text-[11px] font-semibold uppercase tracking-wider" style={{ fontFamily: 'var(--font-display)', color: 'var(--mid-gray)' }}>
+          {label} <span className="normal-case tracking-normal font-normal">({format})</span>
+        </div>
+        <div className="text-[13px] truncate mt-0.5" style={{ color: file ? 'var(--charcoal)' : 'var(--mid-gray)' }} title={file?.name}>
+          {file ? `${file.name} · ${(file.size / 1024).toFixed(0)} KB` : 'No file selected'}
+        </div>
       </div>
-      <div className="flex gap-1.5 shrink-0">
-        <label className="btn-secondary text-xs cursor-pointer" style={{ width: 'auto' }}>
+      <div className="flex items-center gap-1 shrink-0">
+        <label className={`${BTN_SM} cursor-pointer ${FILE_FOCUS}`} style={{ ...SECONDARY_STYLE, color: 'var(--deep-teal)' }}>
           {file ? 'Change' : 'Choose'}
           <input type="file" className="sr-only" accept={accept} onChange={pick} />
         </label>
-        {file && <button type="button" className="text-xs px-2 py-1 rounded-md text-[color:var(--mid-gray)] hover:text-[color:var(--clay)]" onClick={() => onPick(null)}>Remove</button>}
+        {file && (
+          <button type="button" className={`w-8 h-8 rounded-lg flex items-center justify-center transition-colors hover:bg-white ${FOCUS}`}
+            style={{ color: 'var(--mid-gray)' }} onClick={() => onPick(null)} aria-label={`Remove ${label}`} title="Remove">
+            <Icon name="x" size={14} />
+          </button>
+        )}
       </div>
     </div>
   )
 }
 
 function FileChip({ label, file, onOpen, onDownload }: { label: string; file: CurriculumFile; onOpen: (id: string) => void; onDownload: (id: string, name: string) => void }) {
-  // Compact chip — format tag + icon-only View (↗) and Download (↓)
-  // buttons. Tooltips carry the full word for accessibility.
+  // Format tag + View and Download buttons. Labels carry the format so
+  // screen readers hear "View PDF" / "Download Word".
   return (
-    <div
-      className="inline-flex items-stretch overflow-hidden rounded-md border text-[11px]"
-      style={{ borderColor: 'var(--paper-3)', background: '#fff' }}
-    >
-      <span
-        className="px-1.5 flex items-center font-bold text-[10px] uppercase tracking-[0.06em] text-[color:var(--mid-gray)]"
-        style={{ fontFamily: 'var(--font-display)' }}
-      >{label}</span>
+    <div className="inline-flex items-stretch overflow-hidden rounded-lg text-[11px] h-8" style={{ border: '1px solid var(--light-gray)', background: '#fff' }}>
+      <span className="px-2 flex items-center font-bold text-[10px] uppercase tracking-wider" style={{ fontFamily: 'var(--font-display)', color: 'var(--mid-gray)', background: SUBTLE_BG }}>{label}</span>
       <button
         type="button"
         title="View in a new tab"
         aria-label={`View ${label}`}
-        className="px-1.5 border-l hover:bg-[color:var(--paper-2)] text-[color:var(--narra)]"
-        style={{ borderColor: 'var(--paper-3)' }}
+        className={`px-2 inline-flex items-center gap-1 font-semibold transition-colors hover:bg-[color:var(--paper)] ${FOCUS}`}
+        style={{ borderLeft: '1px solid var(--light-gray)', color: 'var(--deep-teal)' }}
         onClick={() => onOpen(file.fileId)}
-      >↗</button>
+      ><Icon name="eye" size={12} /> View</button>
       <button
         type="button"
         title="Download"
         aria-label={`Download ${label}`}
-        className="px-1.5 border-l text-white font-semibold"
-        style={{ borderColor: 'var(--paper-3)', background: 'var(--narra)' }}
+        className={`w-8 inline-flex items-center justify-center text-white transition-opacity hover:opacity-90 ${FOCUS}`}
+        style={{ background: 'var(--deep-teal)' }}
         onClick={() => onDownload(file.fileId, file.fileName)}
-      >↓</button>
+      ><Icon name="download" size={12} /></button>
     </div>
   )
 }
