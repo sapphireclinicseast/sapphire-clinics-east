@@ -3,10 +3,12 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useSession } from 'next-auth/react'
 import { redirect } from 'next/navigation'
-import { CreditCard, Loader2, ExternalLink, RefreshCw, Ticket, Plus, Trash2, X, CheckCircle2, Copy, AlertTriangle, Landmark, Search, Link as LinkIcon, AlertCircle
+import { CreditCard, Loader2, ExternalLink, RefreshCw, Ticket, Plus, Trash2, X, CheckCircle2, Landmark, Search, Link as LinkIcon, AlertCircle, Receipt
 } from 'lucide-react'
 import { PosLinksPanel } from './PosLinksPanel'
 import { allowedPaymongoAccounts, canWritePaymongo } from '@/lib/paymongo-access'
+import { HR_PAGE_CLASS, HR_PAGE_STYLE, HrShimmerStyle, StatCard, hrBtn } from '@/components/ui/hr-look'
+import { BORDER, Card, FIELD, LABEL, LINE, Notice, Pill, ShimmerRows, StatusPill, Th, seg, statusLook } from './ui'
 
 const ACCESS = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN', 'AHEA_FRONTDESK', 'AHGH_FRONTDESK', 'PAYROLL_OFFICER']
 const VOUCHER_WRITE = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER']
@@ -47,7 +49,7 @@ function DeptBadge({ dept }: { dept: string }) {
   const key = dept.toUpperCase()
   const c = DEPT_COLORS[key] || DEPT_COLORS.OTHER
   return (
-    <span className="px-1.5 py-0.5 rounded text-[10px] font-medium whitespace-nowrap" style={{ background: c.bg, color: c.fg }}>
+    <span className="inline-block px-2 py-0.5 rounded-full text-[10.5px] font-semibold whitespace-nowrap" style={{ background: c.bg, color: c.fg }}>
       {DEPT_LABELS[key] || dept}
     </span>
   )
@@ -64,14 +66,10 @@ const METHOD_STYLE: Record<string, { label: string; bg: string; fg: string }> = 
 function MethodBadge({ method, status }: { method: string | null; status: string }) {
   if (!method) {
     // PayMongo only reports the instrument once the payment settles.
-    return <span className="text-[10px]" style={{ color: 'var(--mid-gray)' }}>{status === 'PAID' ? 'not reported' : '—'}</span>
+    return <span className="text-[11px]" style={{ color: 'var(--hr-faint)' }}>{status === 'PAID' ? 'not reported' : '—'}</span>
   }
   const m = METHOD_STYLE[method.toUpperCase()] || { label: method, bg: '#f1f5f9', fg: '#475569' }
-  return (
-    <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold whitespace-nowrap" style={{ background: m.bg, color: m.fg }}>
-      {m.label}
-    </span>
-  )
+  return <Pill bg={m.bg} fg={m.fg}>{m.label}</Pill>
 }
 
 const peso = (n: number) => '₱' + Number(n || 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
@@ -109,14 +107,11 @@ interface Voucher {
 }
 interface Coa { id: string; accountNumber: string; accountTitle: string }
 
-function Badge({ s }: { s: string }) {
-  const map: Record<string, { bg: string; c: string }> = {
-    PAID: { bg: '#dcfce7', c: '#166534' }, PENDING: { bg: '#fef9c3', c: '#854d0e' },
-    FAILED: { bg: '#fee2e2', c: '#b91c1c' }, EXPIRED: { bg: '#f1f5f9', c: '#64748b' },
-  }
-  const st = map[s] || map.PENDING
-  return <span className="px-1.5 py-0.5 rounded-full text-[10px] font-semibold whitespace-nowrap" style={{ background: st.bg, color: st.c }}>{s}</span>
-}
+// Quick filter on the Transactions table (client-side, display only).
+type TxnFilter = 'ALL' | 'PAID' | 'PENDING' | 'CLOSED'
+const TXN_FILTERS: [TxnFilter, string][] = [['ALL', 'All'], ['PAID', 'Paid'], ['PENDING', 'Pending'], ['CLOSED', 'Expired & failed']]
+const inFilter = (t: Txn, f: TxnFilter) =>
+  f === 'ALL' ? true : f === 'CLOSED' ? (t.status !== 'PAID' && t.status !== 'PENDING') : t.status === f
 
 /* ══════════════════ One branch account ══════════════════ */
 function BranchPanel({ account, label, canWrite }: { account: string; label: string; canWrite: boolean }) {
@@ -144,6 +139,12 @@ function BranchPanel({ account, label, canWrite }: { account: string; label: str
   const [copiedToken, setCopiedToken] = useState('')
   const [allowVoucher, setAllowVoucher] = useState(true)
   const [linkCode, setLinkCode] = useState('')
+  // Display-only filters on the Transactions table (the cards double as quick filters).
+  const [txnFilter, setTxnFilter] = useState<TxnFilter>('ALL')
+  const [txnSearch, setTxnSearch] = useState('')
+  // Start each branch tab unfiltered (adjust state while rendering, React's pattern for a prop change).
+  const [filterFor, setFilterFor] = useState(account)
+  if (filterFor !== account) { setFilterFor(account); setTxnFilter('ALL'); setTxnSearch('') }
 
   const list = kind === 'SERVICE' ? items.services : items.products
   const chosen = list.find(i => i.id === itemId)
@@ -192,6 +193,33 @@ function BranchPanel({ account, label, canWrite }: { account: string; label: str
     return [...txns, ...external].sort((a, b) =>
       new Date(b.paidAt || b.createdAt).getTime() - new Date(a.paidAt || a.createdAt).getTime())
   }, [txns, livePayments])
+
+  // Card figures — straight sums over the same rows the table lists.
+  const stats = useMemo(() => {
+    const paid = rows.filter(r => r.status === 'PAID')
+    const pending = rows.filter(r => r.status === 'PENDING')
+    const closed = rows.filter(r => r.status !== 'PAID' && r.status !== 'PENDING')
+    const settled = payouts.filter(p => p.settled)
+    return {
+      paidN: paid.length,
+      paidAmt: paid.reduce((s, r) => s + r.amount, 0),
+      paidNet: paid.reduce((s, r) => s + (r.netAmount ?? r.amount), 0),
+      pendingN: pending.length,
+      pendingAmt: pending.reduce((s, r) => s + r.amount, 0),
+      closedN: closed.length,
+      failedN: closed.filter(r => r.status === 'FAILED').length,
+      settledN: settled.length,
+      settledNet: settled.reduce((s, p) => s + p.net, 0),
+    }
+  }, [rows, payouts])
+
+  const shownRows = useMemo(() => {
+    const q = txnSearch.trim().toLowerCase()
+    return rows.filter(t => inFilter(t, txnFilter) && (!q || [
+      t.customerName, t.customerEmail, t.customerPhone, t.itemName, t.description, t.voucherCode, t.referenceCode, t.paymentId,
+    ].some(v => v && v.toLowerCase().includes(q))))
+  }, [rows, txnFilter, txnSearch])
+  const toggleFilter = (f: TxnFilter) => setTxnFilter(cur => (cur === f ? 'ALL' : f))
 
   const load = useCallback(async (sync = false) => {
     setLoading(true); setError('')
@@ -270,195 +298,210 @@ function BranchPanel({ account, label, canWrite }: { account: string; label: str
 
   // Only the item matters — the payer enters their own details on the payer page.
   const canSubmit = !!itemId && gross > 0
+  const { ghost: ghostBtn, primary: primaryBtn } = hrBtn
+  const strays = rows.filter(r => r.belongsToAccount)
 
   return (
     <div className="space-y-4">
       {!configured && (
-        <div className="flex items-start gap-2 px-4 py-3 rounded-xl text-sm" style={{ background: '#fffbeb', color: '#92400e' }}>
-          <AlertTriangle size={16} className="mt-0.5 shrink-0" />
-          <span>No key configured for this account yet. Set <code className="font-mono">PAYMONGO_SECRET_KEY_{account}</code> in the server environment and restart the app.</span>
-        </div>
+        <Notice tone="amber">
+          No key configured for this account yet. Set <code className="font-mono">PAYMONGO_SECRET_KEY_{account}</code> in the server environment and restart the app.
+        </Notice>
       )}
-      {error && <div className="px-4 py-3 rounded-xl text-sm bg-red-50 text-red-700">{error}</div>}
+      {error && <Notice tone="red" icon={<AlertCircle size={15} />}>{error}</Notice>}
 
       {/* Money that landed in this account but was earned by another branch.
           Display only — it changes nothing in the ledger, it just stops the tab
           quietly implying the cash belongs here. */}
-      {(() => {
-        const strays = rows.filter(r => r.belongsToAccount)
-        if (strays.length === 0) return null
+      {strays.length > 0 && (() => {
         const total = strays.reduce((sum, r) => sum + r.amount, 0)
         const net = strays.reduce((sum, r) => sum + (r.netAmount ?? r.amount), 0)
         const owed = [...new Set(strays.map(r => r.belongsToAccount))].join(', ')
         return (
-          <div className="mb-4 p-3 rounded-xl border flex items-start gap-2" style={{ background: '#fffbeb', borderColor: '#f59e0b', color: '#92400e' }}>
-            <AlertCircle size={16} className="shrink-0 mt-0.5" />
-            <div className="flex-1">
-              <p className="text-sm font-semibold">
-                {strays.length} payment{strays.length === 1 ? '' : 's'} here {strays.length === 1 ? 'was' : 'were'} earned by {owed} — {peso(total)} gross, {peso(net)} net settled into this account.
-              </p>
-              <p className="text-xs mt-1">
-                Class-portal tuition taken before the portal sent the student&apos;s branch, so the cash settled here instead of {owed}. The revenue is already recognised under {owed} — these were booked as POS orders on the day they were paid — so nothing is missing from the income statement. Only the cash sits in the wrong account, and squaring that needs a bank transfer, not a change here.
-              </p>
-              <ul className="text-xs mt-1.5 space-y-0.5">
-                {strays.map(r => (
-                  <li key={r.id}>· {r.customerName || r.itemName || '—'} — {peso(r.amount)} gross, {peso(r.netAmount ?? r.amount)} net → belongs to {r.belongsToAccount}</li>
-                ))}
-              </ul>
-            </div>
-          </div>
+          <Notice tone="amber" icon={<AlertCircle size={15} />}>
+            <p className="font-semibold">
+              {strays.length} payment{strays.length === 1 ? '' : 's'} here {strays.length === 1 ? 'was' : 'were'} earned by {owed} — {peso(total)} gross, {peso(net)} net settled into this account.
+            </p>
+            <p className="text-xs mt-1">
+              Class-portal tuition taken before the portal sent the student&apos;s branch, so the cash settled here instead of {owed}. The revenue is already recognised under {owed} — these were booked as POS orders on the day they were paid — so nothing is missing from the income statement. Only the cash sits in the wrong account, and squaring that needs a bank transfer, not a change here.
+            </p>
+            <ul className="text-xs mt-1.5 space-y-0.5">
+              {strays.map(r => (
+                <li key={r.id}>· {r.customerName || r.itemName || '—'} — {peso(r.amount)} gross, {peso(r.netAmount ?? r.amount)} net → belongs to {r.belongsToAccount}</li>
+              ))}
+            </ul>
+          </Notice>
         )
       })()}
 
+      {/* Cards (the first three double as quick filters on the table) */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <StatCard loading={loading} compact label="Received" value={peso(stats.paidAmt)}
+          sub={stats.paidN ? `${stats.paidN} paid · ${peso(stats.paidNet)} net of fees` : 'No paid payments yet'}
+          tone={stats.paidN ? 'green' : 'zero'} active={txnFilter === 'PAID'}
+          onClick={() => toggleFilter('PAID')} title="Show only the paid payments" />
+        <StatCard loading={loading} label="Awaiting payment" value={stats.pendingN.toLocaleString()}
+          sub={stats.pendingN ? `${peso(stats.pendingAmt)} not yet paid` : 'Nothing pending'}
+          tone={stats.pendingN ? 'amber' : 'zero'} active={txnFilter === 'PENDING'}
+          onClick={() => toggleFilter('PENDING')} title="Show only the links still waiting for the payer" />
+        <StatCard loading={loading} label="Expired / failed" value={stats.closedN.toLocaleString()}
+          sub={stats.closedN ? `${stats.failedN} failed · ${stats.closedN - stats.failedN} expired` : 'None'}
+          tone={stats.failedN ? 'red' : 'zero'} active={txnFilter === 'CLOSED'}
+          onClick={() => toggleFilter('CLOSED')} title="Show only the expired or failed payments" />
+        <StatCard loading={loading} compact label="Paid out to bank" value={peso(stats.settledNet)}
+          sub={payouts.length ? `${stats.settledN} of ${payouts.length} payout${payouts.length === 1 ? '' : 's'} in the bank` : 'No payouts yet'}
+          tone={stats.settledNet ? 'green' : 'zero'} />
+      </div>
+
       {/* ── Transactions ── */}
-      <div className="rounded-2xl border" style={{ borderColor: 'var(--light-gray)' }}>
-        <div className="flex items-center justify-between px-4 py-3 border-b" style={{ borderColor: 'var(--light-gray)' }}>
-          <span className="text-sm font-bold" style={{ color: 'var(--charcoal)' }}>Transactions Received — {label}</span>
+      <Card icon={<Receipt size={16} />} title="Transactions received"
+        count={loading ? '' : `${shownRows.length.toLocaleString()}${shownRows.length !== rows.length ? ` of ${rows.length.toLocaleString()}` : ''}`}
+        sub={`Payments into the ${label} PayMongo account — from links made here, plus website and direct payments.`}
+        actions={
           <button onClick={async () => { setSyncing(true); await load(true); setSyncing(false) }} disabled={syncing || !configured}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border disabled:opacity-50" style={{ borderColor: 'var(--light-gray)', color: 'var(--teal)' }}>
-            {syncing ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />} Sync from PayMongo
+            className={ghostBtn} style={{ ...BORDER, color: 'var(--teal)' }}>
+            {syncing ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />} Sync from PayMongo
           </button>
+        }>
+        {/* Toolbar */}
+        <div className="flex flex-wrap items-center gap-2 px-4 py-2.5 border-y" style={{ background: '#fcfdfa', ...BORDER }}>
+          <label className="flex items-center gap-1.5 h-9 px-3 w-full sm:w-72 rounded-lg border bg-white focus-within:border-[var(--teal)] focus-within:shadow-[0_0_0_3px_rgba(74,128,115,0.12)]"
+            style={{ ...BORDER, color: 'var(--hr-faint)' }}>
+            <Search size={15} className="flex-shrink-0" />
+            <input value={txnSearch} onChange={e => setTxnSearch(e.target.value)} placeholder="Search payer, item, voucher…"
+              className="flex-1 min-w-0 bg-transparent outline-none text-[13px]" style={{ color: 'var(--charcoal)' }} />
+            {txnSearch && <button onClick={() => setTxnSearch('')} title="Clear search"><X size={14} /></button>}
+          </label>
+          <div className="flex max-w-full overflow-x-auto rounded-lg border" style={BORDER} role="group" aria-label="Status">
+            {TXN_FILTERS.map(([v, l]) => (
+              <button key={v} onClick={() => setTxnFilter(v)} aria-pressed={txnFilter === v}
+                className="h-9 px-3 text-xs font-semibold whitespace-nowrap flex-shrink-0" style={seg(txnFilter === v)}>{l}</button>
+            ))}
+          </div>
         </div>
         <div className="overflow-x-auto">
-          <table className="w-full text-xs">
-            <thead><tr style={{ background: 'var(--off-white)', color: 'var(--mid-gray)' }}>
-              <th className="px-3 py-2 text-left font-semibold uppercase">Date</th>
-              <th className="px-3 py-2 text-left font-semibold uppercase">Customer</th>
-              <th className="px-3 py-2 text-left font-semibold uppercase">Item</th>
-              <th className="px-3 py-2 text-left font-semibold uppercase">Voucher</th>
-              <th className="px-3 py-2 text-right font-semibold uppercase">Gross</th>
-              <th className="px-3 py-2 text-right font-semibold uppercase">Disc.</th>
-              <th className="px-3 py-2 text-right font-semibold uppercase">Charged</th>
-              <th className="px-3 py-2 text-right font-semibold uppercase">Fee</th>
-              <th className="px-3 py-2 text-right font-semibold uppercase">Net</th>
-              <th className="px-3 py-2 text-left font-semibold uppercase">Paid via</th>
-              <th className="px-3 py-2 text-left font-semibold uppercase">Status</th>
-              <th className="px-3 py-2 text-right font-semibold uppercase">Actions</th>
+          {loading ? <ShimmerRows /> : (
+          <table className="w-full text-xs" style={{ borderCollapse: 'separate', borderSpacing: 0 }}>
+            <thead><tr>
+              <Th>Date</Th><Th>Customer</Th><Th>Item</Th><Th>Voucher</Th>
+              <Th right>Gross</Th><Th right>Disc.</Th><Th right>Charged</Th><Th right>Fee</Th><Th right>Net</Th>
+              <Th>Paid via</Th><Th>Status</Th><Th right>Actions</Th>
             </tr></thead>
             <tbody>
-              {loading ? (
-                <tr><td colSpan={12} className="text-center py-8" style={{ color: 'var(--mid-gray)' }}><Loader2 size={16} className="inline animate-spin" /></td></tr>
-              ) : rows.length === 0 ? (
-                <tr><td colSpan={12} className="text-center py-8" style={{ color: 'var(--mid-gray)' }}>No transactions yet for this account.</td></tr>
-              ) : rows.map(t => (
-                <tr key={t.id} className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
-                  <td className="px-3 py-2 whitespace-nowrap" style={{ color: 'var(--mid-gray)' }}>{new Date(t.createdAt).toLocaleDateString('en-PH')}</td>
-                  <td className="px-3 py-2" style={{ color: 'var(--charcoal)' }}>
+              {shownRows.length === 0 ? (
+                <tr><td colSpan={12} className="text-center py-10 text-[13px]" style={{ color: 'var(--mid-gray)' }}>
+                  {rows.length === 0 ? 'No transactions yet for this account.' : (
+                    <>No transactions match. <button onClick={() => { setTxnFilter('ALL'); setTxnSearch('') }} className="font-semibold hover:underline underline-offset-2" style={{ color: 'var(--teal)' }}>Clear filters</button></>
+                  )}
+                </td></tr>
+              ) : shownRows.map(t => (
+                <tr key={t.id} className="hover:bg-[#fafcf6]">
+                  <td className="px-3 py-2 whitespace-nowrap border-b" style={{ ...LINE, color: 'var(--mid-gray)', boxShadow: `inset 4px 0 0 ${statusLook(t.status).edge}` }}>{new Date(t.createdAt).toLocaleDateString('en-PH')}</td>
+                  <td className="px-3 py-2 border-b" style={{ ...LINE, color: 'var(--charcoal)' }}>
                     {/* Populated from the payer's own entries on the PayMongo page once paid. */}
-                    {t.customerName || <span style={{ color: 'var(--mid-gray)' }}>{t.status === 'PENDING' ? 'awaiting payer' : '—'}</span>}
+                    {t.customerName || <span style={{ color: 'var(--hr-faint)' }}>{t.status === 'PENDING' ? 'awaiting payer' : '—'}</span>}
                     {(t.customerEmail || t.customerPhone) && (
-                      <span className="block text-[10px]" style={{ color: 'var(--mid-gray)' }}>
+                      <span className="block text-[10.5px]" style={{ color: 'var(--mid-gray)' }}>
                         {[t.customerEmail, t.customerPhone].filter(Boolean).join(' · ')}
                       </span>
                     )}
                   </td>
-                  <td className="px-3 py-2">
+                  <td className="px-3 py-2 border-b" style={LINE}>
                     {t.cartItems?.length
-                      ? <button onClick={() => setItemsPopup(t)} className="text-left underline decoration-dotted cursor-pointer" style={{ color: 'var(--teal)' }} title="Show the items in this purchase">{t.itemName || t.description || '—'}</button>
+                      ? <button onClick={() => setItemsPopup(t)} className="text-left font-semibold underline decoration-dotted underline-offset-2 cursor-pointer" style={{ color: 'var(--teal)' }} title="Show the items in this purchase">{t.itemName || t.description || '—'}</button>
                       : <span style={{ color: 'var(--charcoal)' }}>{t.itemName || t.description || '—'}</span>}
                     {/* Paid straight to the PayMongo account — a storefront sale or a
                         payment taken outside any link created here. */}
-                    {t.external && (
-                      <span className="ml-1 px-1.5 py-0.5 rounded text-[10px] font-semibold" style={{ background: '#ede9fe', color: '#5b21b6' }}>Website / direct</span>
-                    )}
+                    {t.external && <Pill bg="#ede9fe" fg="#5b21b6" className="ml-1">Website / direct</Pill>}
                     {t.belongsToAccount && (
-                      <span className="ml-1 px-1.5 py-0.5 rounded text-[10px] font-bold" style={{ background: '#fef3c7', color: '#92400e' }}
-                        title={`Earned by ${t.belongsToAccount} but settled into this account`}>
+                      <Pill bg="#fef3c7" fg="#92400e" className="ml-1" title={`Earned by ${t.belongsToAccount} but settled into this account`}>
                         ⚠ {t.belongsToAccount}&apos;s money
-                      </span>
+                      </Pill>
                     )}
                     {(t.departmentLabel || t.kind === 'PRODUCT') && (
-                      <span className="block mt-0.5">
+                      <span className="flex flex-wrap gap-1 mt-1">
                         {t.department && <DeptBadge dept={t.department} />}
-                        {t.kind === 'PRODUCT' && (
-                          <span className="ml-1 px-1.5 py-0.5 rounded text-[10px] font-medium" style={{ background: 'var(--off-white)', color: 'var(--mid-gray)' }}>Product</span>
-                        )}
+                        {t.kind === 'PRODUCT' && <Pill bg="var(--pale-teal)" fg="var(--deep-teal)">Product</Pill>}
                       </span>
                     )}
                   </td>
-                  <td className="px-3 py-2 font-mono text-[11px]" style={{ color: 'var(--mid-gray)' }}>{t.voucherCode || '—'}</td>
-                  <td className="px-3 py-2 text-right font-mono" style={{ color: 'var(--mid-gray)' }}>{t.grossAmount != null ? peso(t.grossAmount) : '—'}</td>
-                  <td className="px-3 py-2 text-right font-mono" style={{ color: (t.discountAmount || 0) > 0 ? '#c44b00' : 'var(--light-gray)' }}>{(t.discountAmount || 0) > 0 ? peso(t.discountAmount!) : '—'}</td>
-                  <td className="px-3 py-2 text-right font-mono font-semibold" style={{ color: 'var(--charcoal)' }}>{peso(t.amount)}</td>
-                  <td className="px-3 py-2 text-right font-mono" style={{ color: 'var(--mid-gray)' }}>{t.fee != null ? peso(t.fee) : '—'}</td>
-                  <td className="px-3 py-2 text-right font-mono" style={{ color: 'var(--deep-teal)' }}>{t.netAmount != null ? peso(t.netAmount) : '—'}</td>
-                  <td className="px-3 py-2"><MethodBadge method={t.paymentMethodUsed} status={t.status} /></td>
-                  <td className="px-3 py-2"><Badge s={t.status} />{t.payoutId && <span className="block text-[10px] mt-0.5" style={{ color: '#166534' }}>settled</span>}</td>
-                  <td className="px-3 py-2 text-right whitespace-nowrap">
+                  <td className="px-3 py-2 font-mono text-[11px] border-b" style={{ ...LINE, color: 'var(--mid-gray)' }}>{t.voucherCode || '—'}</td>
+                  <td className="px-3 py-2 text-right font-mono whitespace-nowrap border-b" style={{ ...LINE, color: 'var(--mid-gray)' }}>{t.grossAmount != null ? peso(t.grossAmount) : '—'}</td>
+                  <td className="px-3 py-2 text-right font-mono whitespace-nowrap border-b" style={{ ...LINE, color: (t.discountAmount || 0) > 0 ? '#c44b00' : 'var(--hr-faint)' }}>{(t.discountAmount || 0) > 0 ? peso(t.discountAmount!) : '—'}</td>
+                  <td className="px-3 py-2 text-right font-mono font-semibold whitespace-nowrap border-b" style={{ ...LINE, color: 'var(--charcoal)' }}>{peso(t.amount)}</td>
+                  <td className="px-3 py-2 text-right font-mono whitespace-nowrap border-b" style={{ ...LINE, color: 'var(--mid-gray)' }}>{t.fee != null ? peso(t.fee) : '—'}</td>
+                  <td className="px-3 py-2 text-right font-mono whitespace-nowrap border-b" style={{ ...LINE, color: 'var(--deep-teal)' }}>{t.netAmount != null ? peso(t.netAmount) : '—'}</td>
+                  <td className="px-3 py-2 border-b" style={LINE}><MethodBadge method={t.paymentMethodUsed} status={t.status} /></td>
+                  <td className="px-3 py-2 border-b" style={LINE}><StatusPill s={t.status} />{t.payoutId && <span className="block text-[10.5px] mt-0.5" style={{ color: '#166534' }}>settled</span>}</td>
+                  <td className="px-3 py-2 text-right whitespace-nowrap border-b" style={LINE}>
                     {t.checkoutUrl && t.status === 'PENDING' && <a href={t.checkoutUrl} target="_blank" rel="noreferrer" className="mr-2" title="Open link"><ExternalLink size={13} style={{ color: 'var(--teal)' }} className="inline" /></a>}
                     {/* A link the payer abandoned can sit PENDING forever, so it must be
                         removable. A settled payment never is — the money is real. */}
                     {canWrite && t.status !== 'PAID' && !t.external && (
                       <button onClick={() => del(t)} title="Expire this link at PayMongo and remove the row"
-                        className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-semibold border"
+                        className="inline-flex items-center gap-1 h-7 px-2 rounded-lg text-[11px] font-semibold border"
                         style={{ borderColor: '#fecaca', color: '#b91c1c', background: '#fef2f2' }}>
                         <Trash2 size={11} /> Delete
                       </button>
                     )}
                     {t.status === 'PAID' && (
-                      <span className="text-[10px]" style={{ color: 'var(--mid-gray)' }} title="A settled payment cannot be deleted">paid — locked</span>
+                      <span className="text-[10.5px]" style={{ color: 'var(--hr-faint)' }} title="A settled payment cannot be deleted">paid — locked</span>
                     )}
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
+          )}
         </div>
-      </div>
+      </Card>
 
       {/* ── Payouts ── */}
-      <div className="rounded-2xl border" style={{ borderColor: 'var(--light-gray)' }}>
-        <div className="flex items-center gap-2 px-4 py-3 border-b" style={{ borderColor: 'var(--light-gray)' }}>
-          <Landmark size={15} style={{ color: 'var(--teal)' }} />
-          <span className="text-sm font-bold" style={{ color: 'var(--charcoal)' }}>Payouts to Bank — {label}</span>
-          <span className="text-[11px]" style={{ color: 'var(--mid-gray)' }}>· for bank reconciliation</span>
-        </div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-xs">
-            <thead><tr style={{ background: 'var(--off-white)', color: 'var(--mid-gray)' }}>
-              <th className="px-3 py-2 text-left font-semibold uppercase">Payout ID</th>
-              <th className="px-3 py-2 text-left font-semibold uppercase">Date</th>
-              <th className="px-3 py-2 text-right font-semibold uppercase">Net to Bank</th>
-              <th className="px-3 py-2 text-right font-semibold uppercase">Fee</th>
-              <th className="px-3 py-2 text-left font-semibold uppercase">Settled?</th>
+      <Card icon={<Landmark size={16} />} title="Payouts to bank" count={payouts.length ? payouts.length.toLocaleString() : ''}
+        sub={`What PayMongo sent from the ${label} account to the bank — for bank reconciliation.`}>
+        <div className="overflow-x-auto border-t" style={BORDER}>
+          <table className="w-full text-xs" style={{ borderCollapse: 'separate', borderSpacing: 0 }}>
+            <thead><tr>
+              <Th>Payout ID</Th><Th>Date</Th><Th right>Net to bank</Th><Th right>Fee</Th><Th>Settled?</Th>
             </tr></thead>
             <tbody>
               {payouts.length === 0 ? (
-                <tr><td colSpan={5} className="text-center py-8" style={{ color: 'var(--mid-gray)' }}>{configured ? 'No payouts reported by PayMongo for this account yet.' : 'Configure this account to see payouts.'}</td></tr>
+                <tr><td colSpan={5} className="text-center py-10 text-[13px]" style={{ color: 'var(--mid-gray)' }}>{configured ? 'No payouts reported by PayMongo for this account yet.' : 'Configure this account to see payouts.'}</td></tr>
               ) : payouts.map(p => (
-                <tr key={p.payoutId} className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
-                  <td className="px-3 py-2 font-mono text-[11px]" style={{ color: 'var(--charcoal)' }}>{p.payoutId}</td>
-                  <td className="px-3 py-2" style={{ color: 'var(--mid-gray)' }}>{p.paidAt ? new Date(p.paidAt).toLocaleDateString('en-PH') : '—'}</td>
-                  <td className="px-3 py-2 text-right font-mono font-semibold" style={{ color: 'var(--deep-teal)' }}>{peso(p.net)}</td>
-                  <td className="px-3 py-2 text-right font-mono" style={{ color: 'var(--mid-gray)' }}>{peso(p.fee)}</td>
-                  <td className="px-3 py-2">
+                <tr key={p.payoutId} className="hover:bg-[#fafcf6]">
+                  <td className="px-3 py-2 font-mono text-[11px] border-b" style={{ ...LINE, color: 'var(--charcoal)', boxShadow: `inset 4px 0 0 ${p.settled ? '#059669' : '#d97706'}` }}>{p.payoutId}</td>
+                  <td className="px-3 py-2 whitespace-nowrap border-b" style={{ ...LINE, color: 'var(--mid-gray)' }}>{p.paidAt ? new Date(p.paidAt).toLocaleDateString('en-PH') : '—'}</td>
+                  <td className="px-3 py-2 text-right font-mono font-semibold whitespace-nowrap border-b" style={{ ...LINE, color: 'var(--deep-teal)' }}>{peso(p.net)}</td>
+                  <td className="px-3 py-2 text-right font-mono whitespace-nowrap border-b" style={{ ...LINE, color: 'var(--mid-gray)' }}>{peso(p.fee)}</td>
+                  <td className="px-3 py-2 border-b" style={LINE}>
                     {p.settled
-                      ? <span className="flex items-center gap-1 font-medium" style={{ color: '#166534' }}><CheckCircle2 size={12} /> In bank</span>
-                      : <span style={{ color: '#854d0e' }}>{p.status || 'pending'}</span>}
+                      ? <Pill bg="#dcfce7" fg="#166534"><CheckCircle2 size={11} className="inline -mt-px mr-1" />In bank</Pill>
+                      : <Pill bg="#fef3c7" fg="#92400e">{p.status || 'pending'}</Pill>}
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
-      </div>
+      </Card>
+
       {/* ── Generate a payment link (writers only; front desk is view-only) ── */}
       {canWrite && (
-      <div className="rounded-2xl border p-4" style={{ borderColor: 'var(--light-gray)' }}>
-        <p className="text-sm font-bold mb-1" style={{ color: 'var(--charcoal)' }}>Generate Payment Link — {label}</p>
-        <p className="text-[11px] mb-3" style={{ color: 'var(--mid-gray)' }}>Create one link per service or product and reuse it for every patient. Each payer opens the link, enters their own name, contact number and email, then pays — and those details appear in Transactions Received below.</p>
+      <Card icon={<CreditCard size={16} />} title="Generate a payment link"
+        sub="One link per service or product, reused for every patient. Each payer opens it, enters their own name, number and email, then pays — and shows up in Transactions received.">
+        <div className="px-4 pb-4 pt-3 border-t" style={BORDER}>
         <div className="grid grid-cols-1 md:grid-cols-4 gap-3 text-xs">
           <div>
-            <label className="font-medium mb-1 block" style={{ color: 'var(--charcoal)' }}>Pay for</label>
-            <select value={kind} onChange={e => setKind(e.target.value as 'SERVICE' | 'PRODUCT')} className="w-full px-3 py-2 rounded-xl border" style={{ borderColor: 'var(--light-gray)' }}>
+            <label className={LABEL} style={{ color: 'var(--mid-gray)' }}>Pay for</label>
+            <select value={kind} onChange={e => setKind(e.target.value as 'SERVICE' | 'PRODUCT')} className={FIELD} style={BORDER}>
               <option value="SERVICE">Service</option>
               <option value="PRODUCT">Product</option>
             </select>
           </div>
           <div className="md:col-span-2 relative">
-            <label className="font-medium mb-1 block" style={{ color: 'var(--charcoal)' }}>{kind === 'SERVICE' ? 'Service' : 'Product'}</label>
+            <label className={LABEL} style={{ color: 'var(--mid-gray)' }}>{kind === 'SERVICE' ? 'Service' : 'Product'}</label>
             <div className="relative">
-              <Search size={13} className="absolute left-2.5 top-2.5" style={{ color: 'var(--mid-gray)' }} />
+              <Search size={14} className="absolute left-2.5 top-2.5" style={{ color: 'var(--hr-faint)' }} />
               <input
                 value={itemQuery}
                 onChange={e => { setItemQuery(e.target.value); setItemId(''); setItemOpen(true) }}
@@ -470,32 +513,32 @@ function BranchPanel({ account, label, canWrite }: { account: string; label: str
                   else if (e.key === 'Escape') setItemOpen(false)
                 }}
                 placeholder={`Type to search ${kind === 'SERVICE' ? 'services' : 'products'}…`}
-                className="w-full pl-8 pr-16 py-2 rounded-xl border" style={{ borderColor: itemId ? 'var(--teal)' : 'var(--light-gray)' }} />
+                className={`${FIELD} pl-8 pr-24`} style={{ borderColor: itemId ? 'var(--teal)' : 'var(--light-gray)' }} />
               {itemId && chosen && (
-                <span className="absolute right-2 top-2 text-[11px] font-mono font-semibold" style={{ color: 'var(--deep-teal)' }}>{peso(chosen.price)}</span>
+                <span className="absolute right-2.5 top-2.5 text-[11px] font-mono font-semibold" style={{ color: 'var(--deep-teal)' }}>{peso(chosen.price)}</span>
               )}
               {itemQuery && !itemId && (
-                <button type="button" onClick={() => { setItemQuery(''); setItemOpen(false) }} className="absolute right-2 top-2" title="Clear">
-                  <X size={13} style={{ color: 'var(--mid-gray)' }} />
+                <button type="button" onClick={() => { setItemQuery(''); setItemOpen(false) }} className="absolute right-2.5 top-2.5" title="Clear">
+                  <X size={14} style={{ color: 'var(--mid-gray)' }} />
                 </button>
               )}
             </div>
             {itemOpen && (
-              <div className="absolute z-[70] left-0 right-0 mt-1 rounded-xl border bg-white shadow-xl overflow-auto"
-                style={{ maxHeight: 260, borderColor: 'var(--light-gray)' }}>
+              <div className="absolute z-[70] left-0 right-0 mt-1 rounded-lg border bg-white shadow-[0_8px_24px_rgba(35,48,56,0.12)] overflow-auto"
+                style={{ maxHeight: 260, ...BORDER }}>
                 {list.length === 0 ? (
                   <div className="px-3 py-2.5 text-[11px]" style={{ color: 'var(--mid-gray)' }}>No {kind === 'SERVICE' ? 'services' : 'products'} available for this branch.</div>
                 ) : matches.length === 0 ? (
                   <div className="px-3 py-2.5 text-[11px]" style={{ color: 'var(--mid-gray)' }}>No match for “{itemQuery}”.</div>
                 ) : matches.map(i => (
                   <button key={i.id} type="button" onMouseDown={e => { e.preventDefault(); pickItem(i) }}
-                    className="w-full text-left px-3 py-2 hover:bg-[var(--pale-teal)] border-b last:border-b-0" style={{ borderColor: 'var(--light-gray)' }}>
+                    className="w-full text-left px-3 py-2 hover:bg-[var(--pale-teal)] border-b last:border-b-0" style={LINE}>
                     <div className="flex items-baseline justify-between gap-3">
                       <span className="text-xs" style={{ color: 'var(--charcoal)' }}>{i.name}</span>
                       <span className="text-xs font-mono font-semibold whitespace-nowrap" style={{ color: 'var(--deep-teal)' }}>{peso(i.price)}</span>
                     </div>
                     {(i.sku || i.stock != null || i.department) && (
-                      <div className="text-[10px] mt-0.5" style={{ color: 'var(--mid-gray)' }}>
+                      <div className="text-[10.5px] mt-0.5" style={{ color: 'var(--mid-gray)' }}>
                         {[i.sku, i.department, i.stock != null ? `stock ${i.stock}` : null].filter(Boolean).join(' · ')}
                       </div>
                     )}
@@ -505,84 +548,75 @@ function BranchPanel({ account, label, canWrite }: { account: string; label: str
             )}
           </div>
           <div>
-            <label className="font-medium mb-1 block" style={{ color: 'var(--charcoal)' }}>Qty</label>
-            <input type="number" min={1} value={qty} onChange={e => { setQty(e.target.value) }} className="w-full px-3 py-2 rounded-xl border" style={{ borderColor: 'var(--light-gray)' }} />
+            <label className={LABEL} style={{ color: 'var(--mid-gray)' }}>Qty</label>
+            <input type="number" min={1} value={qty} onChange={e => { setQty(e.target.value) }} className={FIELD} style={BORDER} />
           </div>
           <div className="md:col-span-2 flex items-end">
-            <div className="w-full rounded-xl border px-3 py-2" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
-              <span className="text-[11px]" style={{ color: 'var(--mid-gray)' }}>Amount the payer will be charged</span>
-              <div className="font-mono font-bold text-base" style={{ color: 'var(--deep-teal)' }}>{peso(gross)}</div>
+            <div className="w-full rounded-lg border px-3 py-2" style={{ ...BORDER, background: 'var(--pale-teal)', borderLeft: '4px solid var(--teal)' }}>
+              <span className="text-[11px] font-semibold uppercase tracking-[.4px]" style={{ color: 'var(--mid-gray)' }}>Payer will be charged</span>
+              <div className="font-mono font-bold text-lg leading-tight" style={{ color: 'var(--deep-teal)' }}>{peso(gross)}</div>
             </div>
           </div>
           <div className="md:col-span-2">
-            <label className="font-medium mb-1 block" style={{ color: 'var(--charcoal)' }}>Apply a voucher to this link (optional)</label>
+            <label className={LABEL} style={{ color: 'var(--mid-gray)' }}>Apply a voucher to this link (optional)</label>
             <input value={linkCode} onChange={e => setLinkCode(e.target.value.toUpperCase())}
-              className="w-full px-3 py-2 rounded-xl border font-mono" style={{ borderColor: 'var(--light-gray)' }} placeholder="e.g. SUMMER10" />
+              className={`${FIELD} font-mono`} style={BORDER} placeholder="e.g. SUMMER10" />
             <label className="flex items-center gap-2 text-[11px] mt-1.5" style={{ color: 'var(--mid-gray)' }}>
-              <input type="checkbox" checked={allowVoucher} onChange={e => setAllowVoucher(e.target.checked)} disabled={!!linkCode.trim()} />
-              {linkCode.trim() ? 'A voucher is applied to the link, so payers won\u2019t be asked for a code' : 'Otherwise, let each payer enter their own code'}
+              <input type="checkbox" checked={allowVoucher} onChange={e => setAllowVoucher(e.target.checked)} disabled={!!linkCode.trim()} style={{ accentColor: 'var(--teal)' }} />
+              {linkCode.trim() ? 'A voucher is applied to the link, so payers won’t be asked for a code' : 'Otherwise, let each payer enter their own code'}
             </label>
           </div>
         </div>
         <div className="flex items-center gap-3 mt-3 flex-wrap">
-          <button onClick={generate} disabled={busy || !canSubmit || !configured} className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-white disabled:opacity-50" style={{ background: 'var(--teal)' }}>
-            {busy ? <Loader2 size={14} className="animate-spin" /> : <CreditCard size={14} />} Create Payment Link
+          <button onClick={generate} disabled={busy || !canSubmit || !configured} className={primaryBtn} style={{ background: 'var(--teal)' }}>
+            {busy ? <Loader2 size={14} className="animate-spin" /> : <CreditCard size={14} />} Create payment link
           </button>
         </div>
-      </div>
+        </div>
+      </Card>
       )}
 
       {/* ── Reusable payment links ── */}
-      <div className="rounded-2xl border" style={{ borderColor: 'var(--light-gray)' }}>
-        <div className="flex items-center gap-2 px-4 py-3 border-b" style={{ borderColor: 'var(--light-gray)' }}>
-          <LinkIcon size={15} style={{ color: 'var(--teal)' }} />
-          <span className="text-sm font-bold" style={{ color: 'var(--charcoal)' }}>Created Payment Links — {label}</span>
-          <span className="text-[11px]" style={{ color: 'var(--mid-gray)' }}>· reuse each link for any number of patients</span>
-        </div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-xs">
-            <thead><tr style={{ background: 'var(--off-white)', color: 'var(--mid-gray)' }}>
-              <th className="px-3 py-2 text-left font-semibold uppercase">Date Created</th>
-              <th className="px-3 py-2 text-left font-semibold uppercase">Item</th>
-              <th className="px-3 py-2 text-left font-semibold uppercase">Voucher</th>
-              <th className="px-3 py-2 text-right font-semibold uppercase">Gross</th>
-              <th className="px-3 py-2 text-right font-semibold uppercase">Disc.</th>
-              <th className="px-3 py-2 text-right font-semibold uppercase">Charged</th>
-              <th className="px-3 py-2 text-right font-semibold uppercase">Actions</th>
+      <Card icon={<LinkIcon size={16} />} title="Created payment links" count={links.length ? links.length.toLocaleString() : ''}
+        sub="Reuse each link for any number of patients.">
+        <div className="overflow-x-auto border-t" style={BORDER}>
+          <table className="w-full text-xs" style={{ borderCollapse: 'separate', borderSpacing: 0 }}>
+            <thead><tr>
+              <Th>Date created</Th><Th>Item</Th><Th>Voucher</Th><Th right>Gross</Th><Th right>Disc.</Th><Th right>Charged</Th><Th right>Actions</Th>
             </tr></thead>
             <tbody>
               {links.length === 0 ? (
-                <tr><td colSpan={7} className="text-center py-8" style={{ color: 'var(--mid-gray)' }}>No payment links yet — create one above.</td></tr>
+                <tr><td colSpan={7} className="text-center py-10 text-[13px]" style={{ color: 'var(--mid-gray)' }}>{canWrite ? 'No payment links yet — create one above.' : 'No payment links yet.'}</td></tr>
               ) : links.map(l => {
                 const url = `${origin}/pay/${l.token}`
                 return (
-                  <tr key={l.id} className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
-                    <td className="px-3 py-2 whitespace-nowrap" style={{ color: 'var(--mid-gray)' }}>{new Date(l.createdAt).toLocaleDateString('en-PH')}</td>
-                    <td className="px-3 py-2">
-                      <span style={{ color: 'var(--charcoal)' }}>{l.itemName}{l.quantity > 1 ? ` \u00d7${l.quantity}` : ''}</span>
-                      {(l.department || l.kind === 'PRODUCT' || !l.isActive) && (
-                        <span className="block mt-0.5">
+                  <tr key={l.id} className="hover:bg-[#fafcf6]">
+                    <td className="px-3 py-2 whitespace-nowrap border-b" style={{ ...LINE, color: 'var(--mid-gray)', boxShadow: `inset 4px 0 0 ${l.isActive ? 'var(--teal)' : 'var(--light-gray)'}` }}>{new Date(l.createdAt).toLocaleDateString('en-PH')}</td>
+                    <td className="px-3 py-2 border-b" style={LINE}>
+                      <span style={{ color: l.isActive ? 'var(--charcoal)' : 'var(--mid-gray)' }}>{l.itemName}{l.quantity > 1 ? ` ×${l.quantity}` : ''}</span>
+                      {(l.department || l.kind === 'PRODUCT' || !l.isActive || l.paidCount > 0) && (
+                        <span className="flex flex-wrap items-center gap-1 mt-1">
                           {l.department && <DeptBadge dept={l.department} />}
-                          {l.kind === 'PRODUCT' && <span className="ml-1 px-1.5 py-0.5 rounded text-[10px] font-medium" style={{ background: 'var(--off-white)', color: 'var(--mid-gray)' }}>Product</span>}
-                          {!l.isActive && <span className="ml-1 px-1.5 py-0.5 rounded text-[10px] font-medium" style={{ background: '#f1f5f9', color: '#64748b' }}>Disabled</span>}
-                          {l.paidCount > 0 && <span className="ml-1 text-[10px]" style={{ color: 'var(--mid-gray)' }}>{l.paidCount} paid</span>}
+                          {l.kind === 'PRODUCT' && <Pill bg="var(--pale-teal)" fg="var(--deep-teal)">Product</Pill>}
+                          {!l.isActive && <Pill bg="#f1f5f2" fg="var(--mid-gray)">Disabled</Pill>}
+                          {l.paidCount > 0 && <span className="text-[10.5px]" style={{ color: 'var(--mid-gray)' }}>{l.paidCount} paid</span>}
                         </span>
                       )}
                     </td>
-                    <td className="px-3 py-2 font-mono text-[11px]" style={{ color: 'var(--mid-gray)' }}>
-                      {l.voucherCode || (l.allowVoucher ? <span className="font-sans">payer may enter</span> : '\u2014')}
+                    <td className="px-3 py-2 font-mono text-[11px] border-b" style={{ ...LINE, color: 'var(--mid-gray)' }}>
+                      {l.voucherCode || (l.allowVoucher ? <span className="font-sans">payer may enter</span> : '—')}
                     </td>
-                    <td className="px-3 py-2 text-right font-mono" style={{ color: 'var(--mid-gray)' }}>{peso(l.gross)}</td>
-                    <td className="px-3 py-2 text-right font-mono" style={{ color: l.discount > 0 ? '#c44b00' : 'var(--light-gray)' }}>{l.discount > 0 ? peso(l.discount) : '\u2014'}</td>
-                    <td className="px-3 py-2 text-right font-mono font-semibold" style={{ color: 'var(--deep-teal)' }}>{peso(l.charged)}</td>
-                    <td className="px-3 py-2 text-right whitespace-nowrap">
+                    <td className="px-3 py-2 text-right font-mono whitespace-nowrap border-b" style={{ ...LINE, color: 'var(--mid-gray)' }}>{peso(l.gross)}</td>
+                    <td className="px-3 py-2 text-right font-mono whitespace-nowrap border-b" style={{ ...LINE, color: l.discount > 0 ? '#c44b00' : 'var(--hr-faint)' }}>{l.discount > 0 ? peso(l.discount) : '—'}</td>
+                    <td className="px-3 py-2 text-right font-mono font-semibold whitespace-nowrap border-b" style={{ ...LINE, color: 'var(--deep-teal)' }}>{peso(l.charged)}</td>
+                    <td className="px-3 py-2 text-right whitespace-nowrap border-b" style={LINE}>
                       <button onClick={() => { navigator.clipboard?.writeText(url); setCopiedToken(l.token) }}
-                        className="text-[11px] font-medium mr-2" style={{ color: copiedToken === l.token ? '#166534' : 'var(--teal)' }}>
+                        className="text-[11px] font-semibold mr-2 hover:underline underline-offset-2" style={{ color: copiedToken === l.token ? '#166534' : 'var(--teal)' }}>
                         {copiedToken === l.token ? 'Copied' : 'Copy link'}
                       </button>
                       <a href={url} target="_blank" rel="noreferrer" className="mr-2" title="Open payer page"><ExternalLink size={13} style={{ color: 'var(--teal)' }} className="inline" /></a>
                       {/* Front desk can hand the link out, but not change or remove it. */}
-                      {canWrite && <button onClick={() => toggleLink(l)} className="text-[11px] font-medium mr-2" style={{ color: 'var(--mid-gray)' }}>{l.isActive ? 'Disable' : 'Enable'}</button>}
+                      {canWrite && <button onClick={() => toggleLink(l)} className="text-[11px] font-semibold mr-2 hover:underline underline-offset-2" style={{ color: 'var(--mid-gray)' }}>{l.isActive ? 'Disable' : 'Enable'}</button>}
                       {canWrite && l.paidCount === 0 && <button onClick={() => delLink(l)} title="Delete"><Trash2 size={13} className="text-red-500 inline" /></button>}
                     </td>
                   </tr>
@@ -591,56 +625,51 @@ function BranchPanel({ account, label, canWrite }: { account: string; label: str
             </tbody>
           </table>
         </div>
-      </div>
+      </Card>
 
       {/* ── Purchased-items popup (storefront cart detail) ── */}
       {itemsPopup && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.4)' }} onClick={() => setItemsPopup(null)}>
-          <div className="rounded-2xl w-full max-w-lg max-h-[80vh] overflow-y-auto p-5" style={{ background: 'white' }} onClick={e => e.stopPropagation()}>
-            <div className="flex items-start justify-between gap-3 mb-1">
-              <div>
-                <p className="text-sm font-bold" style={{ color: 'var(--charcoal)' }}>{itemsPopup.itemName || 'Purchase'}</p>
-                <p className="text-[11px]" style={{ color: 'var(--mid-gray)' }}>{itemsPopup.customerName || '—'}{itemsPopup.paymentId ? ` · ${itemsPopup.paymentId}` : ''}</p>
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(35,48,56,0.45)' }} onClick={() => setItemsPopup(null)}>
+          <div className="rounded-xl border w-full max-w-lg max-h-[80vh] overflow-y-auto bg-white shadow-[0_12px_40px_rgba(35,48,56,0.18)]" style={BORDER} onClick={e => e.stopPropagation()}>
+            <div className="flex items-start justify-between gap-3 px-5 pt-4 pb-3 border-b" style={BORDER}>
+              <div className="min-w-0">
+                <p className="text-[15px] font-bold" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>{itemsPopup.itemName || 'Purchase'}</p>
+                <p className="text-[11px] truncate" style={{ color: 'var(--mid-gray)' }}>{itemsPopup.customerName || '—'}{itemsPopup.paymentId ? ` · ${itemsPopup.paymentId}` : ''}</p>
               </div>
-              <button onClick={() => setItemsPopup(null)}><X size={16} style={{ color: '#6b7280' }} /></button>
+              <button onClick={() => setItemsPopup(null)} className="p-1 rounded-md hover:bg-[var(--pale-teal)]" title="Close"><X size={16} style={{ color: 'var(--mid-gray)' }} /></button>
             </div>
-            <table className="w-full text-xs mt-3" style={{ borderCollapse: 'collapse' }}>
+            <table className="w-full text-xs" style={{ borderCollapse: 'separate', borderSpacing: 0 }}>
               <thead>
-                <tr style={{ borderBottom: '2px solid #e5e7eb', color: '#374151' }}>
-                  <th className="text-left py-1.5">Item</th>
-                  <th className="text-right py-1.5 px-2">Qty</th>
-                  <th className="text-right py-1.5 px-2">Price</th>
-                  <th className="text-right py-1.5">Total</th>
-                </tr>
+                <tr><Th className="pl-5">Item</Th><Th right>Qty</Th><Th right>Price</Th><Th right className="pr-5">Total</Th></tr>
               </thead>
               <tbody>
                 {(itemsPopup.cartItems || []).map((c, i) => (
-                  <tr key={i} style={{ borderBottom: '1px solid #f3f4f6' }}>
-                    <td className="py-1.5" style={{ color: '#111827' }}>{c.title}{c.variant ? <span style={{ color: '#6b7280' }}> — {c.variant}</span> : null}</td>
-                    <td className="text-right py-1.5 px-2 tabular-nums">{c.quantity}</td>
-                    <td className="text-right py-1.5 px-2 tabular-nums">{peso(c.price)}</td>
-                    <td className="text-right py-1.5 tabular-nums">{peso(c.price * c.quantity)}</td>
+                  <tr key={i}>
+                    <td className="pl-5 pr-3 py-2 border-b" style={{ ...LINE, color: 'var(--charcoal)' }}>{c.title}{c.variant ? <span style={{ color: 'var(--mid-gray)' }}> — {c.variant}</span> : null}</td>
+                    <td className="text-right px-3 py-2 tabular-nums border-b" style={LINE}>{c.quantity}</td>
+                    <td className="text-right px-3 py-2 tabular-nums whitespace-nowrap border-b" style={LINE}>{peso(c.price)}</td>
+                    <td className="text-right pl-3 pr-5 py-2 tabular-nums whitespace-nowrap border-b" style={LINE}>{peso(c.price * c.quantity)}</td>
                   </tr>
                 ))}
                 {itemsPopup.shippingFee != null && itemsPopup.shippingFee > 0 && (
-                  <tr style={{ borderBottom: '1px solid #f3f4f6' }}>
-                    <td className="py-1.5" style={{ color: '#6b7280' }}>Delivery</td>
-                    <td className="text-right py-1.5 px-2">—</td>
-                    <td className="text-right py-1.5 px-2">—</td>
-                    <td className="text-right py-1.5 tabular-nums">{peso(itemsPopup.shippingFee)}</td>
+                  <tr>
+                    <td className="pl-5 pr-3 py-2 border-b" style={{ ...LINE, color: 'var(--mid-gray)' }}>Delivery</td>
+                    <td className="text-right px-3 py-2 border-b" style={LINE}>—</td>
+                    <td className="text-right px-3 py-2 border-b" style={LINE}>—</td>
+                    <td className="text-right pl-3 pr-5 py-2 tabular-nums whitespace-nowrap border-b" style={LINE}>{peso(itemsPopup.shippingFee)}</td>
                   </tr>
                 )}
                 {itemsPopup.voucherCode && (
-                  <tr style={{ borderBottom: '1px solid #f3f4f6' }}>
-                    <td className="py-1.5" style={{ color: '#6b7280' }}>Voucher</td>
-                    <td className="text-right py-1.5 px-2" colSpan={3}>{itemsPopup.voucherCode}</td>
+                  <tr>
+                    <td className="pl-5 pr-3 py-2 border-b" style={{ ...LINE, color: 'var(--mid-gray)' }}>Voucher</td>
+                    <td className="text-right pl-3 pr-5 py-2 font-mono border-b" style={LINE} colSpan={3}>{itemsPopup.voucherCode}</td>
                   </tr>
                 )}
               </tbody>
               <tfoot>
-                <tr>
-                  <td className="py-2 font-bold" style={{ color: '#111827' }}>Charged</td>
-                  <td colSpan={3} className="text-right py-2 font-bold tabular-nums" style={{ color: '#111827' }}>{peso(itemsPopup.amount)}</td>
+                <tr style={{ background: 'var(--hr-head)' }}>
+                  <td className="pl-5 pr-3 py-2.5 font-bold" style={{ color: 'var(--charcoal)' }}>Charged</td>
+                  <td colSpan={3} className="text-right pl-3 pr-5 py-2.5 font-bold tabular-nums" style={{ color: 'var(--deep-teal)' }}>{peso(itemsPopup.amount)}</td>
                 </tr>
               </tfoot>
             </table>
@@ -672,6 +701,8 @@ function VouchersPanel({ canWrite }: { canWrite: boolean }) {
     requiresPwdId: false,
   })
   const [saving, setSaving] = useState(false)
+  // Display-only: the Active / Inactive cards filter the table.
+  const [activeFilter, setActiveFilter] = useState<'all' | 'active' | 'inactive'>('all')
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -720,61 +751,70 @@ function VouchersPanel({ canWrite }: { canWrite: boolean }) {
   }
 
   const LIMIT_LABEL: Record<string, string> = { UNLIMITED: 'Unlimited', ONCE_PER_CUSTOMER: 'Once per customer', MAX_USES: 'Max uses' }
+  const nActive = rows.filter(v => v.isActive).length
+  const nInactive = rows.length - nActive
+  const totalUses = rows.reduce((s, v) => s + (v.uses || 0), 0)
+  const shown = rows.filter(v => activeFilter === 'all' || (activeFilter === 'active') === v.isActive)
+  const { primary: primaryBtn, outline: outlineBtn } = hrBtn
+  const chk = { accentColor: 'var(--teal)' }
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between gap-3 flex-wrap">
-        <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>
-          {canWrite
-            ? 'Promo codes customers can enter on a generated payment link. A voucher only works at the branches you tick.'
-            : 'View-only: the promo codes a patient can enter on a payment link, and where each one is valid.'}
-        </p>
-        {canWrite && <button onClick={openNew} className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-white" style={{ background: 'var(--teal)' }}><Plus size={15} /> New Voucher</button>}
-      </div>
-      {error && !open && <div className="px-4 py-3 rounded-xl text-sm bg-red-50 text-red-700">{error}</div>}
+      {error && !open && <Notice tone="red" icon={<AlertCircle size={15} />}>{error}</Notice>}
 
-      <div className="overflow-x-auto rounded-2xl border" style={{ borderColor: 'var(--light-gray)' }}>
-        <table className="w-full text-xs">
-          <thead><tr style={{ background: 'var(--off-white)', color: 'var(--mid-gray)' }}>
-            <th className="px-3 py-2 text-left font-semibold uppercase">Name</th>
-            <th className="px-3 py-2 text-left font-semibold uppercase">Code</th>
-            <th className="px-3 py-2 text-right font-semibold uppercase">Discount</th>
-            <th className="px-3 py-2 text-left font-semibold uppercase">Effectivity</th>
-            <th className="px-3 py-2 text-left font-semibold uppercase">Branches</th>
-            <th className="px-3 py-2 text-left font-semibold uppercase">Limit</th>
-            <th className="px-3 py-2 text-right font-semibold uppercase">Used</th>
-            <th className="px-3 py-2 text-left font-semibold uppercase">Account</th>
-            <th className="px-3 py-2 text-left font-semibold uppercase">Active</th>
-            {canWrite && <th className="px-3 py-2 text-right font-semibold uppercase">Actions</th>}
+      {/* Cards (Active / Inactive double as quick filters) */}
+      <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
+        <StatCard loading={loading} label="Active vouchers" value={nActive.toLocaleString()} sub={`of ${rows.length.toLocaleString()} voucher${rows.length === 1 ? '' : 's'}`}
+          accent={{ line: 'var(--teal)' }} active={activeFilter === 'active'}
+          onClick={() => setActiveFilter(f => (f === 'active' ? 'all' : 'active'))} title="Show only the active vouchers" />
+        <StatCard loading={loading} label="Inactive" value={nInactive.toLocaleString()} sub="Switched off — payers can't use them"
+          tone="zero" active={activeFilter === 'inactive'}
+          onClick={() => setActiveFilter(f => (f === 'inactive' ? 'all' : 'inactive'))} title="Show only the inactive vouchers" />
+        <StatCard loading={loading} label="Times used" value={totalUses.toLocaleString()} sub="Redemptions across all vouchers"
+          tone={totalUses ? 'blue' : 'zero'} />
+      </div>
+
+      <Card icon={<Ticket size={16} />} title="Voucher discounts"
+        count={loading ? '' : `${shown.length.toLocaleString()}${shown.length !== rows.length ? ` of ${rows.length.toLocaleString()}` : ''}`}
+        sub={canWrite
+          ? 'Promo codes customers can enter on a generated payment link. A voucher only works at the branches you tick.'
+          : 'View-only: the promo codes a patient can enter on a payment link, and where each one is valid.'}
+        actions={canWrite && <button onClick={openNew} className={primaryBtn} style={{ background: 'var(--teal)' }}><Plus size={15} /> New voucher</button>}>
+      <div className="overflow-x-auto border-t" style={BORDER}>
+        {loading ? <ShimmerRows n={3} /> : (
+        <table className="w-full text-xs" style={{ borderCollapse: 'separate', borderSpacing: 0 }}>
+          <thead><tr>
+            <Th>Name</Th><Th>Code</Th><Th right>Discount</Th><Th>Effectivity</Th><Th>Branches</Th><Th>Limit</Th><Th right>Used</Th><Th>Account</Th><Th>Active</Th>
+            {canWrite && <Th right>Actions</Th>}
           </tr></thead>
           <tbody>
-            {loading ? (
-              <tr><td colSpan={canWrite ? 10 : 9} className="text-center py-8" style={{ color: 'var(--mid-gray)' }}><Loader2 size={16} className="inline animate-spin" /></td></tr>
-            ) : rows.length === 0 ? (
-              <tr><td colSpan={canWrite ? 10 : 9} className="text-center py-8" style={{ color: 'var(--mid-gray)' }}>No vouchers yet.</td></tr>
-            ) : rows.map(v => (
-              <tr key={v.id} className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
-                <td className="px-3 py-2 font-medium" style={{ color: 'var(--charcoal)' }}>{v.name}</td>
-                <td className="px-3 py-2 font-mono" style={{ color: 'var(--deep-teal)' }}>
+            {shown.length === 0 ? (
+              <tr><td colSpan={canWrite ? 10 : 9} className="text-center py-10 text-[13px]" style={{ color: 'var(--mid-gray)' }}>
+                {rows.length === 0 ? 'No vouchers yet.' : (
+                  <>No vouchers match. <button onClick={() => setActiveFilter('all')} className="font-semibold hover:underline underline-offset-2" style={{ color: 'var(--teal)' }}>Show all</button></>
+                )}
+              </td></tr>
+            ) : shown.map(v => (
+              <tr key={v.id} className="hover:bg-[#fafcf6]">
+                <td className="px-3 py-2 font-semibold border-b" style={{ ...LINE, color: 'var(--charcoal)', boxShadow: `inset 4px 0 0 ${v.isActive ? 'var(--teal)' : 'var(--light-gray)'}` }}>{v.name}</td>
+                <td className="px-3 py-2 font-mono border-b" style={{ ...LINE, color: 'var(--deep-teal)' }}>
                   {v.code}
                   {v.requiresPwdId && (
-                    <span className="block mt-0.5 px-1.5 py-0.5 rounded text-[9px] font-sans font-semibold w-fit"
-                      style={{ background: '#e0f2fe', color: '#075985' }}
-                      title="Only works for a payer with a PWD/Senior ID number AND ID photo in Patient CRM">
-                      PWD / SENIOR ID REQUIRED
+                    <span className="block mt-1 w-fit font-sans">
+                      <Pill bg="#e0f2fe" fg="#075985" title="Only works for a payer with a PWD/Senior ID number AND ID photo in Patient CRM">PWD / Senior ID required</Pill>
                     </span>
                   )}
                 </td>
-                <td className="px-3 py-2 text-right font-mono" style={{ color: 'var(--charcoal)' }}>{v.discountType === 'FIXED' ? peso(v.discountValue) : `${v.discountValue}%`}</td>
-                <td className="px-3 py-2" style={{ color: 'var(--mid-gray)' }}>{v.isLifetime ? <span className="font-medium" style={{ color: 'var(--deep-teal)' }}>Lifetime</span> : `${v.startDate} → ${v.endDate}`}</td>
-                <td className="px-3 py-2" style={{ color: 'var(--mid-gray)' }}>{v.branches.length ? v.branches.join(', ') : 'All'}{v.departments.length > 0 && <span className="block text-[10px]" style={{ color: 'var(--teal)' }}>{v.departments.map(c => VOUCHER_DEPTS.find(d => d.code === c)?.label || c).join(', ')} only</span>}</td>
-                <td className="px-3 py-2" style={{ color: 'var(--mid-gray)' }}>{LIMIT_LABEL[v.usageLimitType] || v.usageLimitType}{v.usageLimitType === 'MAX_USES' && v.maxUses ? ` (${v.maxUses})` : ''}</td>
-                <td className="px-3 py-2 text-right font-semibold" style={{ color: 'var(--charcoal)' }}>{v.uses}</td>
-                <td className="px-3 py-2 text-[11px]" style={{ color: 'var(--mid-gray)' }}>{v.accountLabel || '—'}</td>
-                <td className="px-3 py-2">{v.isActive ? <span style={{ color: '#166534' }}>Active</span> : <span style={{ color: 'var(--mid-gray)' }}>Inactive</span>}</td>
+                <td className="px-3 py-2 text-right font-mono whitespace-nowrap border-b" style={{ ...LINE, color: 'var(--charcoal)' }}>{v.discountType === 'FIXED' ? peso(v.discountValue) : `${v.discountValue}%`}</td>
+                <td className="px-3 py-2 whitespace-nowrap border-b" style={{ ...LINE, color: 'var(--mid-gray)' }}>{v.isLifetime ? <Pill bg="var(--pale-teal)" fg="var(--deep-teal)">Lifetime</Pill> : `${v.startDate} → ${v.endDate}`}</td>
+                <td className="px-3 py-2 border-b" style={{ ...LINE, color: 'var(--mid-gray)' }}>{v.branches.length ? v.branches.join(', ') : 'All'}{v.departments.length > 0 && <span className="block text-[10.5px]" style={{ color: 'var(--teal)' }}>{v.departments.map(c => VOUCHER_DEPTS.find(d => d.code === c)?.label || c).join(', ')} only</span>}</td>
+                <td className="px-3 py-2 border-b" style={{ ...LINE, color: 'var(--mid-gray)' }}>{LIMIT_LABEL[v.usageLimitType] || v.usageLimitType}{v.usageLimitType === 'MAX_USES' && v.maxUses ? ` (${v.maxUses})` : ''}</td>
+                <td className="px-3 py-2 text-right font-mono font-semibold border-b" style={{ ...LINE, color: 'var(--charcoal)' }}>{v.uses}</td>
+                <td className="px-3 py-2 text-[11px] border-b" style={{ ...LINE, color: 'var(--mid-gray)' }}>{v.accountLabel || '—'}</td>
+                <td className="px-3 py-2 border-b" style={LINE}>{v.isActive ? <Pill bg="#dcfce7" fg="#166534">Active</Pill> : <Pill bg="#f1f5f2" fg="var(--mid-gray)">Inactive</Pill>}</td>
                 {canWrite && (
-                  <td className="px-3 py-2 text-right whitespace-nowrap">
-                    <button onClick={() => openEdit(v)} className="text-[11px] font-medium mr-2" style={{ color: 'var(--teal)' }}>Edit</button>
+                  <td className="px-3 py-2 text-right whitespace-nowrap border-b" style={LINE}>
+                    <button onClick={() => openEdit(v)} className="text-[11px] font-semibold mr-2 hover:underline underline-offset-2" style={{ color: 'var(--teal)' }}>Edit</button>
                     <button onClick={() => del(v)} title="Delete"><Trash2 size={13} className="text-red-500 inline" /></button>
                   </td>
                 )}
@@ -782,93 +822,97 @@ function VouchersPanel({ canWrite }: { canWrite: boolean }) {
             ))}
           </tbody>
         </table>
+        )}
       </div>
+      </Card>
 
       {open && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg p-5 max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between mb-3">
-              <h2 className="text-lg font-bold" style={{ color: 'var(--charcoal)' }}>{editId ? 'Edit Voucher' : 'New Voucher'}</h2>
-              <button onClick={() => setOpen(false)}><X size={18} style={{ color: 'var(--mid-gray)' }} /></button>
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(35,48,56,0.45)' }}>
+          <div className="bg-white rounded-xl border shadow-[0_12px_40px_rgba(35,48,56,0.18)] w-full max-w-lg max-h-[90vh] overflow-y-auto" style={BORDER}>
+            <div className="flex items-center justify-between px-5 pt-4 pb-3 border-b" style={BORDER}>
+              <h2 className="text-[17px] font-bold" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>{editId ? 'Edit voucher' : 'New voucher'}</h2>
+              <button onClick={() => setOpen(false)} className="p-1 rounded-md hover:bg-[var(--pale-teal)]" title="Close"><X size={18} style={{ color: 'var(--mid-gray)' }} /></button>
             </div>
-            {error && <div className="mb-3 px-3 py-2 rounded-lg text-xs bg-red-50 text-red-700">{error}</div>}
-            <div className="space-y-3 text-xs">
+            <div className="px-5 py-4">
+            {error && <div className="mb-3"><Notice tone="red" icon={<AlertCircle size={15} />}>{error}</Notice></div>}
+            <div className="space-y-3.5 text-xs">
               <div className="grid grid-cols-2 gap-3">
-                <div><label className="font-medium mb-1 block" style={{ color: 'var(--charcoal)' }}>Voucher name</label><input value={f.name} onChange={e => setF({ ...f, name: e.target.value })} className="w-full px-3 py-2.5 rounded-xl border" style={{ borderColor: 'var(--light-gray)' }} placeholder="e.g. Summer Promo" /></div>
-                <div><label className="font-medium mb-1 block" style={{ color: 'var(--charcoal)' }}>Voucher code</label><input value={f.code} onChange={e => setF({ ...f, code: e.target.value.toUpperCase() })} className="w-full px-3 py-2.5 rounded-xl border font-mono" style={{ borderColor: 'var(--light-gray)' }} placeholder="SUMMER10" /></div>
+                <div><label className={LABEL} style={{ color: 'var(--mid-gray)' }}>Voucher name</label><input value={f.name} onChange={e => setF({ ...f, name: e.target.value })} className={FIELD} style={BORDER} placeholder="e.g. Summer Promo" /></div>
+                <div><label className={LABEL} style={{ color: 'var(--mid-gray)' }}>Voucher code</label><input value={f.code} onChange={e => setF({ ...f, code: e.target.value.toUpperCase() })} className={`${FIELD} font-mono`} style={BORDER} placeholder="SUMMER10" /></div>
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="font-medium mb-1 block" style={{ color: 'var(--charcoal)' }}>Discount type</label>
-                  <select value={f.discountType} onChange={e => setF({ ...f, discountType: e.target.value })} className="w-full px-3 py-2.5 rounded-xl border" style={{ borderColor: 'var(--light-gray)' }}>
+                  <label className={LABEL} style={{ color: 'var(--mid-gray)' }}>Discount type</label>
+                  <select value={f.discountType} onChange={e => setF({ ...f, discountType: e.target.value })} className={FIELD} style={BORDER}>
                     <option value="PERCENTAGE">Percentage (%)</option>
                     <option value="FIXED">Fixed amount (₱)</option>
                   </select>
                 </div>
-                <div><label className="font-medium mb-1 block" style={{ color: 'var(--charcoal)' }}>Value</label><input type="number" value={f.discountValue} onChange={e => setF({ ...f, discountValue: e.target.value })} className="w-full px-3 py-2.5 rounded-xl border" style={{ borderColor: 'var(--light-gray)' }} placeholder={f.discountType === 'FIXED' ? '200' : '10'} /></div>
+                <div><label className={LABEL} style={{ color: 'var(--mid-gray)' }}>Value</label><input type="number" value={f.discountValue} onChange={e => setF({ ...f, discountValue: e.target.value })} className={FIELD} style={BORDER} placeholder={f.discountType === 'FIXED' ? '200' : '10'} /></div>
               </div>
 
               <div>
-                <label className="flex items-center gap-2 font-medium mb-1" style={{ color: 'var(--charcoal)' }}>
-                  <input type="checkbox" checked={f.isLifetime} onChange={e => setF({ ...f, isLifetime: e.target.checked })} /> Lifetime (never expires)
+                <label className="flex items-center gap-2 text-[13px] font-semibold mb-1" style={{ color: 'var(--charcoal)' }}>
+                  <input type="checkbox" checked={f.isLifetime} onChange={e => setF({ ...f, isLifetime: e.target.checked })} style={chk} /> Lifetime (never expires)
                 </label>
                 {!f.isLifetime && (
-                  <div className="grid grid-cols-2 gap-3 mt-1">
-                    <div><label className="font-medium mb-1 block" style={{ color: 'var(--mid-gray)' }}>Effective from</label><input type="date" value={f.startDate} onChange={e => setF({ ...f, startDate: e.target.value })} className="w-full px-3 py-2.5 rounded-xl border" style={{ borderColor: 'var(--light-gray)' }} /></div>
-                    <div><label className="font-medium mb-1 block" style={{ color: 'var(--mid-gray)' }}>Effective to</label><input type="date" value={f.endDate} onChange={e => setF({ ...f, endDate: e.target.value })} className="w-full px-3 py-2.5 rounded-xl border" style={{ borderColor: 'var(--light-gray)' }} /></div>
+                  <div className="grid grid-cols-2 gap-3 mt-1.5">
+                    <div><label className={LABEL} style={{ color: 'var(--mid-gray)' }}>Effective from</label><input type="date" value={f.startDate} onChange={e => setF({ ...f, startDate: e.target.value })} className={FIELD} style={BORDER} /></div>
+                    <div><label className={LABEL} style={{ color: 'var(--mid-gray)' }}>Effective to</label><input type="date" value={f.endDate} onChange={e => setF({ ...f, endDate: e.target.value })} className={FIELD} style={BORDER} /></div>
                   </div>
                 )}
               </div>
 
               <div>
-                <label className="font-medium mb-1 block" style={{ color: 'var(--charcoal)' }}>Valid at branches (tick one or more)</label>
-                <div className="flex flex-wrap gap-3">
+                <label className={LABEL} style={{ color: 'var(--mid-gray)' }}>Valid at branches (tick one or more)</label>
+                <div className="flex flex-wrap gap-x-4 gap-y-2 text-[13px]">
                   {ACCOUNTS.map(a => (
                     <label key={a.code} className="flex items-center gap-1.5" style={{ color: 'var(--charcoal)' }}>
-                      <input type="checkbox" checked={f.branches.includes(a.code)} onChange={() => toggleBranch(a.code)} /> {a.label}
+                      <input type="checkbox" checked={f.branches.includes(a.code)} onChange={() => toggleBranch(a.code)} style={chk} /> {a.label}
                     </label>
                   ))}
                 </div>
               </div>
 
               <div>
-                <label className="font-medium mb-1 block" style={{ color: 'var(--charcoal)' }}>Applies to departments <span className="font-normal" style={{ color: 'var(--mid-gray)' }}>(none ticked = everything; ticked = only services under those departments are covered)</span></label>
-                <div className="flex flex-wrap gap-3">
+                <label className={LABEL} style={{ color: 'var(--mid-gray)' }}>Applies to departments</label>
+                <p className="text-[11px] -mt-0.5 mb-1.5" style={{ color: 'var(--mid-gray)' }}>None ticked = everything; ticked = only services under those departments are covered.</p>
+                <div className="flex flex-wrap gap-x-4 gap-y-2 text-[13px]">
                   {VOUCHER_DEPTS.map(d => (
                     <label key={d.code} className="flex items-center gap-1.5" style={{ color: 'var(--charcoal)' }}>
-                      <input type="checkbox" checked={f.departments.includes(d.code)} onChange={() => toggleDept(d.code)} /> {d.label}
+                      <input type="checkbox" checked={f.departments.includes(d.code)} onChange={() => toggleDept(d.code)} style={chk} /> {d.label}
                     </label>
                   ))}
                 </div>
-                {f.departments.length > 0 && <p className="text-[10px] mt-1" style={{ color: 'var(--mid-gray)' }}>Products and services outside {f.departments.map(c => VOUCHER_DEPTS.find(d => d.code === c)?.label || c).join(', ')} will be refused this voucher.</p>}
+                {f.departments.length > 0 && <p className="text-[10.5px] mt-1" style={{ color: 'var(--mid-gray)' }}>Products and services outside {f.departments.map(c => VOUCHER_DEPTS.find(d => d.code === c)?.label || c).join(', ')} will be refused this voucher.</p>}
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="font-medium mb-1 block" style={{ color: 'var(--charcoal)' }}>Usage limit</label>
-                  <select value={f.usageLimitType} onChange={e => setF({ ...f, usageLimitType: e.target.value })} className="w-full px-3 py-2.5 rounded-xl border" style={{ borderColor: 'var(--light-gray)' }}>
+                  <label className={LABEL} style={{ color: 'var(--mid-gray)' }}>Usage limit</label>
+                  <select value={f.usageLimitType} onChange={e => setF({ ...f, usageLimitType: e.target.value })} className={FIELD} style={BORDER}>
                     <option value="UNLIMITED">Unlimited</option>
                     <option value="ONCE_PER_CUSTOMER">Once per customer (by email)</option>
                     <option value="MAX_USES">Max number of uses</option>
                   </select>
                 </div>
                 {f.usageLimitType === 'MAX_USES' && (
-                  <div><label className="font-medium mb-1 block" style={{ color: 'var(--charcoal)' }}>Max uses</label><input type="number" min={1} value={f.maxUses} onChange={e => setF({ ...f, maxUses: e.target.value })} className="w-full px-3 py-2.5 rounded-xl border" style={{ borderColor: 'var(--light-gray)' }} /></div>
+                  <div><label className={LABEL} style={{ color: 'var(--mid-gray)' }}>Max uses</label><input type="number" min={1} value={f.maxUses} onChange={e => setF({ ...f, maxUses: e.target.value })} className={FIELD} style={BORDER} /></div>
                 )}
               </div>
 
               <div>
-                <label className="font-medium mb-1 block" style={{ color: 'var(--charcoal)' }}>Discount account (Chart of Accounts)</label>
-                <select value={f.accountId} onChange={e => setF({ ...f, accountId: e.target.value })} className="w-full px-3 py-2.5 rounded-xl border" style={{ borderColor: 'var(--light-gray)' }}>
+                <label className={LABEL} style={{ color: 'var(--mid-gray)' }}>Discount account (Chart of Accounts)</label>
+                <select value={f.accountId} onChange={e => setF({ ...f, accountId: e.target.value })} className={FIELD} style={BORDER}>
                   <option value="">Select an account…</option>
                   {coa.map(a => <option key={a.id} value={a.id}>{a.accountNumber} · {a.accountTitle}</option>)}
                 </select>
                 <p className="mt-1 text-[11px]" style={{ color: 'var(--mid-gray)' }}>Contra-revenue accounts (DEBIT balance, e.g. 7210 Other Discounts) show the promo as a deduction in the Income Statement.</p>
               </div>
 
-              <div className="rounded-xl border p-3" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
-                <label className="flex items-start gap-2 font-medium" style={{ color: 'var(--charcoal)' }}>
-                  <input type="checkbox" className="mt-0.5" checked={f.requiresPwdId} onChange={e => setF({ ...f, requiresPwdId: e.target.checked })} />
+              <div className="rounded-lg border p-3" style={{ ...BORDER, background: 'var(--pale-teal)', borderLeft: '4px solid var(--teal)' }}>
+                <label className="flex items-start gap-2 text-[13px] font-semibold" style={{ color: 'var(--charcoal)' }}>
+                  <input type="checkbox" className="mt-0.5" checked={f.requiresPwdId} onChange={e => setF({ ...f, requiresPwdId: e.target.checked })} style={chk} />
                   <span>Requires a registered PWD / Senior ID</span>
                 </label>
                 <p className="mt-1 text-[11px] pl-6" style={{ color: 'var(--mid-gray)' }}>
@@ -878,14 +922,15 @@ function VouchersPanel({ canWrite }: { canWrite: boolean }) {
                 </p>
               </div>
 
-              <label className="flex items-center gap-2 font-medium" style={{ color: 'var(--charcoal)' }}>
-                <input type="checkbox" checked={f.isActive} onChange={e => setF({ ...f, isActive: e.target.checked })} /> Active
+              <label className="flex items-center gap-2 text-[13px] font-semibold" style={{ color: 'var(--charcoal)' }}>
+                <input type="checkbox" checked={f.isActive} onChange={e => setF({ ...f, isActive: e.target.checked })} style={chk} /> Active
               </label>
             </div>
-            <div className="flex justify-end gap-2 mt-5">
-              <button onClick={() => setOpen(false)} className="px-4 py-2 rounded-lg text-xs font-medium border" style={{ borderColor: 'var(--light-gray)' }}>Cancel</button>
-              <button onClick={save} disabled={saving} className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-medium text-white disabled:opacity-50" style={{ background: 'var(--teal)' }}>
-                {saving ? <Loader2 size={13} className="animate-spin" /> : 'Save Voucher'}
+            </div>
+            <div className="flex justify-end gap-2 px-5 py-3 border-t" style={{ ...BORDER, background: '#fcfdfa' }}>
+              <button onClick={() => setOpen(false)} className={outlineBtn} style={{ ...BORDER, color: 'var(--charcoal)' }}>Cancel</button>
+              <button onClick={save} disabled={saving} className={primaryBtn} style={{ background: 'var(--teal)' }}>
+                {saving ? <Loader2 size={13} className="animate-spin" /> : 'Save voucher'}
               </button>
             </div>
           </div>
@@ -928,29 +973,30 @@ export default function PaymongoPage() {
   }
 
   return (
-    <div className="p-6 max-w-7xl mx-auto space-y-4">
-      <div className="flex items-center gap-3">
-        <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: 'var(--teal)' }}>
-          <CreditCard size={20} className="text-white" />
-        </div>
-        <div>
-          <h1 className="text-2xl font-bold" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>PayMongo</h1>
-          <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>
-            {canWrite
-              ? 'Each branch has its own PayMongo account — pick a section to generate a link and see that account’s transactions and payouts.'
-              : 'View-only: your branch’s payment links, the payments received on them, and its bank payouts.'}
-          </p>
-        </div>
+    <div className={HR_PAGE_CLASS} style={HR_PAGE_STYLE}>
+      <HrShimmerStyle />
+      <div className="min-w-0">
+        <h1 className="text-2xl font-bold leading-tight flex items-center gap-2" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>
+          <CreditCard size={22} style={{ color: 'var(--teal)' }} /> PayMongo
+        </h1>
+        <p className="mt-1 text-[13px] max-w-2xl" style={{ color: 'var(--mid-gray)' }}>
+          {canWrite
+            ? 'Each branch has its own PayMongo account — pick one to make payment links and see its payments and bank payouts.'
+            : 'View-only: your branch’s payment links, the payments received on them, and its bank payouts.'}
+        </p>
       </div>
 
-      <div className="flex items-center gap-1 border-b overflow-x-auto" style={{ borderColor: 'var(--light-gray)' }}>
-        {TABS.map(t => (
-          <button key={t.key} onClick={() => setTab(t.key)}
-            className="px-4 py-2.5 text-sm font-medium border-b-2 -mb-px whitespace-nowrap transition-colors flex items-center gap-1.5"
-            style={{ borderColor: activeTab === t.key ? 'var(--teal)' : 'transparent', color: activeTab === t.key ? 'var(--teal)' : 'var(--mid-gray)' }}>
-            {t.key === 'VOUCHERS' && <Ticket size={14} />}{t.label}
-          </button>
-        ))}
+      {/* Tabs: one row, swipes sideways on narrow screens */}
+      <div className="border-b-2" style={{ borderColor: 'var(--light-gray)' }}>
+        <div className="flex items-end -mb-[2px] max-w-full overflow-x-auto" role="tablist">
+          {TABS.map(t => (
+            <button key={t.key} onClick={() => setTab(t.key)} role="tab" aria-selected={activeTab === t.key}
+              className="px-3.5 py-2.5 border-b-2 text-[13px] font-semibold whitespace-nowrap transition-colors hover:text-[var(--teal)] flex items-center gap-1.5"
+              style={{ fontFamily: 'var(--font-display)', borderColor: activeTab === t.key ? 'var(--teal)' : 'transparent', color: activeTab === t.key ? 'var(--teal)' : 'var(--mid-gray)' }}>
+              {t.key === 'VOUCHERS' && <Ticket size={14} />}{t.key === 'POS' && <LinkIcon size={14} />}{t.label}
+            </button>
+          ))}
+        </div>
       </div>
 
       {activeTab === 'VOUCHERS' ? <VouchersPanel canWrite={VOUCHER_WRITE.includes(role as string)} />
