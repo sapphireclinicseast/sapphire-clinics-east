@@ -25,6 +25,11 @@ export const FOCUS = 'focus-visible:outline-2 focus-visible:outline-offset-2 foc
 export const CONTROL = 'h-9 px-3 rounded-lg text-sm outline-none transition-[border-color,box-shadow] focus:border-[color:var(--teal)] focus:shadow-[0_0_0_3px_rgba(84,125,114,0.18)] disabled:opacity-60 disabled:cursor-not-allowed'
 export const CONTROL_SM = 'h-8 px-2.5 rounded-lg text-xs outline-none transition-[border-color,box-shadow] focus:border-[color:var(--teal)] focus:shadow-[0_0_0_3px_rgba(84,125,114,0.18)]'
 export const CONTROL_STYLE: CSSProperties = { background: '#fff', border: '1px solid var(--light-gray)', color: 'var(--charcoal)', fontFamily: 'var(--font-body)' }
+/** Multi-line text box: CONTROL without the fixed height. */
+export const TEXTAREA = 'w-full px-3 py-2 rounded-lg text-sm leading-relaxed outline-none transition-[border-color,box-shadow] focus:border-[color:var(--teal)] focus:shadow-[0_0_0_3px_rgba(84,125,114,0.18)] disabled:opacity-60 disabled:cursor-not-allowed'
+/** For a <label> that wraps a visually hidden file input: the ring shows
+ *  when the input inside has keyboard focus. */
+export const FILE_FOCUS = 'cursor-pointer focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-[color:var(--teal)]'
 export const LABEL = 'block text-[11px] font-semibold uppercase tracking-wider mb-1'
 export const LABEL_STYLE: CSSProperties = { color: 'var(--mid-gray)', fontFamily: 'var(--font-display)' }
 
@@ -69,6 +74,16 @@ const ICON_PATHS = {
   x: <><path d="M18 6 6 18M6 6l12 12" /></>,
   chevronRight: <><path d="m9 18 6-6-6-6" /></>,
   menu: <><path d="M3 6h18M3 12h18M3 18h18" /></>,
+  calendar: <><rect x="3" y="4" width="18" height="18" rx="2" /><path d="M16 2v4M8 2v4M3 10h18" /></>,
+  book: <><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" /><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" /></>,
+  image: <><rect x="3" y="3" width="18" height="18" rx="2" /><circle cx="8.5" cy="8.5" r="1.5" /><path d="m21 15-5-5L5 21" /></>,
+  edit: <><path d="M12 20h9" /><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z" /></>,
+  trash: <><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" /></>,
+  arrowLeft: <><path d="M19 12H5M12 19l-7-7 7-7" /></>,
+  upload: <><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><path d="m17 8-5-5-5 5M12 3v12" /></>,
+  eye: <><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8S1 12 1 12z" /><circle cx="12" cy="12" r="3" /></>,
+  file: <><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><path d="M14 2v6h6M16 13H8M16 17H8" /></>,
+  award: <><circle cx="12" cy="8" r="6" /><path d="M15.5 13 17 22l-5-3-5 3 1.5-9" /></>,
   building: <><rect x="4" y="2" width="16" height="20" rx="2" /><path d="M9 22v-4h6v4M8 6h.01M16 6h.01M12 6h.01M12 10h.01M12 14h.01M16 10h.01M16 14h.01M8 10h.01M8 14h.01" /></>,
 } as const
 export type IconName = keyof typeof ICON_PATHS
@@ -358,22 +373,33 @@ export function PillTabs({ tabs, value, onChange, label, size = 'md' }: {
   )
 }
 
-/** Centered dialog shell. Clicking the backdrop calls onClose (as the old modals did). */
-export function Dialog({ title, description, onClose, children, labelId }: {
+const DIALOG_WIDTH = { md: 'max-w-md', lg: 'max-w-2xl', xl: 'max-w-5xl' } as const
+
+/** Centered dialog shell. Clicking the backdrop calls onClose (as the old modals did).
+ *  Inside a transformed ancestor (animate-fade-up), wrap it in <Portal> so
+ *  `fixed` anchors to the viewport. */
+export function Dialog({ title, description, onClose, children, labelId, size = 'md', eyebrow, footer }: {
   title: ReactNode
   description?: ReactNode
   onClose: () => void
   children: ReactNode
   /** id for aria-labelledby; must be unique on the page. */
   labelId: string
+  /** md = short forms; lg / xl = full editors (lessons, projects). */
+  size?: keyof typeof DIALOG_WIDTH
+  /** Small uppercase line above the title ("Edit lesson"). */
+  eyebrow?: ReactNode
+  /** Sticky action row under the scrolling body (Cancel / Save). */
+  footer?: ReactNode
 }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 animate-fade-in" style={MODAL_BACKDROP} onClick={onClose}>
       <div role="dialog" aria-modal="true" aria-labelledby={labelId}
-        className="bg-white rounded-xl w-full max-w-md shadow-2xl overflow-hidden max-h-[calc(100vh-2rem)] flex flex-col"
+        className={`bg-white rounded-xl w-full ${DIALOG_WIDTH[size]} shadow-2xl overflow-hidden max-h-[calc(100dvh-2rem)] flex flex-col`}
         onClick={e => e.stopPropagation()}>
         <header className="px-5 pt-4 pb-3 flex items-start justify-between gap-3" style={{ borderBottom: '1px solid var(--light-gray)' }}>
           <div className="min-w-0">
+            {eyebrow && <p className="text-[10.5px] font-bold uppercase tracking-widest mb-1" style={{ color: 'var(--deep-teal)', fontFamily: 'var(--font-display)' }}>{eyebrow}</p>}
             <h2 id={labelId} className="text-[15px] font-bold leading-tight tracking-normal" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>{title}</h2>
             {description && <p className="text-xs mt-1 break-words" style={{ color: 'var(--mid-gray)' }}>{description}</p>}
           </div>
@@ -381,7 +407,12 @@ export function Dialog({ title, description, onClose, children, labelId }: {
             <Icon name="x" size={16} />
           </button>
         </header>
-        <div className="p-5 overflow-y-auto">{children}</div>
+        <div className="p-4 sm:p-5 overflow-y-auto min-w-0">{children}</div>
+        {footer && (
+          <div className="px-4 sm:px-5 py-3 flex flex-wrap items-center justify-end gap-2" style={{ borderTop: '1px solid var(--light-gray)', background: SUBTLE_BG }}>
+            {footer}
+          </div>
+        )}
       </div>
     </div>
   )

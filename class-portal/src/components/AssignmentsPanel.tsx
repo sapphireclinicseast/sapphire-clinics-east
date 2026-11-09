@@ -7,6 +7,10 @@ import {
   levelLabel, branchLabel, ALL_BRANCHES,
   type StoredUser, type EnrollmentLevel, type Branch, type TeacherAssignment,
 } from '@/lib/session'
+import {
+  DashCard, Banner, EmptyState, Tag, Icon,
+  TH, TH_STYLE, TD, TR, TR_STYLE,
+} from '@/components/hub/ui'
 
 const ALL_LEVELS: EnrollmentLevel[] = ['NURSERY', 'KINDER', 'GRADE_1', 'GRADE_2', 'GRADE_3', 'GRADE_4', 'GRADE_5', 'GRADE_6', 'GRADE_7', 'GRADE_8', 'GRADE_9', 'GRADE_10', 'GRADE_11', 'GRADE_12']
 
@@ -62,47 +66,50 @@ export default function AssignmentsPanel({ viewerBranch }: Props = {}) {
   }
 
   return (
-    <div className="card-static">
-      <div className="flex items-start justify-between gap-3 flex-wrap mb-3">
-        <div>
-          <h2 className="text-[18px] leading-tight">Teacher assignments</h2>
-          <p className="text-[12.5px] text-[color:var(--mid-gray)] mt-1">
-            Tick the grade levels each teacher handles, per branch. Teachers only see students enrolled in the branches and grades they&apos;re assigned to.
-          </p>
-        </div>
-      </div>
-
-      {err && <div className="mb-3 px-3 py-2 rounded-lg bg-rose-50 border border-rose-100 text-sm text-rose-800">{err}</div>}
+    <DashCard
+      flush
+      title="Teacher assignments"
+      icon={<Icon name="teacher" size={15} />}
+      description={<>Tick the grade levels each teacher handles, per branch. Teachers only see students enrolled in the branches and grades they&apos;re assigned to.</>}
+      action={viewerBranch ? <Tag tone="neutral" title="Only the main admin can edit teacher assignments.">Read only</Tag> : busy ? <Tag tone="info">Saving…</Tag> : undefined}
+      footer={<>N = Nursery · K = Kinder · G1–G12 = Grade 1 to Grade 12. Hover a column heading for the full name.</>}
+    >
+      {err && <div className="px-4 sm:px-5 pt-4"><Banner tone="error">{err}</Banner></div>}
 
       {teachers.length === 0 ? (
-        <p className="text-sm text-[color:var(--mid-gray)] text-center py-8">No teacher accounts yet. Create one from the Users tab first.</p>
+        <EmptyState icon="teacher" title="No teacher accounts yet." hint="Create one from the Users tab first." />
       ) : (
-        <div className="overflow-auto rounded-xl border" style={{ borderColor: 'var(--paper-3)' }}>
-          <table className="w-full text-sm">
-            <thead style={{ background: 'var(--paper-2)' }}>
-              <tr className="text-left text-[11.5px] uppercase tracking-[0.08em] text-[color:var(--mid-gray)] border-b" style={{ borderColor: 'var(--paper-3)', fontFamily: 'var(--font-display)' }}>
-                <th className="py-2 px-3">Teacher</th>
-                <th className="py-2 px-3">Branch</th>
-                {ALL_LEVELS.map(l => <th key={l} className="py-2 px-2 text-center" title={levelLabel(l)}>{levelShort(l)}</th>)}
+        <div className="overflow-auto" style={{ maxHeight: 560 }}>
+          <table className="w-full text-sm" style={{ borderCollapse: 'collapse', minWidth: 760 }}>
+            <thead className="sticky top-0 z-10">
+              <tr>
+                <th className={TH} style={TH_STYLE}>Teacher</th>
+                <th className={TH} style={TH_STYLE}>Branch</th>
+                {ALL_LEVELS.map(l => (
+                  <th key={l} className={`${TH} text-center px-1.5`} style={TH_STYLE} title={levelLabel(l)}>
+                    <abbr title={levelLabel(l)} className="no-underline">{levelShort(l)}</abbr>
+                  </th>
+                ))}
               </tr>
             </thead>
             <tbody>
               {teachers.flatMap(t => (
                 visibleBranches.map((b, bi) => (
-                  <tr key={`${t.id}-${b}`} className="border-b" style={{ borderColor: 'var(--paper-3)' }}>
+                  <tr key={`${t.id}-${b}`} className={TR} style={bi === 0 ? TR_STYLE : { borderTop: '1px dashed var(--light-gray)' }}>
                     {bi === 0 && (
-                      <td rowSpan={visibleBranches.length} className="py-2.5 px-3 align-top">
-                        <div className="font-semibold text-[color:var(--narra)]">{[t.firstName, t.lastName].filter(Boolean).join(' ') || t.email}</div>
-                        <div className="text-[11.5px] text-[color:var(--mid-gray)]">{t.email}</div>
+                      <td rowSpan={visibleBranches.length} className={`${TD} align-top`} style={{ minWidth: 180 }}>
+                        <div className="font-semibold" style={{ color: 'var(--charcoal)' }}>{[t.firstName, t.lastName].filter(Boolean).join(' ') || t.email}</div>
+                        <div className="text-xs break-all" style={{ color: 'var(--mid-gray)' }}>{t.email}</div>
                       </td>
                     )}
-                    <td className="py-2.5 px-3 text-[12.5px] font-semibold" style={{ color: b === 'EAST' ? 'var(--narra)' : 'var(--moss)' }}>
-                      {branchLabel(b)}
+                    <td className={`${TD} whitespace-nowrap`}>
+                      <Tag tone={b === 'EAST' ? 'brand' : 'neutral'}>{branchLabel(b)}</Tag>
                     </td>
                     {ALL_LEVELS.map(l => (
-                      <td key={l} className="py-2.5 px-2 text-center">
+                      <td key={l} className={`${TD} text-center px-1.5`}>
                         <input
                           type="checkbox"
+                          className="w-4 h-4 accent-[color:var(--deep-teal)] disabled:cursor-not-allowed"
                           checked={isOn(t.id, b, l)}
                           // Branch admins see assignments read-only — only
                           // main admin can edit (enforced server-side too).
@@ -120,6 +127,6 @@ export default function AssignmentsPanel({ viewerBranch }: Props = {}) {
           </table>
         </div>
       )}
-    </div>
+    </DashCard>
   )
 }
