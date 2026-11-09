@@ -44,6 +44,18 @@ const SEARCH_FIELDS = [
 // term was too broad. Cap it so one keystroke can't pull the whole table back.
 const SEARCH_CAP = 500
 
+// Unpaid one-time entries with no proof attached (bulk uploads always start
+// this way — Hannah 2026-11-09: "they still need to be reminded to fill up the
+// proof"). The grid shows the count and can list just these.
+async function missingProofIds(branch: string): Promise<string[]> {
+  const rows = await prisma.$queryRaw<{ id: string }[]>`
+    SELECT id FROM "PettyCashEntry"
+    WHERE branch = ${branch} AND "recordType" = 'ONE_TIME' AND "paidAt" IS NULL
+      AND coalesce("proofUrl", '') = ''
+      AND ("proofUrls" IS NULL OR "proofUrls"::text IN ('[]', 'null'))`
+  return rows.map(r => r.id)
+}
+
 // GET /api/petty-cash/entries?branch=SANDBOX_EAST[&recordType=][&from=&to=][&q=]
 //
 // One-time expenses run to thousands of rows per branch, which is far more than
@@ -61,6 +73,7 @@ export async function GET(req: Request) {
   const from = sp.get('from') || ''
   const to = sp.get('to') || ''
   const q = (sp.get('q') || '').trim()
+  const missingProof = sp.get('missingProof') === '1'
   if (!VALID_BRANCHES.includes(branch)) {
     return NextResponse.json({ error: 'Valid branch is required' }, { status: 400 })
   }
@@ -74,7 +87,10 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: 'Access denied for this branch' }, { status: 403 })
   }
   // A search reaches across the whole history; a plain listing honours the window.
-  const dateWindow = !q && (from || to)
+  const noProofIds = recordType === 'ONE_TIME' ? await missingProofIds(branch).catch(() => null) : null
+  // "No proof" view: every unpaid entry without proof, whatever the window.
+  const proofFilter = missingProof && noProofIds ? { id: { in: noProofIds } } : {}
+  const dateWindow = !q && !missingProof && (from || to)
     ? { date: { ...(from ? { gte: new Date(`${from}T00:00:00.000Z`) } : {}), ...(to ? { lte: new Date(`${to}T23:59:59.999Z`) } : {}) } }
     : {}
   const search = q
@@ -83,7 +99,7 @@ export async function GET(req: Request) {
 
   const [entries, total] = await Promise.all([
     prisma.pettyCashEntry.findMany({
-      where: { branch, recordType, ...dateWindow, ...search },
+      where: { branch, recordType, ...dateWindow, ...search, ...proofFilter },
       orderBy: [{ pcvSeq: 'asc' }, { pcvSub: 'asc' }],
       include: { reimbursement: { select: { refNumber: true } } },
       ...(q ? { take: SEARCH_CAP } : {}),
@@ -92,7 +108,10 @@ export async function GET(req: Request) {
   ])
   // The grid shows "N of M" from these; M is the unfiltered count for the tab.
   return NextResponse.json(entries, {
-    headers: { 'X-Total-Count': String(total), 'X-Search-Capped': q && entries.length === SEARCH_CAP ? '1' : '0' },
+    headers: {
+      'X-Total-Count': String(total), 'X-Search-Capped': q && entries.length === SEARCH_CAP ? '1' : '0',
+      ...(noProofIds ? { 'X-Missing-Proof': String(noProofIds.length) } : {}),
+    },
   })
 }
 

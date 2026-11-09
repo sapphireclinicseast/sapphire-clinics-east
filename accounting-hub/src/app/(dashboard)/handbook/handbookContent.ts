@@ -248,6 +248,7 @@ export const SECTIONS: Section[] = [
       { k: 'sub', t: 'Record & pay a one-time expense' },
       { k: 'steps', items: [
         `On **One-time expense**, **Add Row** and fill it: Reference Number, Payee, Department, Date, Description, **Valid/Invalid**, **Vatable**, SI/TIN, **Gross Amount** (Net of VAT and VAT compute), the **Account Title**, and **Has EWT? / EWT %** if withholding applies. Attach **Proof**.`,
+        `Many at once: **Bulk upload** → **Download template** (dropdowns for Department, Valid/Invalid, Vatable, Has EWT?, EWT % and the chart of accounts; for **VAT + Non-VAT** type the VAT-inclusive part in **VAT part (₱)** and the VAT is computed from it) → fill it in → **Choose file…** (every row is checked, nothing saves until **Import**). Proof never comes with the upload: attach it on each entry — unpaid entries without proof show **No proof** and are counted in the reminder above the grid (**Show only these**).`,
         `The **Accountant** sets **Audited = Yes** (blocked while the Account Title is blank).`,
         `Click **RFP (Valid)** or **RFP (Invalid)**, tick the audited rows, then **Generate RFP (…) · N**.`,
         `On the **RFP** tab: **RFP Summary** / **Billing Voucher** to print, then **Record as Paid** (cash / check / bank / credit card). **Unpay** or **Delete (releases entries)** if you must reverse.`,

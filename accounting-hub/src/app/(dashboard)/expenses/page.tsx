@@ -8,7 +8,7 @@ import { useSearchParams } from 'next/navigation'
 import { useFocusTarget } from '@/lib/use-focus-target'
 import { useSession } from 'next-auth/react'
 import { userBranchScope } from '@/lib/branch-scope'
-import { Plus, Settings, Loader2, Trash2, X, Maximize2, Minimize2, Search, ArrowUp, ArrowDown, Upload, Download, Eye, Wallet, CreditCard, CheckCircle2, Pencil, FileText } from 'lucide-react'
+import { Plus, Settings, Loader2, Trash2, X, Maximize2, Minimize2, Search, ArrowUp, ArrowDown, Upload, Download, Eye, Wallet, CreditCard, CheckCircle2, Pencil, FileText, Paperclip } from 'lucide-react'
 import { SortFilterHead, applySortFilter } from '@/components/SortFilterHead'
 import { useResizableColumns, ResizableColgroup, ColResizeHandle } from '@/components/useResizableColumns'
 import { assetClassFromAccountTitle, ASSET_CLASSIFICATION_LABELS, isDepreciatingClassification, inventoryClassFromAccountTitle, INVENTORY_CLASSIFICATION_LABELS } from '@/lib/asset-classification'
@@ -25,6 +25,7 @@ import { ExistingAssetPicker } from '@/components/ExistingAssetPicker'
 import { NameCombobox } from '@/components/NameCombobox'
 import { snapSupplierName, supplierNameIndex } from '@/lib/supplier-snap'
 import { HR_PAGE_CLASS, HR_PAGE_STYLE, HrShimmerStyle, hrBtn } from '@/components/ui/hr-look'
+import { OneTimeBulkUpload } from './OneTimeBulkUpload'
 
 // ── Constants ──────────────────────────────────────────────────
 const BRANCHES = [
@@ -322,6 +323,11 @@ function ExpensesInner() {
   const [period, setPeriod] = useState<PeriodKey>('3m')
   const [totalCount, setTotalCount] = useState(0)      // all rows in this tab, ignoring the window
   const [searchCapped, setSearchCapped] = useState(false)
+  // One-time entries not yet paid that have no proof attached (server count), and
+  // the toggle that lists only those. Bulk uploads always start here.
+  const [missingProof, setMissingProof] = useState(0)
+  const [noProofOnly, setNoProofOnly] = useState(false)
+  const [showBulk, setShowBulk] = useState(false)
   const [adding, setAdding] = useState(false)
   const [coaOptions, setCoaOptions] = useState<string[]>([])
   const [coaAccounts, setCoaAccounts] = useState<PickableAccount[]>([])
@@ -506,7 +512,7 @@ function ExpensesInner() {
   const branchRef = useRef(branch)
   useEffect(() => { branchRef.current = branch }, [branch])
 
-  const loadEntries = useCallback(async (br: string, rt: string, per: PeriodKey, term: string) => {
+  const loadEntries = useCallback(async (br: string, rt: string, per: PeriodKey, term: string, noProof = false) => {
     if (!rt) { setEntries([]); setLoading(false); return }
     const seq = ++entriesReq.current.seq
     entriesReq.current.ctrl?.abort()
@@ -519,8 +525,10 @@ function ExpensesInner() {
       // Only one-time expenses are big enough to need a window; recurring setups
       // and petty cash are a handful of rows and always load whole.
       const t = term.trim()
+      // "No proof" view: every unpaid one-time entry without proof, any date.
+      if (noProof && rt === 'ONE_TIME') qs.set('missingProof', '1')
       if (t) qs.set('q', t)
-      else if (rt === 'ONE_TIME') {
+      else if (rt === 'ONE_TIME' && !noProof) {
         const w = periodFrom(per)
         if (w) qs.set('from', w)
       }
@@ -529,6 +537,7 @@ function ExpensesInner() {
       setEntries(r.ok ? await r.json() : [])
       setTotalCount(r.ok ? Number(r.headers.get('X-Total-Count') || 0) : 0)
       setSearchCapped(r.ok && r.headers.get('X-Search-Capped') === '1')
+      setMissingProof(r.ok && r.headers.has('X-Missing-Proof') ? Number(r.headers.get('X-Missing-Proof')) || 0 : 0)
     } catch {
       if (seq !== entriesReq.current.seq) return
       setEntries([]); setTotalCount(0); setSearchCapped(false)
@@ -543,7 +552,9 @@ function ExpensesInner() {
   const periodRef = useRef<PeriodKey>(period)
   const searchRef = useRef('')
   useEffect(() => { periodRef.current = period }, [period])
-  const reload = useCallback((br: string, rt: string) => loadEntries(br, rt, periodRef.current, searchRef.current), [loadEntries])
+  const noProofRef = useRef(false)
+  useEffect(() => { noProofRef.current = noProofOnly }, [noProofOnly])
+  const reload = useCallback((br: string, rt: string) => loadEntries(br, rt, periodRef.current, searchRef.current, noProofRef.current), [loadEntries])
 
   const loadSettings = useCallback(async (br: string) => {
     try {
@@ -648,16 +659,16 @@ function ExpensesInner() {
   }, [])
 
   useEffect(() => {
-    setSelected(new Set()); setRfpMode(null)
+    setSelected(new Set()); setRfpMode(null); setNoProofOnly(false)
     loadSettings(branch); loadCards(branch); loadSuppliers(branch); loadRfps(branch); loadRecurringDue(branch)
   }, [branch, recordType, loadSettings, loadCards, loadSuppliers, loadRfps, loadRecurringDue])
 
   // Entries reload on their own so changing the window or the search term refetches.
   // The term is debounced — a search runs against the whole history server-side.
   useEffect(() => {
-    const t = setTimeout(() => { searchRef.current = search; loadEntries(branch, recordType, period, search) }, search ? 300 : 0)
+    const t = setTimeout(() => { searchRef.current = search; loadEntries(branch, recordType, period, search, noProofOnly) }, search ? 300 : 0)
     return () => clearTimeout(t)
-  }, [branch, recordType, period, search, loadEntries])
+  }, [branch, recordType, period, search, noProofOnly, loadEntries])
 
   const generateFromRecurring = async (recurringId: string) => {
     setGenFromRecurring(recurringId)
@@ -791,11 +802,13 @@ function ExpensesInner() {
     const e = entriesRef.current.find(x => x.id === id)
     if (!e) return
     const cur = proofsOf(e); const next = [...cur, url]
+    if (!cur.length && e.recordType === 'ONE_TIME' && !e.paidAt) setMissingProof(c => Math.max(0, c - 1))
     entriesRef.current = entriesRef.current.map(x => x.id === id ? { ...x, proofUrls: next, proofUrl: next[0] } : x)
     saveField(id, { proofUrls: next, proofUrl: next[0] }, false)
   }
   const removeProof = (e: Entry, url: string) => {
     const next = proofsOf(e).filter(u => u !== url)
+    if (!next.length && proofsOf(e).length && e.recordType === 'ONE_TIME' && !e.paidAt) setMissingProof(c => c + 1)
     saveField(e.id, { proofUrls: next, proofUrl: next[0] ?? null }, false)
   }
 
@@ -883,6 +896,11 @@ function ExpensesInner() {
       const payrollish = sel.filter(payrollHint)
       if (payrollish.length) {
         alert(`These entries are employee/consultant pay and must be processed through Payroll, not a One-Time RFP:\n\n${payrollish.map(e => `• ${e.pcvNumber} — ${e.description || e.accountTitle}`).join('\n')}\n\nUnselect them to continue. (If one is genuinely NOT compensation, reword its description.)`)
+        setGeneratingRfp(false); return
+      }
+      // Reminder, not a block: entries still without proof (e.g. bulk uploads).
+      const noProof = sel.filter(e => proofsOf(e).length === 0)
+      if (noProof.length && !confirm(`${noProof.length} of the selected entr${noProof.length === 1 ? 'y has' : 'ies have'} no proof attached:\n\n${noProof.slice(0, 15).map(e => `• ${e.pcvNumber} — ${e.requestor || e.description || ''}`).join('\n')}${noProof.length > 15 ? `\n…and ${noProof.length - 15} more` : ''}\n\nGenerate the RFP anyway?`)) {
         setGeneratingRfp(false); return
       }
       const res = await fetch('/api/expenses/rfp', {
@@ -1451,6 +1469,13 @@ function ExpensesInner() {
                       <Plus size={15} /> Shared purchase (split)
                     </button>
                   )}
+                  {recordType === 'ONE_TIME' && (
+                    <button onClick={() => setShowBulk(true)} disabled={adding} className={outlineBtn}
+                      style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}
+                      title="Add many one-time expenses at once from the Excel template (proof is attached afterwards, per entry)">
+                      <Upload size={15} /> Bulk upload
+                    </button>
+                  )}
                   {recordType === 'ONE_TIME' && rfpMode === null && !ccMode && (
                     <>
                       <button onClick={() => startRfp('VALID')} className={outlineBtn} style={{ borderColor: 'var(--teal)', color: 'var(--teal)' }}>
@@ -1467,6 +1492,22 @@ function ExpensesInner() {
                 </div>
               )}
             </div>
+
+            {recordType === 'ONE_TIME' && (missingProof > 0 || noProofOnly) && (
+              <div className="flex flex-wrap items-center gap-3 px-4 py-2.5 border-t" style={{ background: '#fffbeb', borderColor: '#fde68a' }}>
+                <Paperclip size={15} style={{ color: '#b45309' }} />
+                <p className="min-w-0 flex-1 text-xs" style={{ color: '#92400e' }}>
+                  {missingProof > 0
+                    ? <><strong>{missingProof.toLocaleString()} unpaid entr{missingProof === 1 ? 'y has' : 'ies have'} no proof attached.</strong> Attach the receipt or invoice on each — bulk-uploaded entries always start without one.</>
+                    : <strong>Every unpaid entry has its proof attached.</strong>}
+                </p>
+                <button onClick={() => setNoProofOnly(v => !v)} aria-pressed={noProofOnly}
+                  className="h-8 px-3 rounded-full border text-xs font-semibold whitespace-nowrap"
+                  style={noProofOnly ? { background: '#b45309', borderColor: '#b45309', color: '#fff' } : { background: '#fff', borderColor: '#fcd34d', color: '#92400e' }}>
+                  {noProofOnly ? 'Show all entries' : 'Show only these'}
+                </button>
+              </div>
+            )}
 
             {recordType === 'ONE_TIME' && canWrite && ccMode ? (
               <div className="flex flex-wrap items-center gap-3 px-4 py-3 border-y" style={{ background: '#faf5ff', borderColor: '#e9d5ff' }}>
@@ -1889,6 +1930,11 @@ function ExpensesInner() {
                         </td>
                         <td className={tdCls} style={{ borderColor: 'var(--hr-line)' }}>
                           <div className="flex flex-col gap-1 px-1 py-1" style={{ minWidth: 120 }}>
+                            {recordType === 'ONE_TIME' && !e.paidAt && proofsOf(e).length === 0 && (
+                              <span title="No receipt or invoice attached yet" className="inline-flex items-center gap-1 w-fit px-1.5 py-0.5 rounded text-[10px] font-semibold whitespace-nowrap" style={{ background: '#fef3c7', color: '#92400e' }}>
+                                <Paperclip size={10} /> No proof
+                              </span>
+                            )}
                             {proofsOf(e).map((url, i) => (
                               <div key={url} className="flex items-center gap-1 whitespace-nowrap">
                                 <a href={url} target="_blank" rel="noopener noreferrer" title="View proof"
@@ -2138,12 +2184,13 @@ function ExpensesInner() {
           <h3 className="text-sm font-bold mb-3" style={{ color: 'var(--charcoal)' }}>One-time Expense</h3>
           <div className="flex flex-col items-center">
             {([
-              { n: 1, title: 'Expense entry', who: 'Bookkeeper', desc: 'Encode the one-time expense.' },
-              { n: 2, title: 'Audited', who: 'Accountant', desc: 'Accountant sets Audited = Yes.' },
-              { n: 3, title: 'Filed for RFP', who: 'Accountant', desc: 'Group audited entries via RFP (Valid) or RFP (Invalid).' },
-              { n: 4, title: 'Print & submit for approval', who: '', desc: 'Print the reimbursement (RFP) report and submit for approval.' },
-              { n: 5, title: 'Mark as Paid', who: '', desc: 'Once reimbursed & replenished, open the RFP and click “Record as Paid”.' },
-              { n: 6, title: 'Expense Report', who: '', desc: 'The paid entries appear in the Expense Report.' },
+              { n: 1, title: 'Expense entry', who: 'Bookkeeper', desc: 'Encode the one-time expense with “Add entry” — or many at once with “Bulk upload”: download the template (dropdowns for Department, Valid/Invalid, Vatable, EWT and Account Title; for VAT + Non-VAT type the VAT part and the VAT is computed from it), fill it in, upload. Every row is checked before anything is saved.' },
+              { n: 2, title: 'Attach proof', who: 'Bookkeeper', desc: 'Upload the receipt / invoice on each entry. Bulk-uploaded entries never carry proof — they are flagged “No proof” and counted in the reminder above the grid (“Show only these”) until it is attached.' },
+              { n: 3, title: 'Audited', who: 'Accountant', desc: 'Accountant sets Audited = Yes.' },
+              { n: 4, title: 'Filed for RFP', who: 'Accountant', desc: 'Group audited entries via RFP (Valid) or RFP (Invalid). Entries still without proof ask for confirmation first.' },
+              { n: 5, title: 'Print & submit for approval', who: '', desc: 'Print the reimbursement (RFP) report and submit for approval.' },
+              { n: 6, title: 'Mark as Paid', who: '', desc: 'Once reimbursed & replenished, open the RFP and click “Record as Paid”.' },
+              { n: 7, title: 'Expense Report', who: '', desc: 'The paid entries appear in the Expense Report.' },
             ] as const).map((s, i, arr) => (
               <div key={s.n} className="w-full max-w-xl flex flex-col items-center">
                 <div className="w-full rounded-2xl border p-4 flex items-start gap-3" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
@@ -2249,6 +2296,14 @@ function ExpensesInner() {
           </div>
         )
       })()}
+
+      {showBulk && (
+        <OneTimeBulkUpload branch={branch} branchLabel={BRANCHES.find(b => b.value === branch)?.code || branch}
+          accounts={coaAccounts.map(a => ({ accountNumber: a.accountNumber, accountTitle: a.accountTitle }))}
+          onClose={() => setShowBulk(false)}
+          onImported={() => reload(branch, 'ONE_TIME')}
+          onShowNoProof={() => setNoProofOnly(true)} />
+      )}
 
       {showSplit && (
         <SplitPurchaseModal accounts={coaAccounts} bankOptions={bankOptions}
