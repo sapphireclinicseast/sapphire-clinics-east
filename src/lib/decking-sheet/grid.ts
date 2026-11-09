@@ -9,6 +9,8 @@
 // payment beneath it, N/A for an hour nobody may be booked into. What differs
 // is that each value gets its own cell, so each can be validated.
 
+import { daySlots, isCustomLength } from '@/lib/decking-slots'
+
 export const ROWS_PER_HOUR = 3        // name, payment, remark
 /**
  * Departments that run group hours get a second patient line of their own.
@@ -88,9 +90,13 @@ export interface SheetStaff {
   workDays: string[]
   startTime: string
   endTime: string
+  /** Patients a day, when the day is not one slot per whole hour. */
+  slotsPerDay?: number | null
 }
 
 export interface SheetSlot {
+  /** The DeckingSlot row id. A one-off sheet row IS one of these. */
+  id?: string
   staffId: string
   dayOfWeek: string
   startTime: string
@@ -114,6 +120,20 @@ export interface CellRef {
   staffId: string
   dayOfWeek: string
   startTime: string
+  /**
+   * For a ONE-OFF, the DeckingSlot row this cell is: its identity.
+   *
+   * A consultant can hold two one-offs on the same date with the same start AND
+   * the same end — a 10:30–11:00 left over from an earlier split sitting beside
+   * the real 10:30–11:00. No combination of times tells those apart, so keying
+   * on times merged them in the map: one row's typed name was dropped on every
+   * pull, and an edit to one could be applied to the other. That is how the
+   * same patient comes to be shown against two rows.
+   *
+   * Empty for weekly cells, which are not one row but a CELL that may hold
+   * several patients, and whose (staff, day, start) is already unique.
+   */
+  slotId: string
   /** YYYY-MM-DD for a one-off, empty for the weekly pattern. */
   date: string
   /** Which of the three lines this is. */
@@ -169,11 +189,9 @@ const formulaCell = (formula: string, fmt: Record<string, unknown> = {}): Cell =
   },
 })
 
-function hoursBetween(start: string, end: string): number[] {
-  const out: number[] = []
-  for (let h = parseInt(start.slice(0, 2), 10); h < parseInt(end.slice(0, 2), 10); h++) out.push(h)
-  return out
-}
+/** One row of a band's time axis. */
+interface AxisSlot { startTime: string; endTime: string; label: string }
+
 export function hourLabel(h: number): string {
   const tw = (x: number) => (x % 12 === 0 ? 12 : x % 12)
   const m = (x: number) => (x % 24 < 12 ? 'AM' : 'PM')
@@ -238,7 +256,12 @@ export function buildGrid(
 ): Grid | null {
   // Five lines where two children share an hour, three everywhere else.
   const perHour = paired ? PAIRED_ROWS_PER_HOUR : ROWS_PER_HOUR
-  const live = staff.filter(s => (s.workDays ?? []).length > 0 && hoursBetween(s.startTime, s.endTime).length > 0)
+  // A consultant is on the board if they work days and those days divide into
+  // at least one slot. Tested through daySlots, not hoursBetween: a doctor who
+  // gives the clinic 1:00–1:40 for two patients has no whole hour at all, and
+  // the hour test dropped them from the sheet entirely.
+  const live = staff.filter(s =>
+    (s.workDays ?? []).length > 0 && daySlots(s.startTime, s.endTime, s.slotsPerDay).length > 0)
   if (live.length === 0) return null
 
   // A cell can hold up to three patients, so this maps to an ARRAY. Keyed to a
@@ -256,10 +279,22 @@ export function buildGrid(
   // ONE time axis for the whole tab. Per-block axes meant a therapist starting
   // at 11 sat level with two starting at 10, so reading across a band landed on
   // a different hour in every block.
-  const axisStart = Math.min(...live.map(s => parseInt(s.startTime.slice(0, 2), 10)))
-  const axisEnd = Math.max(...live.map(s => parseInt(s.endTime.slice(0, 2), 10)))
-  const AXIS: number[] = []
-  for (let h = axisStart; h < axisEnd; h++) AXIS.push(h)
+  //
+  // That shared axis is made of whole hours, which is why a consultant on a
+  // patient COUNT cannot sit on it: their rows start at 1:54 and 2:48 and line
+  // up with nobody. Those consultants are split out below and given a band of
+  // their own, labelled by span. Everyone else keeps the aligned axis.
+  const hourly = live.filter(s => !isCustomLength(s.slotsPerDay))
+  const custom = live.filter(s => isCustomLength(s.slotsPerDay))
+
+  const axisOf = (list: SheetStaff[]): AxisSlot[] => {
+    const from = Math.min(...list.map(s => parseInt(s.startTime.slice(0, 2), 10)))
+    const to = Math.max(...list.map(s => parseInt(s.endTime.slice(0, 2), 10)))
+    const out: AxisSlot[] = []
+    for (let h = from; h < to; h++) out.push({ startTime: hhmm(h), endTime: hhmm(h + 1), label: hourLabel(h) })
+    return out
+  }
+  const SHARED: AxisSlot[] = hourly.length ? axisOf(hourly) : []
 
   const k = Math.max(...live.map(s => s.workDays.length))
   const stride = k + 2
@@ -271,11 +306,25 @@ export function buildGrid(
     throw new Error(`Grid needs ${totalCols} columns and would reach front desk's space at column ${SAFE_COL}.`)
   }
 
-  const blocks = live.map(st => ({
+  const blockOf = (st: SheetStaff, _axis: AxisSlot[]) => ({
     st,
     days: DAYS.filter(d => st.workDays.includes(d.key)),
-    own: new Set(hoursBetween(st.startTime, st.endTime)),
-  }))
+    // Which rows of this band's axis are actually theirs. Keyed by start TIME
+    // rather than by hour number, so a 54-minute row is as addressable as a
+    // whole hour. Everything else in the band is hatched.
+    own: new Set(daySlots(st.startTime, st.endTime, st.slotsPerDay).map(x => x.startTime)),
+  })
+
+  // Bands, in order: the aligned hourly ones, then one per custom consultant.
+  const bands: { members: ReturnType<typeof blockOf>[]; axis: AxisSlot[] }[] = []
+  for (let b = 0; b < hourly.length; b += perBand) {
+    bands.push({ members: hourly.slice(b, b + perBand).map(st => blockOf(st, SHARED)), axis: SHARED })
+  }
+  for (const st of custom) {
+    const axis: AxisSlot[] = daySlots(st.startTime, st.endTime, st.slotsPerDay)
+      .map(x => ({ ...x, label: spanLabel(x.startTime, x.endTime) }))
+    bands.push({ members: [blockOf(st, axis)], axis })
+  }
 
   const rows: { values: Cell[] }[] = []
   const merges: Grid['merges'] = []
@@ -283,8 +332,7 @@ export function buildGrid(
   const editable: Grid['editable'] = []
   const cells: CellRef[] = []
 
-  for (let b = 0; b < blocks.length; b += perBand) {
-    const band = blocks.slice(b, b + perBand)
+  for (const { members: band, axis: AXIS } of bands) {
     const bandRows = 2 + AXIS.length * perHour
     const top = rows.length
 
@@ -321,7 +369,7 @@ export function buildGrid(
         const h = AXIS[hourIdx]
 
         if (line === 'name') {
-          put(0, cell(hourLabel(h), { textFormat: { bold: true, fontSize: 9 } }))
+          put(0, cell(h.label, { textFormat: { bold: true, fontSize: 9 } }))
           merges.push({ startRowIndex: top + r, endRowIndex: top + r + perHour, startColumnIndex: base, endColumnIndex: base + 1 })
         } else {
           put(0, cell(''))
@@ -335,7 +383,7 @@ export function buildGrid(
         // run of light slashes on the grey. These cells are decorative: they
         // carry no slot, are never written to the map, and the sync never reads
         // them, so text here cannot be mistaken for data.
-        if (!blk.own.has(h)) {
+        if (!blk.own.has(h.startTime)) {
           for (let c = 1; c <= k; c++) {
             // Mode 2 stretches the tile to the cell. The image is already
             // close to a cell's proportions, so the diagonals stay at 45°
@@ -355,7 +403,7 @@ export function buildGrid(
           // things about the same column.
           if (!day) { put(c, formulaCell(`=IMAGE("${HATCH_URL}",2)`, { backgroundColor: rgb(OFF_BG) })); continue }
 
-          const here = slotAt.get(`${blk.st.id}|${day.key}|${hhmm(h)}`) ?? []
+          const here = slotAt.get(`${blk.st.id}|${day.key}|${h.startTime}`) ?? []
           const occupants = here.filter(x => x.patient)
           const blocked = here.find(x => x.disabled)
           const name = nameFor(occupants, blocked)
@@ -374,7 +422,7 @@ export function buildGrid(
             : line === 'name2' ? name2
             : line === 'pay2' ? pay2
             : remark
-          cells.push({ row: top + r, col: base + c, staffId: blk.st.id, dayOfWeek: day.key, startTime: hhmm(h), date: '', line, wrote: value })
+          cells.push({ row: top + r, col: base + c, staffId: blk.st.id, dayOfWeek: day.key, startTime: h.startTime, slotId: '', date: '', line, wrote: value })
 
           if (line === 'name' || line === 'name2') validate.push({ row: top + r, col: base + c, kind: 'name' })
           else if (line === 'pay' || line === 'pay2') validate.push({ row: top + r, col: base + c, kind: 'pay' })
@@ -513,7 +561,7 @@ export function buildGrid(
           const remark = remarkFor(occupants, blocked)
           const value = line === 'name' ? name : line === 'pay' ? pay : remark
 
-          cells.push({ row: top + r, col: base + 1, staffId, dayOfWeek: slot.dayOfWeek, startTime: slot.startTime, date: dateStr, line, wrote: value })
+          cells.push({ row: top + r, col: base + 1, staffId, dayOfWeek: slot.dayOfWeek, startTime: slot.startTime, slotId: slot.id ?? '', date: dateStr, line, wrote: value })
           if (line !== 'remark') validate.push({ row: top + r, col: base + 1, kind: line })
           if (line === 'name' && !blocked) {
             editable.push({ startRowIndex: top + r, endRowIndex: top + r + ROWS_PER_HOUR, startColumnIndex: base + 1, endColumnIndex: base + 2 })

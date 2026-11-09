@@ -802,6 +802,15 @@ model DeckingTherapistConfig {
   /// a consultant comes in on Monday and Tuesday but takes teletherapy on
   /// Thursday and Friday.
   deliveryMode String?
+  /// How many patients this consultant takes per working day, when that is not
+  /// one per whole hour. The working window is divided backwards into this many
+  /// equal slots — 13:00–17:30 with 5 gives five 54-minute slots.
+  ///
+  /// NULL is one slot per whole hour, which is what every row meant before this
+  /// column and what almost the whole roster still is. Front desk are told a
+  /// COUNT ("Dr Lim sees 5 on a Wednesday"), never a slot length, so the count
+  /// is what gets stored and the length is derived.
+  slotsPerDay  Int?
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 

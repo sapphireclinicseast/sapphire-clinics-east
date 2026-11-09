@@ -1,6 +1,7 @@
 'use client'
 
 import { Fragment, useEffect, useState, useRef, useCallback } from 'react'
+import { daySlots, dayStarts, hourlySlots, slotMinutes, splitSpan, toMinutes, fromMinutes, isCustomLength } from '@/lib/decking-slots'
 import { internWindowCovers, internWindowLabel } from '@/lib/intern-window'
 import { ChevronDown, Plus, X, Settings2, Ban, Search, Users, CalendarCheck, CalendarPlus, CalendarDays, Percent, BarChart3, Info, Lock, Loader2, Clock, Rows3, Rows4, ChevronsDownUp, ChevronsUpDown, GraduationCap, UserCheck, AlertTriangle, MapPin, Video, Home, Building2 } from 'lucide-react'
 import { DashCard, KpiCard, Skeleton, EmptyState, DeptChip, CARD_STYLE } from '../patients/dashboard/ui'
@@ -34,7 +35,7 @@ const DEFAULT_HOURS: Record<string, { startTime: string; endTime: string }> = {
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface StaffMember { id: string; firstName: string; lastName: string; department: string; branch: string; extraBranches?: string[]; employmentType?: string | null; isInternshipSupervisor?: boolean | null; dateHired?: string | null; contractExpiry?: string | null; workArrangement?: string | null; branchEmployment?: Record<string, { arrangement?: string | null } | null> }
 interface Patient { id: string; firstName: string; lastName: string }
-interface TherapistConfig { id: string; staffId: string; workDays: string[]; startTime: string; endTime: string; useDefault: boolean; branch: string; department: string; deliveryMode?: string | null }
+interface TherapistConfig { id: string; staffId: string; workDays: string[]; startTime: string; endTime: string; useDefault: boolean; branch: string; department: string; deliveryMode?: string | null; slotsPerDay?: number | null }
 interface DeckingSlot { id: string; staffId: string; patientId: string | null; patient: Patient | null; dayOfWeek: string; startTime: string; endTime: string; branch: string; department: string; notes: string | null; disabled: boolean; paymentType?: string; isClass?: boolean; deliveryMode?: string | null; supervisorId?: string | null; date?: string | null }
 
 // Cell colouring, the way front desk reads their spreadsheet: what needs
@@ -246,52 +247,20 @@ function addHour(time: string): string {
   return `${String(h + 1).padStart(2, '0')}:${String(m).padStart(2, '0')}`
 }
 
-/** "09:30" → 570. The board's times are strings; arithmetic needs minutes. */
-function toMinutes(t: string): number {
-  const [h, m] = t.split(':').map(Number)
-  return h * 60 + (m || 0)
-}
-/** 570 → "09:30". */
-function fromMinutes(total: number): string {
-  const h = Math.floor(total / 60)
-  const m = total % 60
-  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`
-}
-
 /**
- * Split a span into n equal slots.
+ * Split a span into n equal slots — re-exported from lib/decking-slots so the
+ * weekly board, the one-off dates and the Google Sheet all divide a day the
+ * same way.
  *
  * Medical consults are not all an hour — a doctor giving the clinic 9 to 12
  * might see six patients, not three. So the span and the COUNT are what front
  * desk set, and the length of each slot follows from them. Asking for a
  * duration instead would mean doing that division by hand and discovering the
  * remainder at the end of the morning.
- *
- * Any remainder lands on the last slot rather than being spread: a clean
- * "25 min each, last one 30" is easier to run a clinic on than six slots that
- * each drift by a few minutes.
  */
-function splitSpan(startTime: string, endTime: string, count: number): { startTime: string; endTime: string }[] {
-  const from = toMinutes(startTime)
-  const to = toMinutes(endTime)
-  if (to <= from || count < 1) return []
-  const each = Math.floor((to - from) / count)
-  if (each < 1) return []
-  return Array.from({ length: count }, (_, i) => ({
-    startTime: fromMinutes(from + i * each),
-    endTime: i === count - 1 ? endTime : fromMinutes(from + (i + 1) * each),
-  }))
-}
-
+/** Whole-hour starts. Still what the time-picker dropdowns are built from. */
 function generateHourlySlots(startTime: string, endTime: string): string[] {
-  const slots: string[] = []
-  if (!startTime || !endTime) return slots
-  const [sh] = startTime.split(':').map(Number)
-  const [eh] = endTime.split(':').map(Number)
-  for (let h = sh; h < eh; h++) {
-    slots.push(`${String(h).padStart(2, '0')}:00`)
-  }
-  return slots
+  return hourlySlots(startTime, endTime).map(s => s.startTime)
 }
 
 // Everyone sees both boards. A patient gets coordinated across branches, and
@@ -349,8 +318,47 @@ function PatientCellSearch({ current, onSelect, onClear, onClose }: {
     if (r) setMenuAt({ left: r.left, top: r.bottom + 4, width: Math.max(r.width, 220) })
   }
 
+  const boxRef = useRef<HTMLDivElement>(null)
+
   useEffect(() => { inputRef.current?.focus(); measure() // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  // Close when the user clicks somewhere else, or presses Escape — NOT when the
+  // input loses focus.
+  //
+  // This used to close on blur, after a 200ms grace period. That held together
+  // in a grid cell, where nothing competes for focus. In the one-off day window
+  // something takes focus back the moment this mounts, so the search opened and
+  // shut itself before a single character could be typed — from the desk, the
+  // box "reverses" and the slot cannot be booked at all.
+  //
+  // A pointerdown listener registered on mount cannot misfire that way: it asks
+  // "did they click outside this?", which is the actual question, instead of
+  // inferring it from focus. The listener is attached in an effect, so the very
+  // click that opened the search has already finished and cannot close it.
+  useEffect(() => {
+    const away = (e: PointerEvent) => {
+      const el = boxRef.current
+      if (!el) return
+      // Inside THIS search — the results menu is position:fixed but still a DOM
+      // child of boxRef, so one contains() check covers input and list alike.
+      if (el.contains(e.target as Node)) return
+      // Inside ANOTHER search. The one-off day window mounts this component
+      // more than once, and every instance listens. Without this the copy that
+      // was NOT clicked would call onClose, clearing the state both share and
+      // unmounting the copy that WAS clicked — the click died with it, so the
+      // patient was never saved and the box appeared to reverse on its own.
+      if ((e.target as Element)?.closest?.('[data-patient-search]')) return
+      setOpen(false); onClose()
+    }
+    const key = (e: KeyboardEvent) => { if (e.key === 'Escape') { setOpen(false); onClose() } }
+    document.addEventListener('pointerdown', away)
+    document.addEventListener('keydown', key)
+    return () => {
+      document.removeEventListener('pointerdown', away)
+      document.removeEventListener('keydown', key)
+    }
+  }, [onClose])
 
   function handleInput(val: string) {
     setQuery(val)
@@ -364,7 +372,7 @@ function PatientCellSearch({ current, onSelect, onClear, onClose }: {
   }
 
   return (
-    <div style={{ position: 'relative', minWidth: '120px' }}>
+    <div ref={boxRef} data-patient-search style={{ position: 'relative', minWidth: '120px' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
         <input
           ref={inputRef}
@@ -373,7 +381,6 @@ function PatientCellSearch({ current, onSelect, onClear, onClose }: {
           placeholder="Search patient…"
           value={query}
           onChange={e => handleInput(e.target.value)}
-          onBlur={() => setTimeout(() => { setOpen(false); onClose() }, 200)}
           autoComplete="off"
         />
         {current && (
@@ -391,7 +398,7 @@ function PatientCellSearch({ current, onSelect, onClear, onClose }: {
            will not let me book". Third place in this module to need the same
            fix; the other two were the SPED class search and the filter
            popover. */
-        <div style={{ position: 'fixed', zIndex: 300, background: '#fff', border: '1px solid var(--light-gray)', borderRadius: '0.5rem', boxShadow: '0 10px 28px rgba(15,23,42,0.2)', left: menuAt?.left ?? 0, top: menuAt?.top ?? 0, width: menuAt?.width ?? 240, maxHeight: '220px', overflowY: 'auto', padding: 3 }}>
+        <div data-patient-search style={{ position: 'fixed', zIndex: 300, background: '#fff', border: '1px solid var(--light-gray)', borderRadius: '0.5rem', boxShadow: '0 10px 28px rgba(15,23,42,0.2)', left: menuAt?.left ?? 0, top: menuAt?.top ?? 0, width: menuAt?.width ?? 240, maxHeight: '220px', overflowY: 'auto', padding: 3 }}>
           {results.length === 0 ? (
             /* Display only: the search already ran and found nobody. */
             <p style={{ padding: '0.45rem 0.6rem', fontSize: '0.72rem', color: 'var(--mid-gray)' }}>No patients match.</p>
@@ -643,7 +650,7 @@ function TherapistRow({ staff, activeBranch, sectionMode, config, slots, default
   config: TherapistConfig | undefined
   slots: DeckingSlot[]
   defaultHours: { startTime: string; endTime: string }
-  onSaveConfig: (staffId: string, data: { workDays: string[]; startTime: string; endTime: string; useDefault: boolean; branch: string; department: string; deliveryMode?: string | null }) => Promise<void>
+  onSaveConfig: (staffId: string, data: { workDays: string[]; startTime: string; endTime: string; useDefault: boolean; branch: string; department: string; deliveryMode?: string | null; slotsPerDay?: number | null }) => Promise<void>
   /** Drop this service's own days so it follows the general schedule again. */
   onClearServiceConfig: (staffId: string, branch: string, deliveryMode: string) => Promise<void>
   onSaveSlot: (data: { staffId: string; patientId: string | null; dayOfWeek: string; startTime: string; endTime: string; branch: string; department: string; notes: string | null; disabled?: boolean; isClass?: boolean; deliveryMode?: string | null }) => Promise<void>
@@ -667,6 +674,9 @@ function TherapistRow({ staff, activeBranch, sectionMode, config, slots, default
   const [startTime, setStartTime] = useState(config?.startTime ?? defaultHours.startTime)
   const [endTime, setEndTime] = useState(config?.endTime ?? defaultHours.endTime)
   const [useDefault, setUseDefault] = useState(config?.useDefault ?? true)
+  // Empty string = the hourly default. Held as a string so the field can be
+  // cleared without snapping back to a number while it is being retyped.
+  const [slotCount, setSlotCount] = useState(config?.slotsPerDay ? String(config.slotsPerDay) : '')
   const [saving, setSaving] = useState(false)
   // Which cell currently has the patient-search input open (for adding a new patient)
   const [addingCell, setAddingCell] = useState<{ dayOfWeek: string; startTime: string } | null>(null)
@@ -731,6 +741,7 @@ function TherapistRow({ staff, activeBranch, sectionMode, config, slots, default
       workDays, startTime, endTime, useDefault,
       branch: activeBranch, department: staff.department,
       deliveryMode: sectionMode,
+      slotsPerDay: slotCount.trim() ? Number(slotCount) : null,
     })
     setSaving(false)
     if (workDays.length > 0) setConfigOpen(false)
@@ -780,7 +791,12 @@ function TherapistRow({ staff, activeBranch, sectionMode, config, slots, default
       </button>
     </div>
   )
-  const timeSlots = config ? generateHourlySlots(config.startTime, config.endTime) : []
+  // The rows this consultant's day is divided into — whole hours unless they
+  // are set to a patient count, in which case the window is divided backwards.
+  const daySlotList = config ? daySlots(config.startTime, config.endTime, config.slotsPerDay) : []
+  const timeSlots = daySlotList.map(s => s.startTime)
+  const customLength = isCustomLength(config?.slotsPerDay)
+  const endOfSlot = new Map(daySlotList.map(s => [s.startTime, s.endTime]))
 
   // Returns ALL patients assigned to this time slot (up to 3)
   function getSlotsForCell(dayOfWeek: string, slotTime: string): DeckingSlot[] {
@@ -798,7 +814,7 @@ function TherapistRow({ staff, activeBranch, sectionMode, config, slots, default
       patientId: null,
       dayOfWeek,
       startTime: slotTime,
-      endTime: addHour(slotTime),
+      endTime: endOfSlot.get(slotTime) ?? addHour(slotTime),
       branch: activeBranch,
       department: staff.department,
       notes: null,
@@ -823,7 +839,7 @@ function TherapistRow({ staff, activeBranch, sectionMode, config, slots, default
       patientId: patient.id,
       dayOfWeek,
       startTime: slotTime,
-      endTime: addHour(slotTime),
+      endTime: endOfSlot.get(slotTime) ?? addHour(slotTime),
       branch: activeBranch,
       department: staff.department,
       notes: null,
@@ -1044,12 +1060,22 @@ function TherapistRow({ staff, activeBranch, sectionMode, config, slots, default
         // the start hour up to the end hour (generateHourlySlots), so the
         // counts here are the same rows the grid will show.
         const sortedDays = sortDays(workDays)
-        const perDay = generateHourlySlots(startTime, endTime).length
+        // What the grid will actually draw: whole hours, or the window divided
+        // backwards into the number of patients front desk typed.
+        const wantCount = slotCount.trim() ? Number(slotCount) : null
+        const rows = daySlots(startTime, endTime, wantCount)
+        const perDay = rows.length
         const perWeek = perDay * sortedDays.length
+        const eachMins = slotMinutes(startTime, endTime, wantCount)
         const badHours = !!startTime && !!endTime && perDay === 0
+        // Asking for more patients than there are minutes. splitSpan returns
+        // nothing rather than slots of zero length, so say why instead of
+        // letting the grid silently come back empty.
+        const tooMany = !!wantCount && wantCount > 0 && !badHours && rows.length === 0
         const dirty = !config
           || JSON.stringify(sortDays((config.workDays as string[]) ?? [])) !== JSON.stringify(sortedDays)
           || config.startTime !== startTime || config.endTime !== endTime || config.useDefault !== useDefault
+          || (config.slotsPerDay ?? null) !== (slotCount.trim() ? Number(slotCount) : null)
         const setDays = (days: readonly string[]) => setWorkDays(days.filter(d => (DAYS as readonly string[]).includes(d)))
         const PRESETS: { label: string; days: string[] }[] = [
           { label: 'Mon–Fri', days: ['MON', 'TUE', 'WED', 'THU', 'FRI'] },
@@ -1197,8 +1223,50 @@ function TherapistRow({ staff, activeBranch, sectionMode, config, slots, default
               <p className="mt-2 text-[11px]" style={{ color: badHours ? '#B91C1C' : 'var(--mid-gray)' }}>
                 {badHours
                   ? 'End time must be at least an hour after the start — otherwise no rows are drawn.'
-                  : `${perDay} one-hour row${perDay === 1 ? '' : 's'} a day on the grid`}
+                  : wantCount
+                    ? `${perDay} row${perDay === 1 ? '' : 's'} a day on the grid · ${eachMins} min each`
+                    : `${perDay} one-hour row${perDay === 1 ? '' : 's'} a day on the grid`}
               </p>
+
+              {/* Patients a day — the count front desk are actually given.
+                  A consult is not always an hour, and dividing the window by
+                  hand to find the slot length is how the remainder gets
+                  discovered at the end of the afternoon. */}
+              <div className="mt-3 pt-3" style={{ borderTop: '1px dashed var(--light-gray)' }}>
+                <div className="flex flex-wrap items-center gap-2">
+                  <label htmlFor={`slots-${staff.id}`} className="text-[11px] font-semibold uppercase tracking-wide" style={{ color: 'var(--mid-gray)' }}>
+                    Patients a day
+                  </label>
+                  <input
+                    id={`slots-${staff.id}`}
+                    type="number"
+                    min={1}
+                    max={24}
+                    inputMode="numeric"
+                    value={slotCount}
+                    placeholder="one an hour"
+                    onChange={e => setSlotCount(e.target.value.replace(/[^0-9]/g, '').slice(0, 2))}
+                    aria-invalid={tooMany || undefined}
+                    aria-describedby={`slots-hint-${staff.id}`}
+                    className={CONTROL}
+                    style={{ ...CONTROL_STYLE, width: '7rem', ...(tooMany ? { borderColor: '#DC2626' } : {}) }}
+                  />
+                  {slotCount.trim() && (
+                    <button type="button" onClick={() => setSlotCount('')}
+                      className="text-[11px] underline" style={{ color: 'var(--mid-gray)' }}>
+                      Back to one an hour
+                    </button>
+                  )}
+                </div>
+                <p id={`slots-hint-${staff.id}`} className="mt-1.5 text-[11px]"
+                  style={{ color: tooMany ? '#B91C1C' : 'var(--mid-gray)' }}>
+                  {tooMany
+                    ? 'That is more patients than there are minutes in the window — lengthen the hours or lower the count.'
+                    : wantCount
+                      ? `${formatTime(startTime)} – ${formatTime(endTime)} split ${perDay} ways — ${eachMins} minutes each.`
+                      : 'Leave blank for one patient per hour. Set a number and the working hours are divided backwards into that many equal slots.'}
+                </p>
+              </div>
             </div>
           </div>
 
@@ -1210,6 +1278,7 @@ function TherapistRow({ staff, activeBranch, sectionMode, config, slots, default
                   <strong style={{ color: 'var(--charcoal)' }}>{sortedDays.map(d => DAY_SHORT[d]).join(', ')}</strong>
                   {' · '}{formatTime(startTime)} – {formatTime(endTime)}
                   {' · '}<span className="tabular-nums">{perWeek} slots a week</span>
+                  {!!wantCount && !tooMany && <>{' · '}<span className="tabular-nums">{eachMins} min each</span></>}
                 </>
               ) : 'No days picked yet.'}
             </p>
@@ -1838,10 +1907,19 @@ function TherapistRow({ staff, activeBranch, sectionMode, config, slots, default
                       borderRight: '1px solid var(--light-gray)', borderBottom: slot === lastHour ? 'none' : `1px solid ${GRID_LINE}`, height: rowH,
                       transition: 'background-color .12s ease, color .12s ease',
                     }}>
-                      {/* Every row is on the hour, so ":00" is noise — the
-                          hour and a small AM/PM read faster down the column. */}
-                      <span className="text-[12px] font-semibold">{hp.h}</span>
-                      <span className="ml-0.5 text-[9.5px] font-semibold uppercase" style={{ opacity: 0.75 }}>{hp.ap}</span>
+                      {/* On the hour, ":00" is noise — the hour and a small
+                          AM/PM read faster down the column. A consultant on a
+                          patient COUNT has rows that start at 1:54, 2:48 and so
+                          on, and dropping the minutes there would print three
+                          rows all labelled "1 PM". */}
+                      {customLength ? (
+                        <span className="text-[11px] font-semibold tabular-nums">{formatTime(slot)}</span>
+                      ) : (
+                        <>
+                          <span className="text-[12px] font-semibold">{hp.h}</span>
+                          <span className="ml-0.5 text-[9.5px] font-semibold uppercase" style={{ opacity: 0.75 }}>{hp.ap}</span>
+                        </>
+                      )}
                     </th>
                     {configuredDays.map(day => {
                       const disabledSlot = getDisabledSlot(day, slot)
@@ -2553,7 +2631,10 @@ export default function DeckingClient({ role }: { role: string }) {
       if (!(st.branch === activeBranch || (st.extraBranches ?? []).includes(activeBranch))) continue
       const cfg = configMap.get(st.id)
       if (!cfg) continue                       // no work days set — offered nothing
-      const hours = generateHourlySlots(cfg.startTime, cfg.endTime).length
+      // Rows the grid draws, which is the hour count only when this consultant
+      // is on the hourly default. A doctor seeing 5 in a 4.5-hour window offers
+      // 5 slots, not 4.
+      const hours = daySlots(cfg.startTime, cfg.endTime, cfg.slotsPerDay).length
       for (const d of ((cfg.workDays as string[]) ?? [])) {
         cap[st.department] ??= {}
         cap[st.department][d] = (cap[st.department][d] ?? 0) + hours
@@ -2596,7 +2677,7 @@ export default function DeckingClient({ role }: { role: string }) {
       const offered = new Set<string>()
       for (const c of cfgsByStaff.get(st.id) ?? []) {
         for (const d of ((c.workDays as string[]) ?? [])) {
-          for (const h of generateHourlySlots(c.startTime, c.endTime)) offered.add(`${d}|${h}`)
+          for (const h of dayStarts(c.startTime, c.endTime, c.slotsPerDay)) offered.add(`${d}|${h}`)
         }
       }
       const cells = new Map<string, { disabled: boolean; taken: boolean }>()
@@ -2612,10 +2693,18 @@ export default function DeckingClient({ role }: { role: string }) {
           for (const h of generateHourlySlots(sl.startTime, sl.endTime)) mark(sl.dayOfWeek, h, sl.disabled)
           continue
         }
-        if (!/:00$/.test(sl.startTime)) continue   // custom slot, not a grid hour
+        // A one-off date is not a row on the weekly grid; it has its own
+        // section. Everything else counts.
+        //
+        // This was `if (!/:00$/.test(sl.startTime)) continue` — a whole-hour
+        // test standing in for "is this a weekly grid row". It is no longer the
+        // same question: a consultant on a patient count has rows starting at
+        // 13:54 and 14:48, and the hour test would have dropped every one of
+        // them from the booked/open figures while the grid drew them.
+        if (sl.date) continue
         mark(sl.dayOfWeek, sl.startTime, sl.disabled)
         if (!sl.disabled && !offered.has(`${sl.dayOfWeek}|${sl.startTime}`)) {
-          at(st.department, sl.dayOfWeek).outside++
+          at(st.department, sl.dayOfWeek).outside++   // booked outside their schedule
         }
       }
       for (const k of offered) {
@@ -2648,7 +2737,11 @@ export default function DeckingClient({ role }: { role: string }) {
       // stored config times, while this counted the clinic default window
       // whenever useDefault was set. Where that window was the narrower of the
       // two, booked + blocked swallowed the whole total.
-      const hours = generateHourlySlots(cfg.startTime, cfg.endTime)
+      // The rows TherapistRow draws — hourly, or the window divided by the
+      // consultant's patient count. Reading whole hours here while the grid drew
+      // five 54-minute rows is how the header ends up disagreeing with the board
+      // directly beneath it.
+      const hours = dayStarts(cfg.startTime, cfg.endTime, cfg.slotsPerDay)
       const days = (cfg.workDays as string[]) ?? []
 
       const byCell = new Map<string, DeckingSlot[]>()
@@ -2714,7 +2807,7 @@ export default function DeckingClient({ role }: { role: string }) {
     }
   }
 
-  async function handleSaveConfig(staffId: string, data: { workDays: string[]; startTime: string; endTime: string; useDefault: boolean; branch: string; department: string; deliveryMode?: string | null }) {
+  async function handleSaveConfig(staffId: string, data: { workDays: string[]; startTime: string; endTime: string; useDefault: boolean; branch: string; department: string; deliveryMode?: string | null; slotsPerDay?: number | null }) {
     await fetch('/api/decking/therapists', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

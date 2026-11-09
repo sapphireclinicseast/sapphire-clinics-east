@@ -1,0 +1,13 @@
+-- How many patients a consultant takes in a day, when the answer is not "one
+-- per whole hour".
+--
+-- Some MD and Psychology consults do not run an hour. Front desk know the
+-- figure they are given as a COUNT — "Dr Lim sees 5 on a Wednesday" — not as a
+-- slot length, so the board takes the count and divides the working window
+-- backwards into that many equal slots.
+--
+-- NULL means what every row meant before this column: one slot per whole hour.
+-- That is the right default and the one the whole roster is on, so no backfill.
+--
+-- Guarded — the deploy replays every migration on every run.
+ALTER TABLE "DeckingTherapistConfig" ADD COLUMN IF NOT EXISTS "slotsPerDay" INTEGER;

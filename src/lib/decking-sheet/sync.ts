@@ -85,6 +85,7 @@ async function loadDepartment(branch: string, department: string) {
       },
       select: {
         staffId: true, workDays: true, startTime: true, endTime: true, deliveryMode: true, updatedAt: true,
+      slotsPerDay: true,
         staff: { select: { id: true, firstName: true, lastName: true } },
       },
       orderBy: { staff: { lastName: 'asc' } },
@@ -127,6 +128,7 @@ async function loadDepartment(branch: string, department: string) {
     workDays: (c.workDays as string[]) ?? [],
     startTime: c.startTime,
     endTime: c.endTime,
+    slotsPerDay: c.slotsPerDay,
   })).sort((a, b) => a.lastName.localeCompare(b.lastName))
 
   // Consultants who hold a one-off but NO weekly schedule have to be named too.
@@ -201,6 +203,7 @@ async function loadInterns(branch: string, department: string) {
     where: { branch, department, staff: { active: true, employmentType: 'intern' } },
     select: {
       staffId: true, workDays: true, startTime: true, endTime: true, deliveryMode: true, updatedAt: true,
+      slotsPerDay: true,
       staff: { select: { id: true, firstName: true, lastName: true, dateHired: true, contractExpiry: true } },
     },
   })
@@ -254,10 +257,12 @@ async function loadInterns(branch: string, department: string) {
       workDays: (c.workDays as string[]) ?? [],
       startTime: c.startTime,
       endTime: c.endTime,
+      slotsPerDay: c.slotsPerDay,
     }
   }).sort((a, b) => a.lastName.localeCompare(b.lastName))
 
   const mapped: SheetSlot[] = slots.map(s => ({
+    id: s.id,
     staffId: s.staffId, dayOfWeek: s.dayOfWeek, startTime: s.startTime, endTime: s.endTime,
     disabled: s.disabled, paymentType: s.paymentType, hmoProvider: s.hmoProvider, notes: s.notes,
     patient: s.patient ? `${s.patient.lastName}, ${s.patient.firstName}` : null,
@@ -530,10 +535,10 @@ async function pushPatients(api: sheets_v4.Sheets, spreadsheetId: string, names:
 
 /** The snapshot: one row per editable cell, with what this push wrote in it. */
 async function pushMap(api: sheets_v4.Sheets, spreadsheetId: string, entries: (CellRef & { tab: string })[]) {
-  const { id: sheetId, rowCount } = await tabId(api, spreadsheetId, MAP_TAB, 9, entries.length + 200, true)
+  const { id: sheetId, rowCount } = await tabId(api, spreadsheetId, MAP_TAB, 10, entries.length + 200, true)
   const span = Math.max(rowCount, entries.length + 200)
   const rows = [
-    { values: ['TAB', 'ROW', 'COL', 'LINE', 'STAFF', 'DAY', 'TIME', 'WROTE', 'DATE'].map(h => ({ userEnteredValue: { stringValue: h } })) },
+    { values: ['TAB', 'ROW', 'COL', 'LINE', 'STAFF', 'DAY', 'TIME', 'WROTE', 'DATE', 'SLOT'].map(h => ({ userEnteredValue: { stringValue: h } })) },
     ...entries.map(e => ({ values: [
       { userEnteredValue: { stringValue: e.tab } },
       { userEnteredValue: { numberValue: e.row } },
@@ -544,6 +549,8 @@ async function pushMap(api: sheets_v4.Sheets, spreadsheetId: string, entries: (C
       { userEnteredValue: { stringValue: e.startTime } },
       { userEnteredValue: { stringValue: e.wrote } },
       { userEnteredValue: { stringValue: e.date ?? '' } },
+      // A one-off's identity — see CellRef.slotId.
+      { userEnteredValue: { stringValue: e.slotId ?? '' } },
     ] })),
   ]
   await api.spreadsheets.batchUpdate({ spreadsheetId, requestBody: { requests: [
@@ -606,7 +613,7 @@ const same = (a: Triple, b: Triple) =>
 async function pullTabs(
   api: sheets_v4.Sheets, spreadsheetId: string, branch: string, report: SyncReport,
 ) {
-  const map = await api.spreadsheets.values.get({ spreadsheetId, range: `${MAP_TAB}!A2:I` }).catch(() => null)
+  const map = await api.spreadsheets.values.get({ spreadsheetId, range: `${MAP_TAB}!A2:J` }).catch(() => null)
   // Sheets drops trailing empty cells from a row, so a map row for a cell that
   // was pushed EMPTY comes back short: its WROTE and DATE columns are both ''.
   // Requiring all nine columns therefore hid every empty cell from the pull —
@@ -615,7 +622,7 @@ async function pullTabs(
   // over their entry. Only the first seven columns are identity; pad the rest.
   const entries = (map?.data.values ?? [])
     .filter(r => r.length >= 7 && r.slice(0, 7).every(c => String(c ?? '') !== ''))
-    .map(r => [...r, ...Array(Math.max(0, 9 - r.length)).fill('')])
+    .map(r => [...r, ...Array(Math.max(0, 10 - r.length)).fill('')])
   if (entries.length === 0) return            // nothing has been pushed yet
 
   const tabs = [...new Set(entries.map(r => String(r[0])))]
@@ -626,18 +633,22 @@ async function pullTabs(
   }
 
   // Group the three lines of each slot back together.
-  const bySlot = new Map<string, { tab: string; staffId: string; day: string; time: string; date: string; sheet: Triple; snap: Triple; ref: string }>()
+  const bySlot = new Map<string, { tab: string; staffId: string; day: string; time: string; date: string; slotId: string; sheet: Triple; snap: Triple; ref: string }>()
   for (const r of entries) {
-    const [tab, row, col, line, staffId, day, time, wrote, dateStr] = r
+    const [tab, row, col, line, staffId, day, time, wrote, dateStr, slotIdStr] = r
     // The date is part of a cell's identity: the same staff, day and hour can
     // be both a weekly slot and a one-off, and writing one into the other
     // would move a booking between them.
-    const key = `${tab}|${staffId}|${day}|${time}|${dateStr ?? ''}`
+    // A one-off is keyed by its own row id. Two of them can share a date, a
+    // start AND an end, so no combination of times separates them; keyed on
+    // times they merged into one cell and one row's entry was dropped on every
+    // pull. Weekly cells have no single row and keep the time key.
+    const key = `${tab}|${staffId}|${day}|${time}|${dateStr ?? ''}|${slotIdStr ?? ''}`
     const grid = values.get(String(tab)) ?? []
     const now = String(grid[Number(row)]?.[Number(col)] ?? '')
     const slot = bySlot.get(key) ?? {
       tab: String(tab), staffId: String(staffId), day: String(day), time: String(time),
-      date: String(dateStr ?? ''),
+      date: String(dateStr ?? ''), slotId: String(slotIdStr ?? ''),
       sheet: { name: '', pay: '', name2: '', pay2: '', notes: '', extras: [] },
       snap: { name: '', pay: '', name2: '', pay2: '', notes: '', extras: [] },
       ref: `${tab} r${Number(row) + 1}`,
@@ -680,6 +691,9 @@ async function pullTabs(
         staffId: slot.staffId, dayOfWeek: slot.day, startTime: slot.time,
         branch, department: dept, isClass: false,
         date: slot.date ? new Date(`${slot.date}T00:00:00Z`) : null,
+        // A one-off addresses its own row. Without this, two one-offs sharing a
+        // start time both matched and the same patient was written into each.
+        ...(slot.slotId ? { id: slot.slotId } : {}),
       },
       select: { id: true, patientId: true, disabled: true, paymentType: true, hmoProvider: true, notes: true, endTime: true, patient: { select: { firstName: true, lastName: true } } },
     })
