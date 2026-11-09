@@ -115,9 +115,11 @@ const DX_ACRONYMS = new Set([
 ])
 function displayCase(raw: string | null | undefined, kind: 'name' | 'text' | 'dx' = 'text'): string {
   const s = (raw ?? '').trim()
-  if (!s || /[a-z]/.test(s)) return s
+  // Unicode letter classes, not [a-z]: with [a-z] the ñ in RIÑOZA was not a
+  // letter, so the name split at it and rendered as "RiñOza".
+  if (!s || /\p{Ll}/u.test(s)) return s
   let first = true
-  return s.toLowerCase().replace(/[a-z]+/g, (w: string, offset: number, whole: string) => {
+  return s.toLowerCase().replace(/\p{L}+/gu, (w: string, offset: number, whole: string) => {
     const isFirst = first
     first = false
     if (offset > 0 && /\d/.test(whole[offset - 1])) return w                       // 2nd, 3rd

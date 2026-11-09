@@ -98,7 +98,7 @@ const EMP_TONE: Record<string, { bg: string; fg: string; border: string }> = {
 }
 const NEUTRAL_TONE = { bg: '#F1F5F9', fg: '#475569', border: '#E2E8F0' }
 const capitalise = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
-const prettyTitle = (t: string) => t.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
+const prettyTitle = (t: string) => t.replace(/-/g, ' ').replace(/(^|[^\p{L}\p{N}])(\p{L})/gu, (_m, sep, c) => sep + c.toUpperCase())
 
 function EmploymentBadge({ type, size = 'sm' }: { type: string; size?: 'xs' | 'sm' }) {
   const t = EMP_TONE[type] ?? NEUTRAL_TONE

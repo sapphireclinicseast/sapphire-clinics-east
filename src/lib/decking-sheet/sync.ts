@@ -329,7 +329,7 @@ async function blankTab(api: sheets_v4.Sheets, spreadsheetId: string, tab: strin
         .flatMap(x => x.protectedRanges ?? [])
         .map(pr => ({ deleteProtectedRange: { protectedRangeId: pr.protectedRangeId! } })))
       .catch(() => [])),
-    { updateCells: { range: { sheetId, startRowIndex: 0, endRowIndex: rows, startColumnIndex: 0, endColumnIndex: SAFE_COL + 8 }, fields: 'userEnteredValue,userEnteredFormat,dataValidation' } },
+    { updateCells: { range: { sheetId, startRowIndex: 0, endRowIndex: rows, startColumnIndex: 0, endColumnIndex: SAFE_COL + 8 }, fields: 'userEnteredValue,userEnteredFormat,dataValidation,note' } },
     { unmergeCells: { range: { sheetId, startRowIndex: 0, endRowIndex: rows, startColumnIndex: 0, endColumnIndex: SAFE_COL + 8 } } },
     { updateCells: {
       rows: [{ values: [{
@@ -363,13 +363,13 @@ async function pushTab(
 
   const writes: sheets_v4.Schema$Request[] = []
   for (let i = 0; i < grid.rows.length; i += 150) {
-    writes.push({ updateCells: { rows: grid.rows.slice(i, i + 150) as sheets_v4.Schema$RowData[], fields: 'userEnteredValue,userEnteredFormat', start: { sheetId, rowIndex: i, columnIndex: 0 } } })
+    writes.push({ updateCells: { rows: grid.rows.slice(i, i + 150) as sheets_v4.Schema$RowData[], fields: 'userEnteredValue,userEnteredFormat,note', start: { sheetId, rowIndex: i, columnIndex: 0 } } })
   }
   // Below the content, and to the right of it. Only the rows were being
   // cleared, which is what left a stale block header standing.
-  writes.push({ updateCells: { range: { sheetId, startRowIndex: grid.rows.length, endRowIndex: span, startColumnIndex: 0, endColumnIndex: SAFE_COL }, fields: 'userEnteredValue,userEnteredFormat' } })
+  writes.push({ updateCells: { range: { sheetId, startRowIndex: grid.rows.length, endRowIndex: span, startColumnIndex: 0, endColumnIndex: SAFE_COL }, fields: 'userEnteredValue,userEnteredFormat,note' } })
   if (grid.totalCols < SAFE_COL) {
-    writes.push({ updateCells: { range: { sheetId, startRowIndex: 0, endRowIndex: span, startColumnIndex: grid.totalCols, endColumnIndex: SAFE_COL }, fields: 'userEnteredValue,userEnteredFormat' } })
+    writes.push({ updateCells: { range: { sheetId, startRowIndex: 0, endRowIndex: span, startColumnIndex: grid.totalCols, endColumnIndex: SAFE_COL }, fields: 'userEnteredValue,userEnteredFormat,note' } })
   }
 
   const stride = grid.k + 2

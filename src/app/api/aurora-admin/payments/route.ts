@@ -28,7 +28,7 @@ const BRANCH_LABEL: Record<string, string> = {
   SANDBOX_GREENHILLS: 'Greenhills Branch',
 }
 function titleCase(s: string): string {
-  return s.toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase()).trim()
+  return s.toLowerCase().replace(/(^|[^\p{L}\p{N}])(\p{L})/gu, (_m, sep, c) => sep + c.toUpperCase()).trim()
 }
 
 // Deep-find the PayMongo payment attributes (the object carrying both `fee`

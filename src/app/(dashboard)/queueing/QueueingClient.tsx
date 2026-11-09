@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState, useRef, useCallback, type CSSProperties, type ReactNode } from 'react'
 import { localTodayStr } from '@/lib/utils'
+import { branchForRole } from '@/lib/role-branch'
 import {
   UserPlus, Trash2, ChevronUp, ChevronDown, Upload, Tv2,
   X, Plus, ExternalLink, ImageIcon, Film, RefreshCw,
@@ -84,10 +85,13 @@ function formatTime(t: string): string {
   const [h, m] = t.split(':').map(Number)
   return `${h % 12 || 12}:${String(m).padStart(2, '0')} ${h >= 12 ? 'PM' : 'AM'}`
 }
+// Via branchForRole, not a prefix test of its own. The roles are actually named
+// AHEA_FRONT_DESK / AHGH_ADMIN, so `role.startsWith('SBEA_')` matched none of
+// the accounts it was meant to restrict and every branch-scoped user here could
+// see — and post ads to — the other branch's screen.
 function visibleBranches(role: string): string[] {
-  if (role.startsWith('SBEA_')) return ['SBEA']
-  if (role.startsWith('SBGH_')) return ['SBGH']
-  return ['SBEA', 'SBGH']
+  const only = branchForRole(role)
+  return only ? [only] : ['SBEA', 'SBGH']
 }
 /** "Mon, Nov 9" for a YYYY-MM-DD string, read as a local calendar date. */
 function formatDay(ymd: string): string {
@@ -631,12 +635,82 @@ function AdsManager({ role }: { role: string }) {
   const fileRef = useRef<HTMLInputElement>(null)
 
   // Branch-restricted accounts can only manage ads for their own branch
-  const allowedBranches = role.startsWith('SBEA_')
-    ? BRANCH_OPTIONS.filter(o => o.value === 'SBEA')
-    : role.startsWith('SBGH_')
-      ? BRANCH_OPTIONS.filter(o => o.value === 'SBGH')
-      : BRANCH_OPTIONS
+  const ownBranch = branchForRole(role)
+  const allowedBranches = ownBranch
+    ? BRANCH_OPTIONS.filter(o => o.value === ownBranch)
+    : BRANCH_OPTIONS
   const [uploadBranch, setUploadBranch] = useState(allowedBranches[0].value)
+
+  // ── Waiting-room announcements ───────────────────────────────────────────
+  // Three boxes per scope, saved together. The scope follows the ad upload
+  // picker so front desk are never editing one branch's screen while looking at
+  // the other branch's ads.
+  const [annBranch, setAnnBranch] = useState(allowedBranches[0].value)
+  const [annTexts, setAnnTexts] = useState<string[]>(['', '', ''])
+  const [annLoaded, setAnnLoaded] = useState(false)
+  const [annSaving, setAnnSaving] = useState(false)
+  const [annSavedAt, setAnnSavedAt] = useState('')
+  const [annErr, setAnnErr] = useState('')
+  const annTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const ANN_MAX = 160
+
+  const loadAnnouncements = useCallback(async (scope: string) => {
+    try {
+      const res = await fetch('/api/queue-announcements')
+      if (!res.ok) { setAnnErr(`Could not load the announcements (HTTP ${res.status}).`); return }
+      const rows = await res.json() as { branch: string; slot: number; text: string }[]
+      const mine = ['', '', '']
+      for (const r of rows) if (r.branch === scope && r.slot >= 0 && r.slot < 3) mine[r.slot] = r.text
+      setAnnTexts(mine)
+      setAnnErr('')
+    } catch (e) {
+      setAnnErr(e instanceof Error ? e.message : 'Could not load the announcements.')
+    } finally {
+      setAnnLoaded(true)
+    }
+  }, [])
+
+  // Saved on a delay rather than per keystroke: this text goes straight to a
+  // screen in the waiting room, and writing it mid-sentence would put half a
+  // word in front of patients.
+  const saveAnnouncements = useCallback((scope: string, texts: string[]) => {
+    if (annTimer.current) clearTimeout(annTimer.current)
+    annTimer.current = setTimeout(async () => {
+      setAnnSaving(true)
+      try {
+        const res = await fetch('/api/queue-announcements', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ branch: scope, texts }),
+        })
+        if (!res.ok) {
+          const j = await res.json().catch(() => null) as { error?: string } | null
+          setAnnErr(j?.error ?? `Could not save (HTTP ${res.status}).`)
+        } else {
+          setAnnErr('')
+          setAnnSavedAt(new Date().toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit', hour12: true }))
+        }
+      } catch (e) {
+        setAnnErr(e instanceof Error ? e.message : 'Could not save.')
+      } finally {
+        setAnnSaving(false)
+      }
+    }, 900)
+  }, [])
+
+  function handleAnnChange(i: number, value: string) {
+    const next = annTexts.map((t, n) => (n === i ? value.slice(0, ANN_MAX) : t))
+    setAnnTexts(next)
+    saveAnnouncements(annBranch, next)
+  }
+
+  function handleAnnBranch(scope: string) {
+    if (annTimer.current) clearTimeout(annTimer.current)   // don't save into the new scope
+    setAnnBranch(scope)
+    setAnnLoaded(false)
+    setAnnSavedAt('')
+    loadAnnouncements(scope)
+  }
 
   const loadAds = useCallback(async () => {
     try {
@@ -661,7 +735,11 @@ function AdsManager({ role }: { role: string }) {
     }
   }, [])
 
-  useEffect(() => { loadAds(); loadLeaderboardSetting() }, [loadAds, loadLeaderboardSetting])
+  useEffect(() => { loadAds(); loadLeaderboardSetting(); loadAnnouncements(annBranch) },
+    // annBranch is handled by handleAnnBranch, which reloads on its own; adding
+    // it here would refetch and clobber whatever is being typed.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [loadAds, loadLeaderboardSetting, loadAnnouncements])
 
   async function handleToggleLeaderboard(checked: boolean) {
     setTogglingLb(true)
@@ -962,6 +1040,109 @@ function AdsManager({ role }: { role: string }) {
           )}
         </DashCard>
       </div>
+
+      {/* Announcements — typed here, shown on the TV between the ads */}
+      <DashCard title="Announcements" icon={<Megaphone size={15} />}
+        description="Up to three lines, shown on the TV as its own slide in the same rotation as the videos and photos. Saves automatically."
+        action={(() => {
+          const filled = annTexts.filter(t => t.trim()).length
+          return (
+            <span className="inline-flex items-center gap-2">
+              {annSaving && (
+                <span className="inline-flex items-center gap-1 text-[11px] font-semibold" style={{ color: 'var(--mid-gray)' }}>
+                  <Loader2 size={11} className="animate-spin" /> Saving…
+                </span>
+              )}
+              {!annSaving && annSavedAt && (
+                <span className="text-[11px] font-semibold" style={{ color: 'var(--mid-gray)' }}>Saved {annSavedAt}</span>
+              )}
+              <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full tabular-nums"
+                style={{ background: SUBTLE_BG, color: 'var(--mid-gray)', border: '1px solid var(--light-gray)' }}>
+                {filled} of 3
+              </span>
+            </span>
+          )
+        })()}>
+        <div className="space-y-4">
+          {/* Which screen these go on — same scopes as the ads. */}
+          <div className="flex flex-wrap items-center gap-2">
+            <span className={SECTION_LABEL} style={{ color: 'var(--mid-gray)' }}>Show on</span>
+            <div className="flex flex-wrap gap-1 p-1 rounded-xl" style={{ background: '#EEF3F1' }}>
+              {allowedBranches.map(opt => {
+                const on = annBranch === opt.value
+                return (
+                  <button key={opt.value} type="button" aria-pressed={on}
+                    onClick={() => handleAnnBranch(opt.value)}
+                    className={`inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg transition-colors ${on ? '' : 'hover:bg-black/[0.04]'}`}
+                    style={on
+                      ? { background: '#fff', color: opt.color, boxShadow: '0 1px 2px rgba(0,0,0,0.08)' }
+                      : { background: 'transparent', color: 'var(--mid-gray)' }}>
+                    <span className="w-1.5 h-1.5 rounded-full" style={{ background: opt.color }} />
+                    {opt.label}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+
+          {annErr && (
+            <div role="alert" className="flex items-start gap-2 rounded-lg px-3 py-2 text-xs font-medium"
+              style={{ background: '#FDE4E4', color: '#991B1B', border: '1px solid #F5C2C2' }}>
+              <AlertTriangle size={13} className="flex-shrink-0 mt-px" /> {annErr}
+            </div>
+          )}
+
+          {!annLoaded ? (
+            <div className="space-y-3" aria-hidden>
+              {[0, 1, 2].map(n => <Skeleton key={n} className="h-16 w-full" />)}
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {[0, 1, 2].map(i => {
+                const val = annTexts[i] ?? ''
+                const left = ANN_MAX - val.length
+                return (
+                  <div key={i}>
+                    <div className="flex items-center justify-between gap-2 mb-1">
+                      <label htmlFor={`ann-${i}`} className="text-xs font-semibold" style={{ color: 'var(--charcoal)' }}>
+                        Announcement {i + 1}
+                        {i > 0 && !val.trim() && (
+                          <span className="font-normal ml-1.5" style={{ color: 'var(--mid-gray)' }}>optional</span>
+                        )}
+                      </label>
+                      <span className="text-[11px] tabular-nums"
+                        style={{ color: left <= 20 ? '#B45309' : 'var(--mid-gray)' }}>
+                        {val.length}/{ANN_MAX}
+                      </span>
+                    </div>
+                    <textarea
+                      id={`ann-${i}`}
+                      value={val}
+                      rows={2}
+                      maxLength={ANN_MAX}
+                      onChange={e => handleAnnChange(i, e.target.value)}
+                      placeholder={i === 0
+                        ? 'e.g. The clinic is closed on 30 November for the holiday.'
+                        : 'Leave blank to show nothing here.'}
+                      className="w-full text-sm rounded-xl px-3 py-2 resize-y"
+                      style={{ border: '1px solid var(--light-gray)', background: '#fff', color: 'var(--charcoal)' }}
+                    />
+                  </div>
+                )
+              })}
+            </div>
+          )}
+
+          <div className="flex items-start gap-2 rounded-lg px-3 py-2" style={{ background: 'var(--pale-teal)' }}>
+            <Info size={13} className="flex-shrink-0 mt-0.5" style={{ color: 'var(--teal)' }} />
+            <p className="text-xs leading-relaxed" style={{ color: 'var(--teal)' }}>
+              Clearing a box takes it off the screen. A TV shows its own branch&rsquo;s lines first and fills any
+              remaining slots from <strong>All branches</strong>, never more than three. The TV picks up changes
+              within two minutes &mdash; no need to restart it.
+            </p>
+          </div>
+        </div>
+      </DashCard>
 
       {/* Display settings */}
       <DashCard title="TV display settings" icon={<Tv2 size={15} />}
