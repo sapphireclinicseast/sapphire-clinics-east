@@ -285,10 +285,10 @@ export default function AuthSidebar() {
 
   const focusRing = 'focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[color:var(--scei-mint)]'
   const linkCls = (active: boolean) =>
-    `flex items-center gap-3 px-3 py-2 rounded-lg text-[13.5px] font-medium transition-colors ${focusRing} ${
+    `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${focusRing} ${
       active
         ? 'bg-[rgba(125,162,146,0.22)] text-white'
-        : 'text-white/70 hover:text-white hover:bg-white/[0.06]'
+        : 'text-white/75 hover:text-white hover:bg-white/[0.06]'
     }`
 
   const brandBlock = (
@@ -298,8 +298,8 @@ export default function AuthSidebar() {
         <img src="/aura-academy-mark-192.png" alt="" className="h-8 w-8 object-contain" />
       </span>
       <span className="flex flex-col leading-tight min-w-0">
-        <span className="text-white font-bold text-[13px] tracking-wide truncate" style={{ fontFamily: 'var(--font-display)' }}>Aura Academy</span>
-        <span className="text-[9.5px] font-semibold uppercase tracking-[0.2em]" style={{ fontFamily: 'var(--font-display)', color: 'var(--scei-mint)' }}>Class Portal</span>
+        <span className="text-white truncate" style={{ fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: '0.9rem', letterSpacing: '0.05em' }}>Aura</span>
+        <span className="uppercase" style={{ fontFamily: 'var(--font-display)', fontWeight: 600, fontSize: '0.6rem', letterSpacing: '0.2em', color: 'var(--scei-mint)' }}>Class Portal</span>
       </span>
     </span>
   )
@@ -325,7 +325,7 @@ export default function AuthSidebar() {
       <nav aria-label="Class Portal" className="flex-1 overflow-y-auto px-3 py-4 space-y-5" style={{ fontFamily: 'var(--font-body)' }}>
         {groups.map(g => (
           <div key={g.label}>
-            <p className="px-3 mb-1.5 text-[10.5px] font-semibold uppercase tracking-[0.16em] text-white/60" style={{ fontFamily: 'var(--font-display)' }}>
+            <p className="px-3 mb-1.5 text-xs font-semibold uppercase tracking-widest" style={{ color: 'rgba(255,255,255,0.55)', fontFamily: 'var(--font-body)' }}>
               {g.label}
             </p>
             <ul className="space-y-0.5">
@@ -417,7 +417,7 @@ export default function AuthSidebar() {
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src="/aura-academy-mark-192.png" alt="" className="h-7 w-7 object-contain shrink-0" />
           <span className="flex flex-col leading-tight min-w-0">
-            <span className="text-[13px] font-bold truncate" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>Aura Academy</span>
+            <span className="text-[13px] font-bold truncate" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>Aura</span>
             <span className="text-[9.5px] font-semibold uppercase tracking-[0.16em]" style={{ fontFamily: 'var(--font-display)', color: 'var(--deep-teal)' }}>Class Portal</span>
           </span>
         </span>

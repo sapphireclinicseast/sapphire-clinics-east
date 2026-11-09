@@ -1,7 +1,6 @@
 'use client'
 
 import Link from 'next/link'
-import Image from 'next/image'
 import { usePathname } from 'next/navigation'
 import { useState } from 'react'
 import {
@@ -168,17 +167,22 @@ export default function Sidebar({ onClose, role = 'MARKETING_ADMIN' }: { onClose
   return (
     <aside
       className="w-60 flex-shrink-0 flex flex-col h-full"
-      style={{ background: 'var(--near-black)', borderRight: '1px solid rgba(237,104,35,0.15)' }}
+      // Shared SCEI sidebar: the Class Portal's dark teal (#17323A) with mint
+      // accents — identical on Ops, Accounting, HR, Staff and Class.
+      style={{ background: '#17323A', borderRight: '1px solid rgba(255,255,255,0.08)' }}
     >
       {/* Logo */}
-      <div className="flex items-center gap-3 px-5 py-4" style={{ borderBottom: '1px solid rgba(237,104,35,0.15)' }}>
-        <Image src="/brand/mark-white-transparent.png" alt="SCEI" width={36} height={36} style={{ objectFit: 'contain' }} className="flex-shrink-0" />
+      <div className="flex items-center gap-3 px-5 py-4" style={{ borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+        <span className="w-9 h-9 rounded-lg bg-white flex items-center justify-center flex-shrink-0">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/brand/scei-mark.png" alt="SCEI" className="w-7 h-7 object-contain" />
+        </span>
         <div className="flex-1">
-          <div style={{ fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: '0.85rem', color: '#fff', letterSpacing: '0.05em' }}>
-            SAPPHIRE
+          <div style={{ fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: '0.9rem', color: '#fff', letterSpacing: '0.05em' }}>
+            SCEI
           </div>
-          <div style={{ fontFamily: 'var(--font-display)', fontWeight: 600, fontSize: '0.55rem', color: 'var(--teal)', letterSpacing: '0.2em', textTransform: 'uppercase' }}>
-            Operations Hub
+          <div style={{ fontFamily: 'var(--font-display)', fontWeight: 600, fontSize: '0.6rem', color: '#CBDAB5', letterSpacing: '0.2em', textTransform: 'uppercase' }}>
+            Operations Portal
           </div>
         </div>
         {onClose && (
@@ -190,8 +194,8 @@ export default function Sidebar({ onClose, role = 'MARKETING_ADMIN' }: { onClose
 
       {/* Brand Switcher — hidden for front desk */}
       {!isFrontDesk && !isInvestor && !isMedRep && (
-        <div className="px-3 pt-3 pb-2" style={{ borderBottom: '1px solid rgba(237,104,35,0.1)' }}>
-          <p className="px-2 mb-1 text-xs font-semibold uppercase tracking-widest" style={{ color: 'rgba(255,255,255,0.25)' }}>
+        <div className="px-3 pt-3 pb-2" style={{ borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+          <p className="px-2 mb-1 text-xs font-semibold uppercase tracking-widest" style={{ color: 'rgba(255,255,255,0.55)' }}>
             Active Brand
           </p>
           <button
@@ -235,7 +239,7 @@ export default function Sidebar({ onClose, role = 'MARKETING_ADMIN' }: { onClose
       <nav className="flex-1 overflow-y-auto py-4 px-3 space-y-5">
         {nav.map((group) => (
           <div key={group.label}>
-            <p className="px-2 mb-1.5 text-xs font-semibold uppercase tracking-widest" style={{ color: 'rgba(255,255,255,0.25)' }}>
+            <p className="px-2 mb-1.5 text-xs font-semibold uppercase tracking-widest" style={{ color: 'rgba(255,255,255,0.55)' }}>
               {group.label}
             </p>
             <ul className="space-y-0.5">
@@ -245,12 +249,12 @@ export default function Sidebar({ onClose, role = 'MARKETING_ADMIN' }: { onClose
                   <li key={href}>
                     <Link
                       href={href}
-                      className={cn('flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all', active ? 'text-white' : 'text-gray-400 hover:text-white hover:bg-white/5')}
-                      style={active ? { background: 'rgba(237,104,35,0.2)', color: 'var(--bright-teal)' } : undefined}
+                      className={cn('flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors', active ? 'text-white' : 'text-white/75 hover:text-white hover:bg-white/[0.06]')}
+                      style={active ? { background: 'rgba(125,162,146,0.22)' } : undefined}
                     >
-                      <Icon size={16} className="flex-shrink-0" />
+                      <Icon size={16} className="flex-shrink-0" style={active ? { color: '#CBDAB5' } : undefined} />
                       <span style={{ fontFamily: 'var(--font-body)' }}>{label}</span>
-                      {active && <ChevronRight size={12} className="ml-auto" style={{ color: 'var(--teal)' }} />}
+                      {active && <ChevronRight size={12} className="ml-auto" style={{ color: '#CBDAB5' }} />}
                     </Link>
                   </li>
                 )
@@ -261,9 +265,9 @@ export default function Sidebar({ onClose, role = 'MARKETING_ADMIN' }: { onClose
       </nav>
 
       {/* Bottom */}
-      <div className="px-4 py-3 text-xs" style={{ borderTop: '1px solid rgba(237,104,35,0.15)', color: 'rgba(255,255,255,0.2)', fontFamily: 'var(--font-body)' }}>
-        <span style={{ color: brand.color, fontWeight: 600 }}>{brand.shortName}</span>
-        {' · '}Operations Hub
+      <div className="px-4 py-3 text-xs" style={{ borderTop: '1px solid rgba(255,255,255,0.08)', color: 'rgba(255,255,255,0.45)', fontFamily: 'var(--font-body)' }}>
+        <span style={{ color: '#CBDAB5', fontWeight: 600 }}>SCEI</span>
+        {' · '}Operations Portal
         <br />
         Internal Use Only
       </div>
