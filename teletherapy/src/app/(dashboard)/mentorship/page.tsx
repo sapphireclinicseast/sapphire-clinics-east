@@ -2,11 +2,13 @@
 
 import { useEffect, useState } from 'react'
 import { useSession } from 'next-auth/react'
-import { Loader2, ChevronDown, ChevronUp, FileText, Users, Lock } from 'lucide-react'
-import { cn } from '@/lib/utils'
+import { Loader2, ChevronDown, ChevronUp, FileText, Lock } from 'lucide-react'
 import { branchLabel } from '@/lib/branch-label'
 import MeetingsHub from '@/components/MeetingsHub'
 import NoteBody from '@/components/NoteBody'
+import {
+  Avatar, CARD_STYLE, EmptyState, PAGE, PageHeader, PillTabs, RowsSkeleton, StatusPill, SUBTLE_BG, Tag,
+} from '@/components/hub/ui'
 
 interface Mentee { id: string; name: string; department: string; branch: string }
 interface MenteeNote {
@@ -69,107 +71,103 @@ export default function MentorshipPage() {
   // Non-participants (not a mentor, mentee, or admin) never see this section.
   if (status === 'authenticated' && !canParticipate) {
     return (
-      <div className="max-w-4xl mx-auto">
-        <div className="card-static text-center py-16">
-          <Lock size={28} className="text-[var(--mid-gray)] mx-auto mb-3" />
-          <p className="font-semibold text-[var(--charcoal)] mb-1" style={{ fontFamily: 'var(--font-display)' }}>Mentorship isn&apos;t available for your account</p>
-          <p className="text-[13px] text-[var(--mid-gray)]">This section is only for Clinical Mentors and their mentees. If you should have access, ask HR to tag you in Staff Profiles.</p>
-        </div>
+      <div className={PAGE}>
+        <PageHeader eyebrow="Programs" title="Mentorship" />
+        <section className="rounded-xl" style={CARD_STYLE}>
+          <Lock size={24} className="mx-auto mt-10" style={{ color: 'var(--mid-gray)' }} aria-hidden />
+          <EmptyState
+            title="Mentorship isn't available for your account"
+            hint="This section is only for Clinical Mentors and their mentees. If you should have access, ask HR to tag you in Staff Profiles."
+          />
+        </section>
       </div>
     )
   }
 
   return (
-    <div className="max-w-4xl mx-auto">
-      <div className="hero-gradient rounded-2xl px-8 py-8 mb-8">
-        <h1 className="text-xl font-bold text-white tracking-tight" style={{ fontFamily: 'var(--font-display)' }}>
-          Mentorship
-        </h1>
-        <p className="text-white/60 text-sm mt-1">
-          {canSeeMentees ? 'Your mentees’ session notes, and your mentorship meetings' : 'Schedule and join your mentorship meetings'}
-        </p>
-      </div>
+    <div className={PAGE}>
+      <PageHeader
+        eyebrow="Programs"
+        title="Mentorship"
+        description={canSeeMentees ? 'Your mentees’ session notes, and your mentorship meetings.' : 'Schedule and join your mentorship meetings.'}
+      />
 
       {canSeeMentees && (
-        <div className="flex flex-wrap gap-2 p-1 rounded-xl bg-[var(--off-white)] border border-[var(--light-gray)] mb-6">
-          {([['mentees', 'Mentees'], ['meeting', 'Meetings']] as [Tab, string][]).map(([t, label]) => (
-            <button key={t} onClick={() => setTab(t)}
-              className={cn('flex-1 min-w-[110px] px-3 py-2.5 rounded-lg text-[13px] font-semibold transition-colors',
-                tab === t ? 'bg-white text-[var(--teal)] shadow-sm' : 'text-[var(--mid-gray)] hover:text-[var(--charcoal)]')}>
-              {label}
-            </button>
-          ))}
-        </div>
+        <PillTabs
+          label="Mentorship sections"
+          value={tab}
+          onChange={(id) => setTab(id as Tab)}
+          tabs={[
+            { id: 'mentees', label: 'Mentees', count: mentees?.length },
+            { id: 'meeting', label: 'Meetings' },
+          ]}
+        />
       )}
 
       {tab === 'meeting' && <MeetingsHub context="MENTORSHIP" canSetAvailability={canSeeMentees} />}
 
       {tab === 'mentees' && canSeeMentees && (
         <div className="space-y-3">
-          <p className="text-[12px] text-[var(--mid-gray)] mb-1">People picked into your mentee list in HR Staff Profiles. Open a mentee to read every session note they’ve written.</p>
+          <p className="text-xs px-0.5" style={{ color: 'var(--mid-gray)' }}>People picked into your mentee list in HR Staff Profiles. Open a mentee to read every session note they’ve written.</p>
           {menteesLoading ? (
-            <div className="flex justify-center py-10"><Loader2 size={22} className="animate-spin text-[var(--teal)]" /></div>
+            <div className="rounded-xl" style={CARD_STYLE}><RowsSkeleton rows={4} label="Loading mentees" /></div>
           ) : (mentees ?? []).length === 0 ? (
-            <div className="card-static text-center py-16">
-              <div className="w-14 h-14 rounded-full bg-[var(--pale-teal)] flex items-center justify-center mx-auto mb-4">
-                <Users size={24} className="text-[var(--teal)]" />
-              </div>
-              <p className="font-semibold text-[var(--charcoal)] mb-1" style={{ fontFamily: 'var(--font-display)' }}>No mentees yet</p>
-              <p className="text-[13px] text-[var(--mid-gray)] max-w-md mx-auto leading-relaxed">
-                When people are picked into your mentee list in HR Staff Profiles, they’ll appear here with their session notes.
-              </p>
-            </div>
+            <section className="rounded-xl" style={CARD_STYLE}>
+              <EmptyState
+                icon="users"
+                title="No mentees yet"
+                hint="When people are picked into your mentee list in HR Staff Profiles, they’ll appear here with their session notes."
+              />
+            </section>
           ) : (
             (mentees ?? []).map((m) => {
               const open = openMentee === m.id
               const notes = notesByMentee[m.id]
               return (
-                <div key={m.id} className="rounded-xl border border-[var(--light-gray)] bg-white overflow-hidden">
-                  <button onClick={() => toggleMentee(m.id)}
-                    className="w-full flex items-center justify-between gap-3 flex-wrap px-4 py-3 text-left hover:bg-[var(--off-white)]">
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-full bg-[var(--pale-teal)] flex items-center justify-center font-bold text-[var(--teal)] text-[13px]">
-                        {m.name.split(' ').map((p) => p[0]).slice(0, 2).join('')}
-                      </div>
-                      <div>
-                        <p className="font-semibold text-[var(--charcoal)] text-[14px]">{m.name}</p>
-                        <p className="text-[12px] text-[var(--mid-gray)]">{m.department} · {branchLabel(m.branch)}</p>
+                <div key={m.id} className="rounded-xl overflow-hidden" style={CARD_STYLE}>
+                  <button onClick={() => toggleMentee(m.id)} aria-expanded={open}
+                    className="w-full flex items-center justify-between gap-3 px-4 py-3 text-left transition-colors hover:bg-[#F8FAF2] focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-[color:var(--teal)]">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <Avatar text={m.name.split(' ').map((p) => p[0]).slice(0, 2).join('')} size={38} />
+                      <div className="min-w-0">
+                        <p className="font-semibold text-[14px] truncate" style={{ color: 'var(--charcoal)' }}>{m.name}</p>
+                        <p className="text-xs truncate" style={{ color: 'var(--mid-gray)' }}>{m.department} · {branchLabel(m.branch)}</p>
                       </div>
                     </div>
-                    <span className="flex items-center gap-2">
-                      {notesLoading === m.id && <Loader2 size={14} className="animate-spin text-[var(--mid-gray)]" />}
-                      {notes && <span className="text-[11px] text-[var(--mid-gray)]">{notes.length} note{notes.length === 1 ? '' : 's'}</span>}
-                      {open ? <ChevronUp size={18} className="text-[var(--mid-gray)]" /> : <ChevronDown size={18} className="text-[var(--mid-gray)]" />}
+                    <span className="flex items-center gap-2 shrink-0">
+                      {notesLoading === m.id && <Loader2 size={14} className="animate-spin" style={{ color: 'var(--mid-gray)' }} />}
+                      {notes && <Tag>{notes.length} note{notes.length === 1 ? '' : 's'}</Tag>}
+                      {open ? <ChevronUp size={18} style={{ color: 'var(--mid-gray)' }} /> : <ChevronDown size={18} style={{ color: 'var(--mid-gray)' }} />}
                     </span>
                   </button>
                   {open && (
-                    <div className="border-t border-[var(--light-gray)] p-2 space-y-2">
+                    <div className="p-2 sm:p-3 space-y-2" style={{ borderTop: '1px solid var(--light-gray)', background: SUBTLE_BG }}>
                       {notes && notes.length === 0 && (
-                        <p className="text-[12px] text-[var(--mid-gray)] px-2 py-3">No session notes yet.</p>
+                        <p className="text-xs px-2 py-3" style={{ color: 'var(--mid-gray)' }}>No session notes yet.</p>
                       )}
                       {(notes ?? []).map((n) => {
                         const nOpen = openNote === n.id
                         return (
-                          <div key={n.id} className="rounded-lg border border-[var(--light-gray)] bg-white overflow-hidden">
-                            <button onClick={() => setOpenNote(nOpen ? null : n.id)}
-                              className="w-full flex items-center justify-between gap-2 px-3 py-2.5 text-left hover:bg-[var(--off-white)]">
-                              <span className="flex items-center gap-2 flex-wrap">
-                                <FileText size={14} className="text-[var(--teal)]" />
-                                <span className="font-semibold text-[var(--charcoal)] text-[13.5px]">{new Date(n.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</span>
-                                <span className="text-[12px] text-[var(--mid-gray)]">{n.patientName}</span>
-                                <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-[var(--pale-teal)] text-[var(--teal)]">{n.status}</span>
-                                {n.lockedAt && <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200">Locked</span>}
+                          <div key={n.id} className="rounded-lg overflow-hidden" style={CARD_STYLE}>
+                            <button onClick={() => setOpenNote(nOpen ? null : n.id)} aria-expanded={nOpen}
+                              className="w-full flex items-center justify-between gap-2 px-3 py-2.5 text-left transition-colors hover:bg-[#F8FAF2] focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-[color:var(--teal)]">
+                              <span className="flex items-center gap-2 flex-wrap min-w-0">
+                                <FileText size={14} style={{ color: 'var(--teal)' }} aria-hidden />
+                                <span className="font-semibold text-[13.5px]" style={{ color: 'var(--charcoal)', fontVariantNumeric: 'tabular-nums' }}>{new Date(n.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</span>
+                                <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>{n.patientName}</span>
+                                <StatusPill tone="info">{n.status}</StatusPill>
+                                {n.lockedAt && <StatusPill tone="warn">Locked</StatusPill>}
                               </span>
-                              {nOpen ? <ChevronUp size={16} className="text-[var(--mid-gray)]" /> : <ChevronDown size={16} className="text-[var(--mid-gray)]" />}
+                              {nOpen ? <ChevronUp size={16} className="shrink-0" style={{ color: 'var(--mid-gray)' }} /> : <ChevronDown size={16} className="shrink-0" style={{ color: 'var(--mid-gray)' }} />}
                             </button>
                             {nOpen && (
-                              <div className="px-3 pb-3 border-t border-[var(--light-gray)] pt-3 space-y-2">
-                                {n.notes ? <NoteBody notes={n.notes} /> : <p className="text-[13px] italic text-[var(--mid-gray)]">No note text.</p>}
+                              <div className="px-3 pb-3 pt-3 space-y-2" style={{ borderTop: '1px solid var(--light-gray)' }}>
+                                {n.notes ? <NoteBody notes={n.notes} /> : <p className="text-[13px] italic" style={{ color: 'var(--mid-gray)' }}>No note text.</p>}
                                 {n.discontinuedRemarks && (
-                                  <p className="text-[12px] text-[var(--mid-gray)]"><span className="font-semibold">Discontinued remarks:</span> {n.discontinuedRemarks}</p>
+                                  <p className="text-xs" style={{ color: 'var(--mid-gray)' }}><span className="font-semibold">Discontinued remarks:</span> {n.discontinuedRemarks}</p>
                                 )}
                                 {n.editHistory && n.editHistory.length > 0 && (
-                                  <p className="text-[11px] text-[var(--mid-gray)]">
+                                  <p className="text-[11px]" style={{ color: 'var(--mid-gray)' }}>
                                     {n.editHistory.map((e, idx) => (
                                       <span key={idx}>{idx > 0 ? ' · ' : ''}{e.name} {e.action} {new Date(e.at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>
                                     ))}

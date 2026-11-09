@@ -23,6 +23,6 @@ export default function NoteBody({ notes }: { notes: string | null | undefined }
     if (parsed.formType === 'PT_SESSION_NOTES') return <PTNoteDisplay data={parsed} />
   } catch { /* not JSON — render as plain text below */ }
   return (
-    <div className="text-[13px] text-[var(--charcoal)] whitespace-pre-wrap bg-[var(--off-white)] p-3 rounded-lg border border-[var(--light-gray)]">{notes}</div>
+    <div className="text-[13px] leading-relaxed whitespace-pre-wrap [overflow-wrap:anywhere] p-3 rounded-lg" style={{ color: 'var(--charcoal)', background: '#F6F8EE', border: '1px solid var(--light-gray)' }}>{notes}</div>
   )
 }

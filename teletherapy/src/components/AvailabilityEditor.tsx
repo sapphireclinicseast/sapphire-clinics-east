@@ -6,6 +6,9 @@
 
 import { useEffect, useState } from 'react'
 import { Plus, Trash2, Loader2, Clock } from 'lucide-react'
+import {
+  BTN_PRIMARY, BTN_SM, CARD_STYLE, CONTROL, CONTROL_STYLE, DANGER, EmptyState, LABEL, LABEL_STYLE, PRIMARY_STYLE, RowsSkeleton,
+} from '@/components/hub/ui'
 
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 interface Slot { id: string; dayFrom: number; dayTo: number; timeStart: string; timeEnd: string }
@@ -64,53 +67,52 @@ export default function AvailabilityEditor() {
   return (
     <div className="space-y-4">
       <div>
-        <h3 className="text-[15px] font-bold text-[var(--charcoal)] flex items-center gap-2" style={{ fontFamily: 'var(--font-display)' }}>
-          <Clock size={18} className="text-[var(--teal)]" /> My Availability
+        <h3 className="text-[15px] font-bold flex items-center gap-2" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>
+          <Clock size={17} style={{ color: 'var(--teal)' }} aria-hidden /> My Availability
         </h3>
-        <p className="text-[12px] text-[var(--mid-gray)]">Publish the days &amp; times you&apos;re generally free so others can book a 1-on-1 with you.</p>
+        <p className="text-xs mt-0.5" style={{ color: 'var(--mid-gray)' }}>Publish the days &amp; times you&apos;re generally free so others can book a 1-on-1 with you.</p>
       </div>
 
-      <div className="card-static !p-4 flex flex-wrap items-end gap-3">
+      <div className="rounded-xl p-4 flex flex-wrap items-end gap-3" style={CARD_STYLE}>
         <div>
-          <label className="block text-[11px] font-semibold uppercase tracking-wide text-[var(--mid-gray)] mb-1">From day</label>
-          <select value={dayFrom} onChange={(e) => setDayFrom(Number(e.target.value))} className="px-2 py-2 text-[13px] rounded-lg border border-[var(--light-gray)] bg-white">{DAYS.map((d, i) => <option key={d} value={i}>{d}</option>)}</select>
+          <label className={LABEL} style={LABEL_STYLE}>From day</label>
+          <select value={dayFrom} onChange={(e) => setDayFrom(Number(e.target.value))} className={CONTROL} style={CONTROL_STYLE}>{DAYS.map((d, i) => <option key={d} value={i}>{d}</option>)}</select>
         </div>
         <div>
-          <label className="block text-[11px] font-semibold uppercase tracking-wide text-[var(--mid-gray)] mb-1">To day</label>
-          <select value={dayTo} onChange={(e) => setDayTo(Number(e.target.value))} className="px-2 py-2 text-[13px] rounded-lg border border-[var(--light-gray)] bg-white">{DAYS.map((d, i) => <option key={d} value={i}>{d}</option>)}</select>
+          <label className={LABEL} style={LABEL_STYLE}>To day</label>
+          <select value={dayTo} onChange={(e) => setDayTo(Number(e.target.value))} className={CONTROL} style={CONTROL_STYLE}>{DAYS.map((d, i) => <option key={d} value={i}>{d}</option>)}</select>
         </div>
         <div>
-          <label className="block text-[11px] font-semibold uppercase tracking-wide text-[var(--mid-gray)] mb-1">From</label>
-          <input type="time" value={timeStart} onChange={(e) => setTimeStart(e.target.value)} className="px-2 py-2 text-[13px] rounded-lg border border-[var(--light-gray)] bg-white" />
+          <label className={LABEL} style={LABEL_STYLE}>From</label>
+          <input type="time" value={timeStart} onChange={(e) => setTimeStart(e.target.value)} className={CONTROL} style={CONTROL_STYLE} />
         </div>
         <div>
-          <label className="block text-[11px] font-semibold uppercase tracking-wide text-[var(--mid-gray)] mb-1">To</label>
-          <input type="time" value={timeEnd} onChange={(e) => setTimeEnd(e.target.value)} className="px-2 py-2 text-[13px] rounded-lg border border-[var(--light-gray)] bg-white" />
+          <label className={LABEL} style={LABEL_STYLE}>To</label>
+          <input type="time" value={timeEnd} onChange={(e) => setTimeEnd(e.target.value)} className={CONTROL} style={CONTROL_STYLE} />
         </div>
-        <button onClick={add} disabled={saving} className="inline-flex items-center gap-2 bg-[var(--narra)] text-white text-[13px] font-semibold px-4 py-2 rounded-lg hover:opacity-90 disabled:opacity-50">
+        <button onClick={add} disabled={saving} className={BTN_PRIMARY} style={PRIMARY_STYLE}>
           {saving ? <Loader2 size={14} className="animate-spin" /> : <Plus size={16} />} Add
         </button>
       </div>
-      {error && <p className="text-[12px] text-red-600">{error}</p>}
+      {error && <p role="alert" className="text-xs" style={{ color: DANGER }}>{error}</p>}
 
       {slots === null ? (
-        <p className="text-[13px] text-[var(--mid-gray)] flex items-center gap-2"><Loader2 size={14} className="animate-spin" /> Loading…</p>
+        <div className="rounded-xl" style={CARD_STYLE}><RowsSkeleton rows={3} label="Loading availability" /></div>
       ) : slots.length === 0 ? (
-        <div className="card-static text-center py-8">
-          <Clock size={22} className="text-[var(--light-gray)] mx-auto mb-2" />
-          <p className="text-[13px] text-[var(--mid-gray)]">No availability set yet. Add a window above.</p>
-        </div>
+        <section className="rounded-xl" style={CARD_STYLE}>
+          <EmptyState icon="clock" title="No availability set yet" hint="Add a window above." />
+        </section>
       ) : (
-        <div className="space-y-2">
-          {slots.map((s) => (
-            <div key={s.id} className="card-static !p-3 flex items-center gap-3">
-              <Clock size={15} className="text-[var(--teal)] shrink-0" />
-              <span className="text-[13px] font-semibold text-[var(--charcoal)]">{dayRange(s.dayFrom, s.dayTo)}</span>
-              <span className="text-[12px] text-[var(--mid-gray)]">{to12(s.timeStart)} – {to12(s.timeEnd)}</span>
-              <button onClick={() => remove(s.id)} title="Remove" className="ml-auto text-[var(--mid-gray)] hover:text-red-600 p-1"><Trash2 size={15} /></button>
-            </div>
+        <ul className="rounded-xl overflow-hidden" style={CARD_STYLE}>
+          {slots.map((s, i) => (
+            <li key={s.id} className="px-4 py-2.5 flex items-center gap-3" style={i ? { borderTop: '1px solid var(--light-gray)' } : undefined}>
+              <Clock size={15} className="shrink-0" style={{ color: 'var(--teal)' }} aria-hidden />
+              <span className="text-[13px] font-semibold" style={{ color: 'var(--charcoal)' }}>{dayRange(s.dayFrom, s.dayTo)}</span>
+              <span className="text-xs" style={{ color: 'var(--mid-gray)', fontVariantNumeric: 'tabular-nums' }}>{to12(s.timeStart)} – {to12(s.timeEnd)}</span>
+              <button onClick={() => remove(s.id)} title="Remove" aria-label="Remove availability window" className={`${BTN_SM} ml-auto hover:!bg-red-50 hover:!text-[#B42318]`} style={{ color: 'var(--mid-gray)' }}><Trash2 size={15} /></button>
+            </li>
           ))}
-        </div>
+        </ul>
       )}
     </div>
   )
