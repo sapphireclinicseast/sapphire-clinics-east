@@ -9,6 +9,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Loader2, X, Plus, Trash2, Eye, ArrowLeftRight, Pencil } from 'lucide-react'
 import { ScanUpload } from '@/components/ScanUpload'
+import { StatCard, hrBtn } from '@/components/ui/hr-look'
+import { TH } from './hr-bits'
 
 interface Bank { id: string; accountNumber: string; accountTitle: string; currency: string }
 interface Fx {
@@ -16,6 +18,8 @@ interface Fx {
   fromAccountId: string; toAccountId: string; fromLabel: string; toLabel: string
   amount: number; toAmount: number | null; exchangeRate: number | null
   description: string | null; proofUrls?: string[] | null
+  /** Bank lines linked in Bank Reconciliation (the API sends it for every transfer). */
+  matchedLegs?: number
 }
 
 const money = (n: number, cur = '') =>
@@ -47,38 +51,55 @@ export default function ForexPanel({ banks, canWrite }: { banks: Bank[]; canWrit
     load()
   }
 
+  // Totals per currency (each side can be a different currency).
+  const sumByCur = (pick: (t: Fx) => number, acct: (t: Fx) => string) => {
+    const m = new Map<string, number>()
+    rows.forEach(t => { const c = curOf(acct(t)); m.set(c, (m.get(c) || 0) + pick(t)) })
+    return [...m.entries()].map(([c, v]) => money(v, c)).join(' + ') || money(0)
+  }
+  const bothMatched = rows.filter(t => (t.matchedLegs ?? 0) >= 2).length
+
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between flex-wrap gap-3">
-        <p className="text-sm" style={{ color: 'var(--mid-gray)' }}>
+      <div className="flex items-start justify-between flex-wrap gap-3">
+        <p className="text-[13px] max-w-3xl" style={{ color: 'var(--mid-gray)' }}>
           Record a currency purchase between two bank accounts held in different currencies. The rate is computed from the two amounts,
           and Bank Reconciliation will identify both bank lines automatically once the amounts match, within 5 days either side.
         </p>
         {canWrite && (
-          <button onClick={() => { setEditing(null); setShowForm(true) }} className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-white shrink-0" style={{ background: 'var(--teal)' }}>
-            <Plus size={15} /> New Exchange
+          <button onClick={() => { setEditing(null); setShowForm(true) }} className={`${hrBtn.primary} shrink-0`} style={{ background: 'var(--teal)' }}>
+            <Plus size={15} /> New exchange
           </button>
         )}
       </div>
 
-      <div className="rounded-2xl border overflow-auto bg-white" style={{ borderColor: 'var(--light-gray)' }}>
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <StatCard compact loading={loading} label="Exchanges" value={String(rows.length)} sub="currency purchases recorded" tone="zero" accent={rows.length ? { line: '#4A8073' } : undefined} />
+        <StatCard compact loading={loading} label="Paid out" value={sumByCur(t => t.amount, t => t.fromAccountId)} sub="left the source accounts" tone="zero" accent={rows.length ? { line: '#dc2626', fg: '#b91c1c' } : undefined} />
+        <StatCard compact loading={loading} label="Received" value={sumByCur(t => t.toAmount || 0, t => t.toAccountId)} sub="landed in the destination accounts" tone={rows.length ? 'green' : 'zero'} />
+        <StatCard compact loading={loading} label="Both legs matched" value={`${bothMatched} of ${rows.length}`} sub="in Bank Reconciliation" tone={rows.length && bothMatched < rows.length ? 'amber' : rows.length ? 'green' : 'zero'} />
+      </div>
+
+      <div className="rounded-lg border bg-white overflow-hidden" style={{ borderColor: 'var(--light-gray)' }}>
+        <div className="overflow-auto">
         <table className="w-full text-sm">
           <thead>
-            <tr style={{ background: 'var(--off-white)' }}>
+            <tr style={{ background: 'var(--hr-head)' }}>
               {['Reference', 'Date', 'Paid from', 'Amount paid', 'Received into', 'Amount received', 'Rate', 'Proof', ''].map(h => (
-                <th key={h} className="px-3 py-2.5 text-left text-xs font-semibold whitespace-nowrap" style={{ color: 'var(--charcoal)' }}>{h}</th>
+                <th key={h} className={`${TH} ${['Amount paid', 'Amount received', 'Rate'].includes(h) ? '!text-right' : ''}`}>{h}</th>
               ))}
             </tr>
           </thead>
           <tbody>
             {loading ? (
-              <tr><td colSpan={9} className="text-center py-10 text-sm" style={{ color: 'var(--mid-gray)' }}><Loader2 size={16} className="inline animate-spin" /> Loading…</td></tr>
+              [0, 1, 2].map(i => <tr key={i} className="border-t" style={{ borderColor: 'var(--hr-line)' }}><td colSpan={9} className="px-4 py-2.5"><div className="h-5 rounded hr-shimmer" /></td></tr>)
             ) : rows.length === 0 ? (
-              <tr><td colSpan={9} className="text-center py-10 text-sm" style={{ color: 'var(--mid-gray)' }}>No currency exchanges recorded yet.</td></tr>
+              <tr><td colSpan={9} className="text-center py-12 text-[13px]" style={{ color: 'var(--mid-gray)' }}>No currency exchanges recorded yet.</td></tr>
             ) : rows.map(t => (
-              <tr key={t.id} className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
-                <td className="px-3 py-2.5 font-mono font-semibold whitespace-nowrap" style={{ color: 'var(--charcoal)' }}>{t.refNumber}</td>
-                <td className="px-3 py-2.5 text-xs whitespace-nowrap" style={{ color: 'var(--mid-gray)' }}>{t.date}</td>
+              <tr key={t.id} className="border-t transition-colors hover:bg-[#fafcf6]" style={{ borderColor: 'var(--hr-line)' }}>
+                <td className="px-3 py-2.5 font-mono font-semibold whitespace-nowrap" style={{ color: 'var(--charcoal)', boxShadow: `inset 4px 0 0 ${(t.matchedLegs ?? 0) >= 2 ? '#ca8a04' : (t.matchedLegs ?? 0) === 1 ? '#d97706' : '#94a3b8'}` }}
+                  title={(t.matchedLegs ?? 0) >= 2 ? 'Both bank legs matched in Bank Reconciliation' : (t.matchedLegs ?? 0) === 1 ? 'One of two bank legs matched' : 'No bank line matched yet'}>{t.refNumber}</td>
+                <td className="px-3 py-2.5 text-xs whitespace-nowrap font-mono" style={{ color: 'var(--mid-gray)' }}>{t.date}</td>
                 <td className="px-3 py-2.5 text-xs" style={{ color: 'var(--charcoal)' }}>{t.fromLabel}</td>
                 <td className="px-3 py-2.5 text-right font-mono text-xs whitespace-nowrap" style={{ color: '#b91c1c' }}>{money(t.amount, curOf(t.fromAccountId))}</td>
                 <td className="px-3 py-2.5 text-xs" style={{ color: 'var(--charcoal)' }}>{t.toLabel}</td>
@@ -92,13 +113,14 @@ export default function ForexPanel({ banks, canWrite }: { banks: Bank[]; canWrit
                   ))}
                 </td>
                 <td className="px-3 py-2.5 text-right whitespace-nowrap">
-                  {canWrite && <button onClick={() => { setEditing(t); setShowForm(true) }} className="p-1 rounded hover:bg-gray-100 mr-1"><Pencil size={13} style={{ color: 'var(--mid-gray)' }} /></button>}
-                  {canWrite && <button onClick={() => remove(t)} className="p-1 rounded hover:bg-red-50"><Trash2 size={13} style={{ color: '#dc2626' }} /></button>}
+                  {canWrite && <button onClick={() => { setEditing(t); setShowForm(true) }} title="Edit" aria-label={`Edit ${t.refNumber}`} className="p-1.5 rounded hover:bg-[var(--pale-teal)] mr-0.5"><Pencil size={13} style={{ color: 'var(--teal)' }} /></button>}
+                  {canWrite && <button onClick={() => remove(t)} title="Delete" aria-label={`Delete ${t.refNumber}`} className="p-1.5 rounded hover:bg-red-50"><Trash2 size={13} style={{ color: '#dc2626' }} /></button>}
                 </td>
               </tr>
             ))}
           </tbody>
         </table>
+        </div>
       </div>
 
       {showForm && <ForexForm banks={banks} editing={editing} onClose={() => setShowForm(false)} onSaved={async () => { setShowForm(false); await load() }} />}
@@ -153,7 +175,7 @@ function ForexForm({ banks, editing, onClose, onSaved }: { banks: Bank[]; editin
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
-      <div className="bg-white rounded-2xl p-6 w-full max-w-lg max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+      <div className="bg-white rounded-xl border shadow-xl p-6 w-full max-w-lg max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-1">
           <h2 className="text-lg font-bold flex items-center gap-2" style={{ color: 'var(--charcoal)' }}>
             <ArrowLeftRight size={18} style={{ color: 'var(--teal)' }} /> {editing ? `Edit ${editing.refNumber}` : 'Record Currency Exchange'}
