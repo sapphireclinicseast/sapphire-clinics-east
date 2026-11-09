@@ -242,6 +242,40 @@ async function pushTab(
   const ranges = grid.editable.map(r => ({ sheetId, ...r }))
   const nameRanges = grid.validate.filter(v => v.kind === 'name')
     .map(v => ({ sheetId, startRowIndex: v.row, endRowIndex: v.row + 1, startColumnIndex: v.col, endColumnIndex: v.col + 1 }))
+  // A slot closed to N/A or BREAK greys its payment and notes lines AT ONCE.
+  //
+  // Choosing N/A cannot turn the cell into the hatched image on the spot: the
+  // hatch is an =IMAGE() formula, which is a cell VALUE, and conditional
+  // formatting can only change how a cell looks. The sync rewrites the slot
+  // properly on its next run — within five minutes — and that is also when the
+  // two lines below genuinely stop accepting input, because protection is
+  // static and cannot react to a value either.
+  //
+  // What this does is close the gap in between: the moment N/A is chosen, the
+  // payment and notes lines go grey and struck through, so nobody fills in a
+  // payment for an hour that has just been closed and wonders later why it
+  // vanished.
+  //
+  // One rule per line rather than one per cell: INDIRECT with an R1C1 relative
+  // reference reads the patient line of whichever slot the cell belongs to, so
+  // two rules cover a whole tab instead of six hundred.
+  const payRanges = grid.validate.filter(v => v.kind === 'pay')
+    .map(v => ({ sheetId, startRowIndex: v.row, endRowIndex: v.row + 1, startColumnIndex: v.col, endColumnIndex: v.col + 1 }))
+  const remarkRanges = grid.validate.filter(v => v.kind === 'pay')
+    .map(v => ({ sheetId, startRowIndex: v.row + 1, endRowIndex: v.row + 2, startColumnIndex: v.col, endColumnIndex: v.col + 1 }))
+  const closedFormat = {
+    backgroundColor: rgb('#E8EAED'),
+    textFormat: { strikethrough: true, foregroundColor: rgb('#9AA0A6') },
+  }
+  for (const [rs, up] of [[payRanges, 1], [remarkRanges, 2]] as const) {
+    if (!rs.length) continue
+    post.push({ addConditionalFormatRule: { index: 0, rule: { ranges: rs, booleanRule: {
+      condition: { type: 'CUSTOM_FORMULA', values: [{ userEnteredValue:
+        `=OR(INDIRECT("R[-${up}]C",FALSE)="${BLOCKED}",INDIRECT("R[-${up}]C",FALSE)="${BREAK}")` }] },
+      format: closedFormat,
+    } } } })
+  }
+
   // Pushed first so it sinks to the bottom in priority — rules insert at 0.
   post.push({ addConditionalFormatRule: { index: 0, rule: { ranges, booleanRule: { condition: { type: 'TEXT_NOT_CONTAINS', values: [{ userEnteredValue: FREE_TEXT_HINT }] }, format: { textFormat: { foregroundColor: rgb('#1F2937') } } } } } })
   if (nameRanges.length) post.push({ addConditionalFormatRule: { index: 0, rule: { ranges: nameRanges, booleanRule: { condition: { type: 'BLANK' }, format: { backgroundColor: rgb('#DFF5E4') } } } } })
