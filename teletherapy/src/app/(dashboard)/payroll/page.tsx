@@ -1,19 +1,11 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import {
-  Wallet,
-  FileText,
-  Download,
-  Eye,
-  Lock,
-  Building2,
-  Calendar as CalendarIcon,
-} from 'lucide-react'
+import { Wallet, FileText, Download, Eye, Receipt, MinusCircle } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import {
   BTN_SM, CARD_STYLE, EmptyState, ErrorCard, KpiCard, KpiSkeleton, PAGE, PageHeader, PRIMARY_STYLE, RowsSkeleton,
-  SECONDARY_STYLE, StatusPill, Tag,
+  SECONDARY_STYLE, Tag,
 } from '@/components/hub/ui'
 import { branchLabel, toPatientBranchCode } from '@/lib/branch-label'
 import BranchSwitcher, { useBranchSwitcher } from '@/components/BranchSwitcher'
@@ -54,38 +46,49 @@ const CUTOFF = {
   c2StartDay: 11, c2EndLastDay: false, c2EndDay: 25,
 }
 
-function fmtCutoff(period: string): string {
-  // "2026-04-2" → "April 2026 (Second Cut-off): April 11-25, 2026"
-  // "2026-04-1" → "April 2026 (First Cut-off): March 26-April 10, 2026"
-  const m = period.match(/^(\d{4})-(\d{2})-([12])$/)
-  if (!m) return period
-  const year = Number(m[1])
-  const month = Number(m[2])
-  const half = Number(m[3]) as 1 | 2
-  const monthLabel = MONTHS[month - 1]
-  const halfLabel = half === 1 ? 'First Cut-off' : 'Second Cut-off'
-
-  let startMonth: number, startYear: number, startDay: number, endDay: number
-  if (half === 1) {
-    startDay = CUTOFF.c1StartDay
-    startMonth = CUTOFF.c1StartPrevMonth ? (month === 1 ? 12 : month - 1) : month
-    startYear = CUTOFF.c1StartPrevMonth && month === 1 ? year - 1 : year
-    endDay = CUTOFF.c1EndDay
-  } else {
-    startDay = CUTOFF.c2StartDay
-    startMonth = month
-    startYear = year
-    endDay = CUTOFF.c2EndLastDay ? new Date(year, month, 0).getDate() : CUTOFF.c2EndDay
+/* A payslip's period as a short title + its date range.
+   Regular cutoffs: "2026-04-1" → "April 2026 · 1st cut-off", "Mar 26 – Apr 10, 2026".
+   Special runs from the accounting hub carry a suffixed period:
+   "2026-12-13TH", "2026-10-MAT-…", "2026-10-FINAL-…", "2026-05-GOVCON". */
+function cutoffInfo(period: string): { title: string; range: string; year: number | null } {
+  const short = (m: number) => MONTHS[m - 1].slice(0, 3)
+  const reg = period.match(/^(\d{4})-(\d{2})-([12])$/)
+  if (reg) {
+    const year = Number(reg[1])
+    const month = Number(reg[2])
+    const half = Number(reg[3]) as 1 | 2
+    let startMonth: number, startYear: number, startDay: number, endDay: number
+    if (half === 1) {
+      startDay = CUTOFF.c1StartDay
+      startMonth = CUTOFF.c1StartPrevMonth ? (month === 1 ? 12 : month - 1) : month
+      startYear = CUTOFF.c1StartPrevMonth && month === 1 ? year - 1 : year
+      endDay = CUTOFF.c1EndDay
+    } else {
+      startDay = CUTOFF.c2StartDay
+      startMonth = month
+      startYear = year
+      endDay = CUTOFF.c2EndLastDay ? new Date(year, month, 0).getDate() : CUTOFF.c2EndDay
+    }
+    const range = startMonth === month && startYear === year
+      ? `${short(month)} ${startDay}–${endDay}, ${year}`
+      : startYear === year
+        ? `${short(startMonth)} ${startDay} – ${short(month)} ${endDay}, ${year}`
+        : `${short(startMonth)} ${startDay}, ${startYear} – ${short(month)} ${endDay}, ${year}`
+    return { title: `${MONTHS[month - 1]} ${year} · ${half === 1 ? '1st' : '2nd'} cut-off`, range, year }
   }
-  const startMonthLabel = MONTHS[startMonth - 1]
-
-  const range = startMonth === month && startYear === year
-    ? `${startMonthLabel} ${startDay}-${endDay}, ${year}`
-    : startYear === year
-      ? `${startMonthLabel} ${startDay}-${monthLabel} ${endDay}, ${year}`
-      : `${startMonthLabel} ${startDay}, ${startYear}-${monthLabel} ${endDay}, ${year}`
-
-  return `${monthLabel} ${year} (${halfLabel}): ${range}`
+  const sp = period.match(/^(\d{4})-(\d{2})-([A-Z0-9]+)/i)
+  if (sp) {
+    const year = Number(sp[1])
+    const monthYear = `${MONTHS[Number(sp[2]) - 1] ?? ''} ${year}`.trim()
+    const kind = sp[3].toUpperCase()
+    const title = kind === '13TH' ? `13th month pay ${year}`
+      : kind === 'MAT' ? `Maternity pay · ${monthYear}`
+        : kind === 'FINAL' ? `Final pay · ${monthYear}`
+          : kind === 'GOVCON' ? `Contributions adjustment · ${monthYear}`
+            : `Special pay · ${monthYear}`
+    return { title, range: 'Special payroll run', year }
+  }
+  return { title: period, range: '', year: null }
 }
 
 function fmtIssued(iso: string): string {
@@ -129,10 +132,28 @@ export default function PayrollPage() {
     return data.payslips.filter((p) => toPatientBranchCode(p.branch) === wanted)
   }, [data, isMultiBranch, activeBranch])
 
-  const total = useMemo(
-    () => visiblePayslips.reduce((sum, p) => sum + p.netPay, 0),
+  // Newest first: by the period's month, then by issue date.
+  const sorted = useMemo(
+    () => [...visiblePayslips].sort((a, b) =>
+      b.cutoffPeriod.slice(0, 7).localeCompare(a.cutoffPeriod.slice(0, 7)) ||
+      String(b.issuedAt).localeCompare(String(a.issuedAt))),
     [visiblePayslips],
   )
+  const latest = sorted[0]
+  const latestYear = latest ? (cutoffInfo(latest.cutoffPeriod).year ?? new Date(latest.issuedAt).getFullYear()) : null
+  const years = useMemo(() => {
+    const map = new Map<string, Payslip[]>()
+    sorted.forEach((p) => {
+      const y = String(cutoffInfo(p.cutoffPeriod).year ?? 'Other')
+      if (!map.has(y)) map.set(y, [])
+      map.get(y)!.push(p)
+    })
+    return [...map.entries()]
+  }, [sorted])
+  const yearRows = years.find(([y]) => y === String(latestYear))?.[1] ?? []
+  const sum = (rows: Payslip[], k: 'netPay' | 'totalDeductions' | 'grossPay') => rows.reduce((t, p) => t + (Number(p[k]) || 0), 0)
+  // Only label Employee / Consultant when this person has both kinds.
+  const mixedKinds = new Set(visiblePayslips.map((p) => p.kind)).size > 1
 
   return (
     <div className={PAGE}>
@@ -146,17 +167,18 @@ export default function PayrollPage() {
       />
 
       {/* Summary */}
-      {data && visiblePayslips.length > 0 && (
-        <div className="grid grid-cols-2 gap-3">
-          <KpiCard label="Payslips" value={visiblePayslips.length} sub="Locked by accounting" icon={<Lock size={16} />} />
-          <KpiCard label="Total net pay" value={PHP.format(total)} sub="All payslips shown" icon={<Wallet size={16} />} />
+      {data && latest && (
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <KpiCard label="Latest net pay" value={PHP.format(latest.netPay)} sub={cutoffInfo(latest.cutoffPeriod).title} icon={<Wallet size={16} />} />
+          <KpiCard label={`Net pay ${latestYear ?? ''}`.trim()} value={PHP.format(sum(yearRows, 'netPay'))} sub={`${yearRows.length} payslip${yearRows.length === 1 ? '' : 's'}`} icon={<Receipt size={16} />} />
+          <KpiCard label={`Deductions ${latestYear ?? ''}`.trim()} value={PHP.format(sum(yearRows, 'totalDeductions'))} sub={`From ${PHP.format(sum(yearRows, 'grossPay'))} gross`} icon={<MinusCircle size={16} />} />
         </div>
       )}
 
       {/* Body */}
       {loading ? (
         <>
-          <div className="grid grid-cols-2 gap-3"><KpiSkeleton count={2} /></div>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3"><KpiSkeleton count={3} /></div>
           <div className="rounded-xl" style={CARD_STYLE}><RowsSkeleton rows={4} label="Loading payslips" /></div>
         </>
       ) : error ? (
@@ -170,74 +192,94 @@ export default function PayrollPage() {
           />
         </section>
       ) : (
-        <ul className="rounded-xl overflow-hidden" style={CARD_STYLE} aria-label="Payslips">
-          {visiblePayslips.map((p, i) => (
-            <PayslipRow key={`${p.kind}-${p.id}`} payslip={p} index={i} />
-          ))}
-        </ul>
+        years.map(([year, rows]) => (
+          <section key={year} className="rounded-xl overflow-hidden" style={CARD_STYLE} aria-label={`Payslips ${year}`}>
+            <header className="px-4 py-2.5 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-0.5" style={{ background: 'var(--off-white, #F8FAF2)', borderBottom: '1px solid var(--light-gray)' }}>
+              <h2 className="text-[13px] font-bold" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>{year}</h2>
+              <p className="text-xs" style={{ color: 'var(--mid-gray)', fontVariantNumeric: 'tabular-nums' }}>
+                {rows.length} payslip{rows.length === 1 ? '' : 's'} · <strong style={{ color: 'var(--charcoal)' }}>{PHP.format(sum(rows, 'netPay'))}</strong> net
+              </p>
+            </header>
+            <ul>
+              {rows.map((p, i) => (
+                <PayslipRow key={`${p.kind}-${p.id}`} payslip={p} index={i} showKind={mixedKinds} />
+              ))}
+            </ul>
+          </section>
+        ))
       )}
     </div>
   )
 }
 
-function PayslipRow({ payslip, index }: {
-  payslip: Payslip; index: number
+function Amount({ label, value, strong, minus }: { label: string; value: number; strong?: boolean; minus?: boolean }) {
+  return (
+    <div className="text-right min-w-0">
+      <p className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: 'var(--mid-gray)', fontFamily: 'var(--font-display)' }}>{label}</p>
+      <p
+        className={cn('leading-tight whitespace-nowrap', strong ? 'text-[15px] font-bold' : 'text-[13px]')}
+        style={{ fontFamily: strong ? 'var(--font-display)' : undefined, color: strong ? 'var(--charcoal)' : 'var(--mid-gray)', fontVariantNumeric: 'tabular-nums' }}
+      >
+        {minus && value ? '−' : ''}{PHP.format(value)}
+      </p>
+    </div>
+  )
+}
+
+function PayslipRow({ payslip, index, showKind }: {
+  payslip: Payslip; index: number; showKind: boolean
 }) {
   const pdfHref = `/api/payroll/pdf?kind=${payslip.kind}&id=${encodeURIComponent(payslip.id)}`
+  const info = cutoffInfo(payslip.cutoffPeriod)
+  const meta = [info.range, branchLabel(payslip.branch), `Issued ${fmtIssued(payslip.issuedAt)}`].filter(Boolean).join(' · ')
   return (
     <li
-      className="px-4 py-3.5 flex flex-col sm:flex-row sm:items-center gap-3 transition-colors hover:bg-[#F8FAF2]"
+      className="px-4 py-3 grid gap-x-5 gap-y-2.5 items-center grid-cols-1 md:grid-cols-[minmax(0,1fr)_auto_auto] transition-colors hover:bg-[#F8FAF2]"
       style={index ? { borderTop: '1px solid var(--light-gray)' } : undefined}
     >
-      <div className="flex items-center gap-3 flex-1 min-w-0">
-        <div className="w-10 h-10 rounded-lg flex items-center justify-center shrink-0" style={{ background: 'var(--pale-teal)', color: 'var(--teal)' }}>
-          <FileText size={18} aria-hidden />
+      <div className="flex items-center gap-3 min-w-0">
+        <div className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0" style={{ background: 'var(--pale-teal)', color: 'var(--teal)' }}>
+          <FileText size={17} aria-hidden />
         </div>
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 mb-1 flex-wrap">
-            <p className="font-semibold text-[14px]" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>
-              {fmtCutoff(payslip.cutoffPeriod)}
-            </p>
-            <StatusPill tone="success">Locked</StatusPill>
-            <Tag>{payslip.kind === 'employee' ? 'Employee' : 'Consultant'}</Tag>
-          </div>
-          <div className="flex items-center gap-x-3 gap-y-0.5 text-xs flex-wrap" style={{ color: 'var(--mid-gray)' }}>
-            <span className="flex items-center gap-1"><Building2 size={12} aria-hidden /> {branchLabel(payslip.branch)}</span>
-            <span className="flex items-center gap-1"><CalendarIcon size={12} aria-hidden /> Issued {fmtIssued(payslip.issuedAt)}</span>
-          </div>
+        <div className="min-w-0">
+          <p className="font-semibold text-[14px] flex items-center gap-2 flex-wrap" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>
+            {info.title}
+            {showKind && <Tag>{payslip.kind === 'employee' ? 'Employee' : 'Consultant'}</Tag>}
+          </p>
+          <p className="text-xs mt-0.5 truncate" style={{ color: 'var(--mid-gray)' }} title={meta}>{meta}</p>
         </div>
       </div>
 
-      <div className="flex items-center justify-between sm:justify-end gap-3 sm:gap-5 sm:shrink-0 pl-[52px] sm:pl-0">
-        <div className="sm:text-right">
-          <p className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: 'var(--mid-gray)', fontFamily: 'var(--font-display)' }}>Net pay</p>
-          <p className="text-[15px] font-bold leading-tight" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)', fontVariantNumeric: 'tabular-nums' }}>
-            {PHP.format(payslip.netPay)}
-          </p>
-        </div>
-        <div className="flex items-center gap-1.5">
-          <a
-            href={pdfHref}
-            target="_blank"
-            rel="noopener noreferrer"
-            className={cn(BTN_SM, !payslip.hasPdf && 'opacity-40 pointer-events-none')}
-            style={SECONDARY_STYLE}
-            title={payslip.hasPdf ? 'Open PDF in new tab' : 'No PDF on file'}
-          >
-            <Eye size={14} aria-hidden />
-            View
-          </a>
-          <a
-            href={pdfHref}
-            download={`payslip-${payslip.cutoffPeriod}.pdf`}
-            className={cn(BTN_SM, 'text-white hover:!bg-[var(--deep-teal)] hover:opacity-90', !payslip.hasPdf && 'opacity-40 pointer-events-none')}
-            style={PRIMARY_STYLE}
-            title={payslip.hasPdf ? 'Download PDF' : 'No PDF on file'}
-          >
-            <Download size={14} aria-hidden />
-            PDF
-          </a>
-        </div>
+      <div className="grid grid-cols-3 gap-4 pl-12 md:pl-0">
+        <Amount label="Gross" value={payslip.grossPay} />
+        <Amount label="Deductions" value={payslip.totalDeductions} minus />
+        <Amount label="Net pay" value={payslip.netPay} strong />
+      </div>
+
+      <div className="flex items-center gap-1.5 pl-12 md:pl-0">
+        <a
+          href={pdfHref}
+          target="_blank"
+          rel="noopener noreferrer"
+          className={cn(BTN_SM, !payslip.hasPdf && 'opacity-40 pointer-events-none')}
+          style={SECONDARY_STYLE}
+          title={payslip.hasPdf ? 'Open PDF in new tab' : 'No PDF on file'}
+          aria-disabled={!payslip.hasPdf}
+        >
+          <Eye size={14} aria-hidden />
+          View
+        </a>
+        <a
+          href={pdfHref}
+          download={`payslip-${payslip.cutoffPeriod}.pdf`}
+          className={cn(BTN_SM, 'text-white hover:!bg-[var(--deep-teal)] hover:opacity-90', !payslip.hasPdf && 'opacity-40 pointer-events-none')}
+          style={PRIMARY_STYLE}
+          title={payslip.hasPdf ? 'Download PDF' : 'No PDF on file'}
+          aria-disabled={!payslip.hasPdf}
+        >
+          <Download size={14} aria-hidden />
+          PDF
+        </a>
       </div>
     </li>
   )
