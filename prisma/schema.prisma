@@ -655,6 +655,7 @@ model Staff {
   assessmentTargets      AssessmentTarget[]
   deckingConfigs         DeckingTherapistConfig[]
   deckingSlots           DeckingSlot[]
+  deckingCapacities      DeckingSlotCapacity[]
   peerEvalAssor          PeerEvalAssignment[]     @relation("PeerEvalAssor")
   peerEvalAssee          PeerEvalAssignment[]     @relation("PeerEvalAssee")
   peerEvalRespAssor      PeerEvalResponse[]       @relation("PeerEvalRespAssor")
@@ -2662,6 +2663,44 @@ model DeckingSnapshot {
 
   @@unique([date, branch, department])
   @@index([branch, department, date])
+}
+
+/// How many patients ONE cell of the board may hold.
+///
+/// Almost every hour is one patient with one therapist, which is what the
+/// board has always drawn and what no row here still means. A few are shared —
+/// a pair of children in one SLP hour, a trio in one OT hour — and the
+/// spreadsheet had no way to know which, so it offered a single validated
+/// patient line and front desk wrote the second child as free text on the
+/// notes line. Free text cannot be checked against the patient list: one
+/// mistyped name and nobody is booked at all, which is exactly how six real
+/// bookings were lost on the East OT board.
+///
+/// Declaring the capacity is what lets the sheet draw a SECOND dropdown, ready
+/// and empty, instead of asking anyone to spell a name correctly by hand.
+///
+/// A row exists only when the answer is more than one, so the table stays the
+/// list of shared hours rather than a copy of the board. Setting a cell back
+/// to one deletes its row.
+model DeckingSlotCapacity {
+  id         String    @id @default(cuid())
+  staffId    String
+  staff      Staff     @relation(fields: [staffId], references: [id], onDelete: Cascade)
+  branch     String
+  department String
+  dayOfWeek  String
+  startTime  String
+  /// Set for a one-off; null for the standing weekly pattern, exactly as on
+  /// DeckingSlot.
+  date       DateTime?
+  /// 2 or 3. One is the absence of a row, and the board refuses a fourth.
+  capacity   Int
+
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  @@unique([staffId, dayOfWeek, startTime, date])
+  @@index([branch, department])
 }
 
 /// Public enquiry from the website, routed to one branch's front desk.

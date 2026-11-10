@@ -27,8 +27,18 @@ export const ROWS_PER_HOUR = 3        // name, payment, remark
  * patient does not arise — and a second row that is always empty reads as a
  * board that is half unfilled.
  */
-export const PAIRED_DEPARTMENTS = new Set(['SLP'])
-export const PAIRED_ROWS_PER_HOUR = 5 // name, payment, name 2, payment 2, remark
+/**
+ * Retired, and deliberately left here as a name that resolves to nothing.
+ *
+ * Sharing an hour is a property of the HOUR, not of a department. This was a
+ * department-wide flag, so every SLP hour in both clinics carried a second
+ * patient line — a third of the board's height — for the sake of the single
+ * hour that actually had two children in it. Which hours are shared is now
+ * declared per cell and read from DeckingSlotCapacity.
+ */
+export const PAIRED_DEPARTMENTS = new Set<string>()
+/** Most patients one cell may hold. The board refuses a fourth. */
+export const MAX_LINES = 3
 export const SAFE_COL = 26            // column AA — front desk's own space
 /**
  * What an empty notes line says.
@@ -181,7 +191,7 @@ export interface CellRef {
   /** YYYY-MM-DD for a one-off, empty for the weekly pattern. */
   date: string
   /** Which of the three lines this is. */
-  line: 'name' | 'pay' | 'name2' | 'pay2' | 'remark'
+  line: 'name' | 'pay' | 'name2' | 'pay2' | 'name3' | 'pay3' | 'remark'
   /** The value this sync wrote. The next pull compares against it. */
   wrote: string
 }
@@ -294,10 +304,17 @@ export function nameFor(occupants: SheetSlot[], blocked: SheetSlot | undefined):
   return occupants[0]?.patient ? String(occupants[0].patient).toUpperCase() : ''
 }
 
-/** What the sheet should show on the remark line, overflow patients included. */
-export function remarkFor(occupants: SheetSlot[], blocked: SheetSlot | undefined): string {
+/**
+ * What the sheet should show on the remark line, overflow patients included.
+ *
+ * `shown` is how many patient LINES this cell has. Anyone past that has
+ * nowhere of their own to appear, so they fall back to "+ NAME" here — which
+ * is now the exception rather than the mechanism, because a declared capacity
+ * gives a shared hour real dropdown lines instead.
+ */
+export function remarkFor(occupants: SheetSlot[], blocked: SheetSlot | undefined, shown = 1): string {
   const own = blocked ?? occupants[0] ?? null
-  const overflow = occupants.slice(1).map(x => String(x.patient).toUpperCase())
+  const overflow = occupants.slice(shown).map(x => String(x.patient).toUpperCase())
   // A downpayment the clinic has already taken, stated by the hub rather than
   // remembered by a person. This is the whole reason the booking→slot link was
   // worth fixing.
@@ -310,11 +327,13 @@ export function remarkFor(occupants: SheetSlot[], blocked: SheetSlot | undefined
 }
 
 export function buildGrid(
-  { staff, slots, dated = [], classes = [], paired = false }:
-    { staff: SheetStaff[]; slots: SheetSlot[]; dated?: SheetSlot[]; classes?: SheetClass[]; paired?: boolean },
+  { staff, slots, dated = [], classes = [], capacity = new Map() }:
+    {
+      staff: SheetStaff[]; slots: SheetSlot[]; dated?: SheetSlot[]; classes?: SheetClass[]
+      /** `staffId|DAY|HH:MM` → patients that cell holds, where it is not one. */
+      capacity?: Map<string, number>
+    },
 ): Grid | null {
-  // Five lines where two children share an hour, three everywhere else.
-  const perHour = paired ? PAIRED_ROWS_PER_HOUR : ROWS_PER_HOUR
   // A consultant is on the board if they work days and those days divide into
   // at least one slot. Tested through daySlots, not hoursBetween: a doctor who
   // gives the clinic 1:00–1:40 for two patients has no whole hour at all, and
@@ -334,6 +353,21 @@ export function buildGrid(
   for (const list of slotAt.values()) {
     list.sort((a, b) => String(a.patient ?? '').localeCompare(String(b.patient ?? '')))
   }
+
+  // ── How many patient lines each cell gets ────────────────────────────────
+  //
+  // One, unless the hour has been declared shared — and never fewer than the
+  // patients already in it, so a cell can never hold somebody it cannot draw.
+  // Everything downstream reads this and nothing else: a department-wide
+  // "paired" flag used to decide it, which gave every SLP hour in the clinic a
+  // second line for the sake of the one hour that needed it.
+  const capOf = (staffId: string, day: string, time: string) => {
+    const k = `${staffId}|${day}|${time}`
+    const here = (slotAt.get(k) ?? []).filter(x => x.patient).length
+    return Math.min(MAX_LINES, Math.max(1, capacity.get(k) ?? 1, here))
+  }
+  /** name + payment for each patient, then the one shared notes line. */
+  const rowsForLines = (lines: number) => lines * 2 + 1
 
   // ONE time axis for the whole tab. Per-block axes meant a therapist starting
   // at 11 sat level with two starting at 10, so reading across a band landed on
@@ -402,7 +436,25 @@ export function buildGrid(
   const cells: CellRef[] = []
 
   for (const { members: band, axis: AXIS } of bands) {
-    const bandRows = 2 + AXIS.length * perHour
+    // ── This band's row heights, hour by hour ──────────────────────────────
+    //
+    // An hour is as tall as the most crowded cell ON THAT ROW, not as the most
+    // crowded cell on the tab. The blocks in a band share a time axis, so one
+    // shared 10 o'clock does make every block's 10 o'clock taller — but it
+    // leaves 11, and every other band, alone. Sized tab-wide instead, one
+    // three-patient hour would have added four rows to all three hundred.
+    const linesAt = AXIS.map(h => Math.max(
+      1,
+      ...band.flatMap(blk => blk.days.map(d => capOf(blk.st.id, d.key, h.startTime))),
+    ))
+    /** Local row of the band each hour starts at, the two header rows aside. */
+    const startOf: number[] = []
+    const layout: { hourIdx: number; within: number }[] = []
+    linesAt.forEach((lines, hourIdx) => {
+      startOf.push(layout.length)
+      for (let within = 0; within < rowsForLines(lines); within++) layout.push({ hourIdx, within })
+    })
+    const bandRows = 2 + layout.length
     const top = rows.length
 
     for (let r = 0; r < bandRows; r++) {
@@ -428,16 +480,22 @@ export function buildGrid(
           return
         }
 
-        const idx = r - 2
-        const hourIdx = Math.floor(idx / perHour)
-        const within = idx % perHour
-        const line: CellRef['line'] = paired
-          ? (['name', 'pay', 'name2', 'pay2', 'remark'] as const)[within]
-          : (['name', 'pay', 'remark'] as const)[within]
-        if (hourIdx >= AXIS.length) return
+        const at = layout[r - 2]
+        if (!at) return
+        const { hourIdx, within } = at
         const h = AXIS[hourIdx]
+        // How many patient lines THIS HOUR has across the band, and which of
+        // them this row is. The notes line is always the last.
+        const bandLines = linesAt[hourIdx]
+        const perHour = rowsForLines(bandLines)
+        const slotIndex = Math.floor(within / 2)        // 0, 1, 2 — which patient
+        const line: CellRef['line'] = within === perHour - 1
+          ? 'remark'
+          : within % 2 === 0
+            ? (['name', 'name2', 'name3'] as const)[slotIndex]
+            : (['pay', 'pay2', 'pay3'] as const)[slotIndex]
 
-        if (line === 'name') {
+        if (within === 0) {
           put(0, cell(h.label, { textFormat: { bold: true, fontSize: 9 } }))
           merges.push({ startRowIndex: top + r, endRowIndex: top + r + perHour, startColumnIndex: base, endColumnIndex: base + 1 })
         } else {
@@ -488,29 +546,39 @@ export function buildGrid(
           const here = slotAt.get(`${blk.st.id}|${day.key}|${h.startTime}`) ?? []
           const occupants = here.filter(x => x.patient)
           const blocked = here.find(x => x.disabled)
-          const name = nameFor(occupants, blocked)
-          const pay = blocked || !occupants[0] ? '' : payLabel(occupants[0].paymentType, occupants[0].hmoProvider)
-          const remark = remarkFor(occupants, blocked)
+          // This CELL's own capacity, which can be less than the row's: the
+          // hour next door is shared, this one is not. The lines past it are
+          // spare rows of a taller band, not slots anybody may book into.
+          const cellLines = capOf(blk.st.id, day.key, h.startTime)
+          const spare = slotIndex >= cellLines
 
-          // The second child of a paired hour. Their own payment line, because
+          // Spare lines carry nothing at all — no value, no dropdown, no map
+          // entry, nothing the pull can read — so the extra height a shared
+          // hour costs its neighbours is only height.
+          if (spare && line !== 'remark') {
+            put(c, cell('', { backgroundColor: rgb(OFF_BG) }))
+            continue
+          }
+
+          // Each occupant on their own line, each with their own payment:
           // inheriting the first child's arrangement would misbill an HMO case
-          // as cash — a guess the clinic pays for.
-          const name2 = paired && !blocked && occupants[1] ? String(occupants[1].patient).toUpperCase() : ''
-          const pay2 = paired && !blocked && occupants[1]
-            ? payLabel(occupants[1].paymentType, occupants[1].hmoProvider) : ''
+          // as cash, a guess the clinic pays for.
+          const mine = blocked ? undefined : occupants[slotIndex]
+          const name = slotIndex === 0
+            ? nameFor(occupants, blocked)
+            : (mine?.patient ? String(mine.patient).toUpperCase() : '')
+          const pay = blocked || !mine ? '' : payLabel(mine.paymentType, mine.hmoProvider)
+          const remark = remarkFor(occupants, blocked, cellLines)
 
-          const value = line === 'name' ? name
-            : line === 'pay' ? pay
-            : line === 'name2' ? name2
-            : line === 'pay2' ? pay2
-            : remark
+          const value = line === 'remark' ? remark : within % 2 === 0 ? name : pay
           cells.push({ row: top + r, col: base + c, staffId: blk.st.id, dayOfWeek: day.key, startTime: h.startTime, slotId: '', date: '', line, wrote: value })
 
-          if (line === 'name' || line === 'name2') validate.push({ row: top + r, col: base + c, kind: 'name' })
+          if (line === 'remark') { /* free text: no dropdown */ }
+          else if (within % 2 === 0) validate.push({ row: top + r, col: base + c, kind: 'name' })
           // A closed hour's payment line keeps its entry — the grey-and-struck
           // rule is built from this list — but is marked so no dropdown is
           // written onto it. An hour showing N/A must not offer a payment.
-          else if (line === 'pay' || line === 'pay2') validate.push({ row: top + r, col: base + c, kind: 'pay', locked: !!blocked })
+          else validate.push({ row: top + r, col: base + c, kind: 'pay', locked: !!blocked })
 
           // Editable is decided per SLOT, and a blocked hour is not one.
           //
@@ -520,31 +588,33 @@ export function buildGrid(
           // decision to close it lived in two places. Blocking stays available
           // here; UNblocking is a hub decision.
           if (line === 'name' && !blocked) {
-            editable.push({
-              startRowIndex: top + r,
-              endRowIndex: top + r + perHour,
-              startColumnIndex: base + c,
-              endColumnIndex: base + c + 1,
-            })
+            const col = { startColumnIndex: base + c, endColumnIndex: base + c + 1 }
+            if (cellLines === bandLines) {
+              editable.push({ startRowIndex: top + r, endRowIndex: top + r + perHour, ...col })
+            } else {
+              // The spare lines sit BETWEEN this cell's last payment line and
+              // the notes line, so the two editable stretches cannot be one.
+              editable.push({ startRowIndex: top + r, endRowIndex: top + r + cellLines * 2, ...col })
+              editable.push({ startRowIndex: top + r + perHour - 1, endRowIndex: top + r + perHour, ...col })
+            }
           }
 
           if (line === 'remark') {
             put(c, remark
               ? cell(remark, { backgroundColor: rgb(REMARK_BG), textFormat: { fontSize: 7, italic: true, foregroundColor: rgb('#6B7280') } })
               : { ...cell(FREE_TEXT_HINT, { backgroundColor: rgb(REMARK_BG), textFormat: { fontSize: 7, italic: true, foregroundColor: rgb('#B3AFA4') } }), note: FREE_TEXT_NOTE })
-          } else if (line === 'pay' || line === 'pay2') {
+          } else if (within % 2 === 1) {
             // Coloured by the CATEGORY, so "HMO – INTELLICARE" is amber like
             // any other HMO rather than falling back to the cash green.
-            const v = line === 'pay' ? pay : pay2
             put(c, blocked
               // Closed: grey like the hour above it, and empty. The dropdown is
               // gone (see `locked`), so the cell reads as part of the closure
               // rather than as a payment somebody forgot to fill in.
               ? cell('', { backgroundColor: rgb(CLOSED_BG) })
-              : cell(v, { backgroundColor: rgb(PAY_BG), textFormat: { bold: true, fontSize: 8, foregroundColor: rgb(v.startsWith('HMO') ? INK.HMO : INK[v as keyof typeof INK] ?? INK.CASH) } }))
-          } else if (line === 'name2') {
-            // Tinted, so a pair reads as a pair and not as two separate hours.
-            put(c, cell(name2, { backgroundColor: rgb(blocked ? CLOSED_BG : PAIR_BG), textFormat: { bold: true, fontSize: 9 } }))
+              : cell(pay, { backgroundColor: rgb(PAY_BG), textFormat: { bold: true, fontSize: 8, foregroundColor: rgb(pay.startsWith('HMO') ? INK.HMO : INK[pay as keyof typeof INK] ?? INK.CASH) } }))
+          } else if (slotIndex > 0) {
+            // Tinted, so a shared hour reads as one hour and not as two.
+            put(c, cell(name, { backgroundColor: rgb(blocked ? CLOSED_BG : PAIR_BG), textFormat: { bold: true, fontSize: 9 } }))
           } else {
             put(c, name === BLOCKED || name === BREAK
               ? cell(name, { textFormat: { bold: true, fontSize: 9, foregroundColor: rgb(INK.NA) } })

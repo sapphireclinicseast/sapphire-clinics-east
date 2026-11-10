@@ -30,7 +30,7 @@ import { sheetsClient } from '@/lib/google-sheets-auth'
 import { recordDeckingSnapshot } from '@/lib/decking-snapshot'
 import {
   payLabel,
-  buildGrid, nameFor, remarkFor, hhmm, parsePay, PAIRED_DEPARTMENTS,
+  buildGrid, nameFor, hhmm, parsePay,
   SAFE_COL, FREE_TEXT_HINT, FREE_TEXT_HINTS, BLOCKED, BREAK, INK,
   type SheetSlot, type SheetStaff, type SheetClass, type Grid, type CellRef,
 } from './grid'
@@ -156,7 +156,7 @@ export function mergeSchedules<T extends ScheduleRow>(configs: T[]) {
 }
 
 async function loadDepartment(branch: string, department: string) {
-  const [configs, slots, classRows] = await Promise.all([
+  const [configs, slots, classRows, capacityRows] = await Promise.all([
     prisma.deckingTherapistConfig.findMany({
       // EVERY config, not just the general one.
       //
@@ -222,6 +222,14 @@ async function loadDepartment(branch: string, department: string) {
         paymentType: true, hmoProvider: true,
         patient: { select: { firstName: true, lastName: true } },
       },
+    }),
+    // Which hours have been declared shared. A row exists only where the
+    // answer is more than one patient, so this is a short list even on a full
+    // board — and it is what gives a shared hour real dropdown lines on the
+    // sheet instead of a name typed by hand on the notes line.
+    prisma.deckingSlotCapacity.findMany({
+      where: { branch, department },
+      select: { staffId: true, dayOfWeek: true, startTime: true, date: true, capacity: true },
     }),
   ])
 
@@ -298,11 +306,20 @@ async function loadDepartment(branch: string, department: string) {
   }
   for (const g of grouped.values()) g.patients.sort((a, b) => a.localeCompare(b))
 
+  // Weekly cells only: the one-off blocks below the grid are one slot each and
+  // have no second line to give.
+  const capacity = new Map<string, number>()
+  for (const c of capacityRows) {
+    if (c.date) continue
+    capacity.set(`${c.staffId}|${c.dayOfWeek}|${c.startTime}`, c.capacity)
+  }
+
   return {
     staff,
     slots: sheetSlots.filter(x => !x.date),
     dated: sheetSlots.filter(x => !!x.date),
     classes: [...grouped.values()],
+    capacity,
     raw: slots,
   }
 }
@@ -829,16 +846,20 @@ export function userRemark(text: string): string {
   return splitRemark(text).notes
 }
 
-type Triple = { name: string; pay: string; name2: string; pay2: string; notes: string; extras: string[] }
+type Triple = { name: string; pay: string; name2: string; pay2: string; name3: string; pay3: string; notes: string; extras: string[] }
 const same = (a: Triple, b: Triple) =>
   a.name === b.name && a.pay === b.pay &&
   a.name2 === b.name2 && a.pay2 === b.pay2 &&
+  a.name3 === b.name3 && a.pay3 === b.pay3 &&
   a.notes === b.notes && a.extras.join('|') === b.extras.join('|')
 
-type Field = 'patient' | 'second patient' | 'payment' | 'second payment' | 'note' | 'others in the hour'
+type Field =
+  | 'patient' | 'second patient' | 'third patient'
+  | 'payment' | 'second payment' | 'third payment'
+  | 'note' | 'others in the hour'
 const fieldOf = (t: Triple, f: Field): string =>
-  f === 'patient' ? t.name : f === 'second patient' ? t.name2
-    : f === 'payment' ? t.pay : f === 'second payment' ? t.pay2
+  f === 'patient' ? t.name : f === 'second patient' ? t.name2 : f === 'third patient' ? t.name3
+    : f === 'payment' ? t.pay : f === 'second payment' ? t.pay2 : f === 'third payment' ? t.pay3
       : f === 'note' ? t.notes : t.extras.join(' + ')
 
 /**
@@ -861,9 +882,11 @@ const fieldOf = (t: Triple, f: Field): string =>
 function hubMoved(hub: Triple, snap: Triple): Field | null {
   if (hub.name !== snap.name) return 'patient'
   if (hub.name2 !== snap.name2) return 'second patient'
+  if (hub.name3 !== snap.name3) return 'third patient'
   if (hub.extras.join('|') !== snap.extras.join('|')) return 'others in the hour'
   if (snap.pay && hub.pay !== snap.pay) return 'payment'
   if (snap.pay2 && hub.pay2 !== snap.pay2) return 'second payment'
+  if (snap.pay3 && hub.pay3 !== snap.pay3) return 'third payment'
   if (snap.notes && hub.notes !== snap.notes) return 'note'
   return null
 }
@@ -898,7 +921,7 @@ async function pullTabs(
   }
 
   // Group the three lines of each slot back together.
-  const bySlot = new Map<string, { tab: string; staffId: string; day: string; time: string; date: string; slotId: string; sheet: Triple; snap: Triple; ref: string }>()
+  const bySlot = new Map<string, { tab: string; staffId: string; day: string; time: string; date: string; slotId: string; sheet: Triple; snap: Triple; lines: number; ref: string }>()
   for (const r of entries) {
     const [tab, row, col, line, staffId, day, time, wrote, dateStr, slotIdStr] = r
     // The date is part of a cell's identity: the same staff, day and hour can
@@ -914,15 +937,20 @@ async function pullTabs(
     const slot = bySlot.get(key) ?? {
       tab: String(tab), staffId: String(staffId), day: String(day), time: String(time),
       date: String(dateStr ?? ''), slotId: String(slotIdStr ?? ''),
-      sheet: { name: '', pay: '', name2: '', pay2: '', notes: '', extras: [] },
-      snap: { name: '', pay: '', name2: '', pay2: '', notes: '', extras: [] },
+      sheet: { name: '', pay: '', name2: '', pay2: '', name3: '', pay3: '', notes: '', extras: [] },
+      snap: { name: '', pay: '', name2: '', pay2: '', name3: '', pay3: '', notes: '', extras: [] },
+      // How many patient lines this cell was DRAWN with. Counted from the map
+      // rather than looked up again, so the pull reads the cell exactly as the
+      // push wrote it even if the capacity has been changed since.
+      lines: 0,
       ref: `${tab} r${Number(row) + 1}`,
     }
     if (String(line) === 'remark') {
       const a = splitRemark(now); slot.sheet.notes = a.notes; slot.sheet.extras = a.extras
       const b = splitRemark(String(wrote ?? '')); slot.snap.notes = b.notes; slot.snap.extras = b.extras
     } else {
-      const l = String(line) as 'name' | 'pay' | 'name2' | 'pay2'
+      const l = String(line) as 'name' | 'pay' | 'name2' | 'pay2' | 'name3' | 'pay3'
+      if (l === 'name' || l === 'name2' || l === 'name3') slot.lines++
       slot.sheet[l] = now.trim().toUpperCase()
       slot.snap[l] = String(wrote ?? '').trim().toUpperCase()
     }
@@ -975,7 +1003,10 @@ async function pullTabs(
     // for a department called "OT INTERNS" and silently match nothing, so a
     // booking typed on an intern tab would never reach the hub.
     const dept = slot.tab.replace(/ INTERNS$/, '')
-    const paired = PAIRED_DEPARTMENTS.has(dept)
+    // How many patient LINES the sheet drew this cell with — the same number
+    // the push used, read back from the cells the map holds for it. Anyone
+    // past that is on the notes line as "+ NAME", as they always were.
+    const lines = Math.max(1, slot.lines)
     const existing = await prisma.deckingSlot.findMany({
       where: {
         staffId: slot.staffId, dayOfWeek: slot.day, startTime: slot.time,
@@ -1010,15 +1041,17 @@ async function pullTabs(
       // With a second patient LINE, the second occupant belongs there rather
       // than on the notes line — otherwise the same child would be compared
       // against two different places and read as a change every sync.
-      name2: paired && occ[1] ? String(occ[1].patient).toUpperCase() : '',
-      pay2: paired && occ[1] ? payLabel(occ[1].paymentType, occ[1].hmoProvider) : '',
+      name2: lines > 1 && occ[1] ? String(occ[1].patient).toUpperCase() : '',
+      pay2: lines > 1 && occ[1] ? payLabel(occ[1].paymentType, occ[1].hmoProvider) : '',
+      name3: lines > 2 && occ[2] ? String(occ[2].patient).toUpperCase() : '',
+      pay3: lines > 2 && occ[2] ? payLabel(occ[2].paymentType, occ[2].hmoProvider) : '',
       // BREAK is a STATE, carried in notes because there is nowhere else to put
       // it, and the board prints it on the patient line and nothing on the note
       // line. Reading it back as a note made every BREAK hour disagree with the
       // snapshot of itself, which is a conflict that can never be resolved.
       notes: splitRemark(String((blockedRow ?? occ[0])?.notes ?? '')).notes
         .replace(new RegExp(`^${BREAK}$`), ''),
-      extras: occ.slice(paired ? 2 : 1).map(x => String(x.patient).toUpperCase()),
+      extras: occ.slice(lines).map(x => String(x.patient).toUpperCase()),
     }
 
     // Changed in BOTH places since the last sync. Neither wins — a person has
@@ -1072,7 +1105,7 @@ async function pullTabs(
       // The patient LINES are the booking; the "+ names" on the note line are
       // companions in the same hour. They are resolved differently on purpose
       // — see below.
-      const lineNames = [slot.sheet.name, slot.sheet.name2]
+      const lineNames = [slot.sheet.name, slot.sheet.name2, slot.sheet.name3]
         .map(n => n.trim().toUpperCase()).filter(Boolean)
       const seen = new Set<string>()
       const want: string[] = []
@@ -1148,7 +1181,8 @@ async function pullTabs(
         // Each occupant keeps its OWN payment. The second child of a paired
         // hour has a payment line of its own, and falling back to the first
         // child's would misbill an HMO case as cash.
-        const own = i === 1 && slot.sheet.pay2 ? parsePay(slot.sheet.pay2) : { paymentType: pay, hmoProvider }
+        const typed = i === 1 ? slot.sheet.pay2 : i === 2 ? slot.sheet.pay3 : ''
+        const own = typed ? parsePay(typed) : { paymentType: pay, hmoProvider }
         const data = i === 0
           ? { patientId, paymentType: pay, hmoProvider, notes: keptNote }
           : { patientId, paymentType: own.paymentType, hmoProvider: own.hmoProvider }
@@ -1231,8 +1265,8 @@ export async function syncBranch(branch: string, spreadsheetId: string): Promise
   const mapEntries: (CellRef & { tab: string })[] = []
   for (const dept of DEPARTMENTS) {
     try {
-      const { staff, slots, dated, classes } = await loadDepartment(branch, dept)
-      const grid = buildGrid({ staff, slots, dated, classes, paired: PAIRED_DEPARTMENTS.has(dept) })
+      const { staff, slots, dated, classes, capacity } = await loadDepartment(branch, dept)
+      const grid = buildGrid({ staff, slots, dated, classes, capacity })
       if (!grid) continue
       const res = await pushTab(api, spreadsheetId, dept, grid, patientRows, payOptions, client.identity, lastWrote.get(dept), consumed)
       for (const c of grid.cells) mapEntries.push({ ...c, tab: dept })
@@ -1248,7 +1282,7 @@ export async function syncBranch(branch: string, spreadsheetId: string): Promise
           `No ${dept} interns on placement this month. Their placement months live on the HR staff profile — once a new rotation starts, this tab fills itself in.`)
       }
       if (interns) {
-        const iGrid = buildGrid({ ...interns, paired: PAIRED_DEPARTMENTS.has(dept) })
+        const iGrid = buildGrid({ ...interns })
         if (iGrid) {
           const iTab = `${dept} INTERNS`
           const iRes = await pushTab(api, spreadsheetId, iTab, iGrid, patientRows, payOptions, client.identity, lastWrote.get(iTab), consumed)
