@@ -39,7 +39,6 @@ export async function POST(req: NextRequest) {
     where: { id: session.user.id },
     data: {
       passwordHash,
-      lastPlainPassword: newPassword,
     },
   })
 

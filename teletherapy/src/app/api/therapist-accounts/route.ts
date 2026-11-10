@@ -4,6 +4,35 @@ import { prisma } from '@/lib/prisma'
 import bcrypt from 'bcryptjs'
 import { reconcileAllAccountEmails } from '@/lib/sync-account-emails'
 
+// Passwords are never stored readable and never listed. The admin who creates
+// an account or sets a new password gets it back ONCE, in that POST/PATCH
+// response, so they can copy and share it; after that only the bcrypt hash
+// exists. Anyone who forgets is given a new one (key icon in the Admin Panel).
+//
+// Every response from this route selects these fields only — never the whole
+// row, which carries passwordHash and resetToken.
+const ACCOUNT_SELECT = {
+  id: true,
+  email: true,
+  role: true,
+  accountType: true,
+  isActive: true,
+  lastLoginAt: true,
+  createdAt: true,
+  staffId: true,
+  staff: {
+    select: {
+      firstName: true,
+      lastName: true,
+      department: true,
+      branch: true,
+    },
+  },
+} as const
+
+// A response that carries a one-time password must never be cached.
+const NO_STORE = { 'Cache-Control': 'no-store' }
+
 export async function GET() {
   const session = await auth()
   if (!session?.user || session.user.role !== 'ADMIN') {
@@ -16,29 +45,11 @@ export async function GET() {
   await reconcileAllAccountEmails().catch(() => {})
 
   const accounts = await prisma.therapistAccount.findMany({
-    select: {
-      id: true,
-      email: true,
-      role: true,
-      accountType: true,
-      isActive: true,
-      lastLoginAt: true,
-      lastPlainPassword: true,
-      createdAt: true,
-      staffId: true,
-      staff: {
-        select: {
-          firstName: true,
-          lastName: true,
-          department: true,
-          branch: true,
-        },
-      },
-    },
+    select: ACCOUNT_SELECT,
     orderBy: { createdAt: 'desc' },
   })
 
-  return NextResponse.json({ accounts })
+  return NextResponse.json({ accounts }, { headers: NO_STORE })
 }
 
 export async function POST(req: NextRequest) {
@@ -89,23 +100,14 @@ export async function POST(req: NextRequest) {
       staffId,
       email,
       passwordHash,
-      lastPlainPassword: password,
       role,
       accountType,
     },
-    include: {
-      staff: {
-        select: {
-          firstName: true,
-          lastName: true,
-          department: true,
-          branch: true,
-        },
-      },
-    },
+    select: ACCOUNT_SELECT,
   })
 
-  return NextResponse.json({ account }, { status: 201 })
+  // The one and only time this password leaves the server.
+  return NextResponse.json({ account, password }, { status: 201, headers: NO_STORE })
 }
 
 export async function PATCH(req: NextRequest) {
@@ -141,7 +143,6 @@ export async function PATCH(req: NextRequest) {
       return NextResponse.json({ error: 'Password must be at least 8 characters' }, { status: 400 })
     }
     updateData.passwordHash = await bcrypt.hash(newPassword, 12)
-    updateData.lastPlainPassword = newPassword
   }
 
   if (newEmail) {
@@ -176,7 +177,12 @@ export async function PATCH(req: NextRequest) {
   const updated = await prisma.therapistAccount.update({
     where: { id },
     data: updateData,
+    select: ACCOUNT_SELECT,
   })
 
+  // A new password is echoed back once so the admin can copy and share it.
+  if (newPassword) {
+    return NextResponse.json({ account: updated, password: newPassword }, { headers: NO_STORE })
+  }
   return NextResponse.json({ account: updated })
 }

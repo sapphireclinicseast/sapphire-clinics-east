@@ -418,7 +418,10 @@ model TherapistAccount {
   // email change never locks anyone out. Kept in sync from Staff.email.
   emailAliases String[]      @default([])
   passwordHash      String
-  lastPlainPassword String?
+  // lastPlainPassword (a readable copy of the last-set password) was removed
+  // 2026-11: passwords are only ever stored as the bcrypt hash. The DB column
+  // may still exist until prisma/manual/2026-11-10-drop-last-plain-password.sql
+  // is run — nothing reads or writes it.
   role         TherapistRole @default(THERAPIST)
   // Access preset that drives which sidebar sections the account sees.
   // CLINICIAN (default) keeps full clinical access; FRONT_DESK / ADMIN_STAFF
