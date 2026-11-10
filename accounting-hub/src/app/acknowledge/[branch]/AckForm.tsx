@@ -14,19 +14,20 @@ import { NameCombobox } from '@/components/NameCombobox'
 import { SignaturePad } from '@/components/SignaturePad'
 import { HR_VARS } from '@/components/ui/hr-tokens'
 import { coveredByUnion, controlToInt, rangeQuantity } from '@/lib/form-ranges'
-import { ACK_ITEMS, ACK_ITEM_LABELS, DEFAULT_DELIVERED_BY_TITLE, type AckBranch } from '@/lib/form-ack'
+import { ACK_FIELD_BRANCHES, ACK_ITEMS, ACK_ITEM_LABELS, DEFAULT_DELIVERED_BY_TITLE, resolveAckBranch, type AckBranch } from '@/lib/form-ack'
 
 interface Partner { id: string; name: string; kind?: string; detail?: string; affiliation?: string }
 interface GivenRange { a: number; b: number; partnerName: string; dateGiven: string }
 interface Stock { formType: string; received: number; given: number; onHand: number; width: number; receivedRanges: Array<[number, number]>; givenRanges: GivenRange[] }
 interface PadRow { formType: string; from: string; to: string }
 interface Draft {
+  branch?: string // slug picked on the general link
   kind: 'DOCTOR' | 'SCHOOL'
   institution: string; recipientName: string; recipientDesignation: string
   receivedBy: string; receivedByDesignation: string
   items: string[]; pads: PadRow[]; remarks: string
 }
-interface Done { id: string; padRows: number; pcs: number; receiptsAdded: number; pdfOk: boolean; pdfUrl: string; partnerName: string; items: string[] }
+interface Done { id: string; padRows: number; pcs: number; receiptsAdded: number; pdfOk: boolean; pdfUrl: string; partnerName: string; items: string[]; branchName: string }
 
 const EMPTY: Draft = {
   kind: 'DOCTOR', institution: '', recipientName: '', recipientDesignation: '', receivedBy: '', receivedByDesignation: '',
@@ -72,8 +73,13 @@ function Card({ title, children, right }: { title: string; children: React.React
   )
 }
 
-export function AckForm({ branch, userName, allowed }: { branch: AckBranch; userName: string; allowed: boolean }) {
-  const draftKey = `ack-draft:${branch.slug}`
+// initialBranch: set by the old per-branch links (/acknowledge/east); null on
+// the general link (/acknowledge), where the med rep picks East or Greenhills.
+export function AckForm({ initialBranch, userName, allowed }: { initialBranch: AckBranch | null; userName: string; allowed: boolean }) {
+  const draftKey = 'ack-draft'
+  const [branchSlug, setBranchSlug] = useState(initialBranch?.slug || '')
+  const branch = resolveAckBranch(branchSlug)
+  const branchChoices = ACK_FIELD_BRANCHES.some((b) => b.slug === initialBranch?.slug) || !initialBranch ? ACK_FIELD_BRANCHES : [...ACK_FIELD_BRANCHES, initialBranch]
   const [d, setD] = useState<Draft>(EMPTY)
   const [title, setTitle] = useState(DEFAULT_DELIVERED_BY_TITLE)
   const [signature, setSignature] = useState<string | null>(null)
@@ -93,30 +99,37 @@ export function AckForm({ branch, userName, allowed }: { branch: AckBranch; user
   useEffect(() => {
     try {
       const raw = localStorage.getItem(draftKey)
-      if (raw) setD({ ...EMPTY, ...JSON.parse(raw) })
+      if (raw) {
+        const saved = { ...EMPTY, ...JSON.parse(raw) } as Draft
+        setD(saved)
+        if (!initialBranch && saved.branch) setBranchSlug(saved.branch)
+      }
       const t = localStorage.getItem('ack-title')
       if (t) setTitle(t)
     } catch { /* storage blocked: start blank */ }
     setToday(new Date().toLocaleDateString('en-PH', { weekday: 'short', month: 'long', day: 'numeric', year: 'numeric', timeZone: 'Asia/Manila' }))
     setLoaded(true)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [draftKey])
   useEffect(() => {
     if (!loaded) return
-    try { localStorage.setItem(draftKey, JSON.stringify(d)) } catch { /* ignore */ }
-  }, [d, draftKey, loaded])
+    try { localStorage.setItem(draftKey, JSON.stringify({ ...d, branch: branchSlug })) } catch { /* ignore */ }
+  }, [d, branchSlug, draftKey, loaded])
   useEffect(() => {
     if (!loaded) return
     try { localStorage.setItem('ack-title', title) } catch { /* ignore */ }
   }, [title, loaded])
 
   const loadStock = useCallback(async () => {
+    setStock([])
+    if (!branchSlug) return
     try {
-      const r = await fetch(`/api/inventory/form-acknowledgments/options?branch=${branch.slug}`)
+      const r = await fetch(`/api/inventory/form-acknowledgments/options?branch=${branchSlug}`)
       if (r.status === 401) { setSignedOut(true); return }
       const j = await r.json()
       setStock(Array.isArray(j.formTypes) ? j.formTypes : [])
     } catch { /* offline: the server still checks on submit */ }
-  }, [branch.slug])
+  }, [branchSlug])
 
   useEffect(() => {
     if (!allowed) return
@@ -188,6 +201,7 @@ export function AckForm({ branch, userName, allowed }: { branch: AckBranch; user
   const totalPcs = hasPad ? padInfo.reduce((s, p) => s + (p.qty || 0), 0) : 0
 
   const missing: string[] = []
+  if (!branch) missing.push('the branch (East or Greenhills)')
   if (!d.items.length) missing.push('tick at least one item')
   if (!partnerName) missing.push(isSchool ? 'the school / institution' : 'the recipient (doctor) name')
   if (!d.recipientName.trim() && !d.receivedBy.trim()) missing.push('who received the items')
@@ -201,6 +215,7 @@ export function AckForm({ branch, userName, allowed }: { branch: AckBranch; user
   })
 
   const submit = async (alsoRecordReceipt = false) => {
+    if (!branch) return
     setSubmitting(true); setError('')
     try {
       const res = await fetch('/api/inventory/form-acknowledgments', {
@@ -218,7 +233,7 @@ export function AckForm({ branch, userName, allowed }: { branch: AckBranch; user
       if (res.status === 409 && j.needsReceipt) { setNeedsReceipt(j.uncovered || []); return }
       if (!res.ok) { setError(j.error || 'Could not save — try again'); return }
       setNeedsReceipt(null)
-      setDone({ ...j, partnerName, items: d.items })
+      setDone({ ...j, partnerName, items: d.items, branchName: branch.shortName })
       setD(EMPTY); setSignature(null); setSigKey((k) => k + 1)
       try { localStorage.removeItem(draftKey) } catch { /* ignore */ }
       window.scrollTo({ top: 0 })
@@ -230,7 +245,7 @@ export function AckForm({ branch, userName, allowed }: { branch: AckBranch; user
     }
   }
 
-  const loginHref = `/login?callbackUrl=${encodeURIComponent(`/acknowledge/${branch.slug}`)}`
+  const loginHref = `/login?callbackUrl=${encodeURIComponent(initialBranch ? `/acknowledge/${initialBranch.slug}` : '/acknowledge')}`
 
   return (
     <div className="min-h-screen pb-16" style={{ ...HR_VARS, background: 'var(--off-white)', color: 'var(--charcoal)', fontFamily: 'var(--font-body)' }}>
@@ -241,7 +256,7 @@ export function AckForm({ branch, userName, allowed }: { branch: AckBranch; user
             <img src="/brand/scei-mark.png" alt="" className="h-7 w-7 object-contain" />
             <span className="text-sm font-semibold truncate" style={{ fontFamily: 'var(--font-display)' }}>Accounting Hub</span>
           </div>
-          <span className="text-xs font-semibold px-2.5 py-1 rounded-full" style={{ background: 'var(--pale-teal)', color: 'var(--teal)' }}>{branch.shortName}</span>
+          <span className="text-xs font-semibold px-2.5 py-1 rounded-full" style={branch ? { background: 'var(--pale-teal)', color: 'var(--teal)' } : { background: '#fef3c7', color: '#92400e' }}>{branch ? branch.shortName : 'Pick a branch'}</span>
         </div>
       </header>
 
@@ -268,7 +283,7 @@ export function AckForm({ branch, userName, allowed }: { branch: AckBranch; user
                 <p className="font-semibold">Signed acknowledgment saved for {done.partnerName}</p>
                 <p className="text-sm mt-1" style={{ color: 'var(--mid-gray)' }}>
                   {done.items.map((k) => ACK_ITEM_LABELS[k]).join(', ')}.
-                  {done.pcs > 0 && <> {pcs(done.pcs)} pcs drawn from {branch.shortName} on-hand ({done.padRows} row{done.padRows === 1 ? '' : 's'} in Partner Distribution).</>}
+                  {done.pcs > 0 && <> {pcs(done.pcs)} pcs drawn from {done.branchName} on-hand ({done.padRows} row{done.padRows === 1 ? '' : 's'} in Partner Distribution).</>}
                   {done.receiptsAdded > 0 && <> The pad numbers were also recorded as received.</>}
                 </p>
                 {!done.pdfOk && <p className="text-sm mt-1" style={{ color: '#b45309' }}>The PDF will be built when it is first opened.</p>}
@@ -282,6 +297,19 @@ export function AckForm({ branch, userName, allowed }: { branch: AckBranch; user
           </Card>
         ) : (
           <>
+            <Card title="Branch">
+              <p className="text-sm mb-3" style={{ color: 'var(--mid-gray)' }}>Which branch are these items from? Referral pads come out of that branch&apos;s on-hand.</p>
+              <div className="grid grid-cols-2 gap-2">
+                {branchChoices.map((b) => (
+                  <button key={b.slug} type="button" aria-pressed={branchSlug === b.slug} onClick={() => setBranchSlug(b.slug)}
+                    className="h-12 rounded-lg border text-[15px] font-semibold inline-flex items-center justify-center gap-2 transition-colors"
+                    style={branchSlug === b.slug ? { borderColor: 'var(--teal)', background: 'var(--teal)', color: 'white' } : { borderColor: 'var(--light-gray)', background: 'white', color: 'var(--charcoal)' }}>
+                    {branchSlug === b.slug && <Check size={16} strokeWidth={3} />} {b.shortName.replace(/ Branch$/, '')}
+                  </button>
+                ))}
+              </div>
+            </Card>
+
             <Card title="Delivered by">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
@@ -293,7 +321,7 @@ export function AckForm({ branch, userName, allowed }: { branch: AckBranch; user
                   <input id="ack-title" value={title} onChange={(e) => setTitle(e.target.value)} className={inputCls} style={inputStyle} />
                 </div>
               </div>
-              <p className="text-xs mt-2" style={{ color: 'var(--hr-faint)' }}>{branch.name}{today ? ` · ${today}` : ''}</p>
+              <p className="text-xs mt-2" style={{ color: 'var(--hr-faint)' }}>{branch ? branch.name : 'Branch not picked yet'}{today ? ` · ${today}` : ''}</p>
             </Card>
 
             <Card title="Recipient">
@@ -371,6 +399,7 @@ export function AckForm({ branch, userName, allowed }: { branch: AckBranch; user
 
             {hasPad && (
               <Card title="Referral pads handed out" right={totalPcs > 0 ? <span className="text-sm font-bold" style={{ color: 'var(--teal)' }}>{pcs(totalPcs)} pcs</span> : undefined}>
+                {!branch && <p className="text-sm mb-3 px-3 py-2 rounded-lg" style={{ background: '#fef3c7', color: '#92400e' }}>Pick the branch above to see which pads are on hand.</p>}
                 <div className="space-y-4">
                   {d.pads.map((r, i) => {
                     const info = padInfo[i]
@@ -408,12 +437,12 @@ export function AckForm({ branch, userName, allowed }: { branch: AckBranch; user
                             Next unused number on hand: {String(info.next).padStart(width, '0')}
                           </button>
                         )}
-                        {r.formType.trim() && info.qty != null && (
+                        {branch && r.formType.trim() && info.qty != null && (
                           <div className="mt-2 space-y-1 text-xs">
                             {info.covered ? (
-                              <p style={{ color: '#047857' }}>✓ In {branch.shortName} stock · {pcs(info.st!.onHand)} on hand → {pcs(info.st!.onHand - info.qty)} after this</p>
+                              <p style={{ color: '#047857' }}>✓ In {branch?.shortName} stock · {pcs(info.st!.onHand)} on hand → {pcs(info.st!.onHand - info.qty)} after this</p>
                             ) : (
-                              <p className="flex items-start gap-1.5" style={{ color: '#b45309' }}><AlertTriangle size={14} className="shrink-0 mt-px" /> These numbers are not recorded as received at {branch.shortName}. You&apos;ll be asked to record them as received when you submit.</p>
+                              <p className="flex items-start gap-1.5" style={{ color: '#b45309' }}><AlertTriangle size={14} className="shrink-0 mt-px" /> These numbers are not recorded as received at {branch?.shortName}. You&apos;ll be asked to record them as received when you submit.</p>
                             )}
                             {info.given.length > 0 && (
                               <p className="flex items-start gap-1.5" style={{ color: '#b91c1c' }}><AlertTriangle size={14} className="shrink-0 mt-px" />
@@ -466,7 +495,7 @@ export function AckForm({ branch, userName, allowed }: { branch: AckBranch; user
         <div className="fixed inset-0 z-50 bg-black/40 flex items-end sm:items-center justify-center p-4">
           <div className="w-full max-w-md rounded-lg bg-white p-5 shadow-xl">
             <h3 className="font-bold mb-2" style={{ fontFamily: 'var(--font-display)' }}>Pads not recorded as received</h3>
-            <p className="text-sm" style={{ color: 'var(--mid-gray)' }}>These control numbers are not yet recorded in {branch.shortName}&apos;s Consumable Forms:</p>
+            <p className="text-sm" style={{ color: 'var(--mid-gray)' }}>These control numbers are not yet recorded in {branch?.shortName}&apos;s Consumable Forms:</p>
             <ul className="text-sm my-3 space-y-1">
               {needsReceipt.map((u, i) => <li key={i} className="font-semibold">{u.formType} · {u.fromControl}–{u.toControl} ({pcs(u.quantity)} pcs)</li>)}
             </ul>

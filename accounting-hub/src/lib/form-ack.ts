@@ -19,6 +19,9 @@ export const ACK_BRANCHES: AckBranch[] = [
   { slug: 'institute', branch: 'AURA_INSTITUTE', name: 'Aura Health Institute', shortName: 'Aura Health Institute' },
 ]
 
+/** Branches the med rep picks from on the general link (/acknowledge). */
+export const ACK_FIELD_BRANCHES: AckBranch[] = ACK_BRANCHES.filter((b) => b.slug === 'east' || b.slug === 'greenhills')
+
 /** Resolve a URL slug or a branch enum to its config. */
 export function resolveAckBranch(v: string | null | undefined): AckBranch | null {
   if (!v) return null

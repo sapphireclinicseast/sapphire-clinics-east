@@ -36,7 +36,7 @@ import {
   RotateCcw, Archive, ArchiveRestore, QrCode, PenLine, Copy, ExternalLink,
 } from 'lucide-react'
 import { QRCodeSVG } from 'qrcode.react'
-import { ACK_BRANCHES, ACK_DELETE_ROLES, ACK_ITEM_LABELS, ackPath, resolveAckBranch } from '@/lib/form-ack'
+import { ACK_DELETE_ROLES, ACK_ITEM_LABELS } from '@/lib/form-ack'
 import { WEBSITE_CLASSIFICATIONS } from '@/lib/website-classification'
 import JsBarcode from 'jsbarcode'
 import { formatCurrency, formatDate } from '@/lib/utils'
@@ -1180,7 +1180,6 @@ function InventoryInner() {
   // Signed acknowledgments (med rep signing link) + the link/QR modal
   const [acks, setAcks] = useState<FormAck[]>([])
   const [ackLinkOpen, setAckLinkOpen] = useState(false)
-  const [ackLinkBranch, setAckLinkBranch] = useState('SANDBOX_EAST')
   const [ackCopied, setAckCopied] = useState(false)
   const [deleteAckConfirm, setDeleteAckConfirm] = useState<{ id: string; padRows: number } | null>(null)
   const [deletingAck, setDeletingAck] = useState(false)
@@ -5973,7 +5972,7 @@ setTimeout(()=>window.print(),500);
                 </button>
               )}
               {formsView === 'distribution' && (canWrite || formsOnly) && (
-                <button onClick={() => { setAckLinkBranch(resolveAckBranch(formsBranchFilter)?.branch || 'SANDBOX_EAST'); setAckCopied(false); setAckLinkOpen(true) }}
+                <button onClick={() => { setAckCopied(false); setAckLinkOpen(true) }}
                   className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-white text-sm font-semibold transition-opacity hover:opacity-90"
                   style={{ background: 'var(--teal)' }} title="Link + QR for med reps to log a delivery with the doctor's signature">
                   <QrCode size={18} /> Signing link
@@ -6272,11 +6271,10 @@ setTimeout(()=>window.print(),500);
             </div>
           )}
 
-          {/* Med rep signing link — per-branch URL + QR */}
+          {/* Med rep signing link — one general URL + QR; the med rep picks East or Greenhills on the form */}
           {ackLinkOpen && (() => {
-            const path = ackPath(ackLinkBranch) || '/acknowledge/east'
+            const path = '/acknowledge'
             const url = `${window.location.origin}${path}`
-            const br = resolveAckBranch(ackLinkBranch)
             return (
             <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={() => setAckLinkOpen(false)}>
               <div className="bg-white rounded-2xl p-6 max-w-md w-full shadow-xl max-h-[92vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
@@ -6284,16 +6282,7 @@ setTimeout(()=>window.print(),500);
                   <h3 className="text-lg font-bold" style={{ color: 'var(--charcoal)' }}>Med rep signing link</h3>
                   <button onClick={() => setAckLinkOpen(false)} className="p-1 rounded-lg hover:bg-gray-100" aria-label="Close"><X size={18} /></button>
                 </div>
-                <p className="text-xs mb-4" style={{ color: 'var(--mid-gray)' }}>Open on a phone or tablet at the doctor&apos;s clinic. The doctor or secretary signs on screen; referral pads are logged here and drawn from the branch&apos;s on-hand, and the signed PDF is kept on the row.</p>
-                <div className="flex flex-wrap gap-1.5 mb-4">
-                  {ACK_BRANCHES.map((b) => (
-                    <button key={b.branch} onClick={() => { setAckLinkBranch(b.branch); setAckCopied(false) }}
-                      className="px-3 py-1.5 rounded-full text-xs font-semibold border transition-colors"
-                      style={ackLinkBranch === b.branch ? { background: 'var(--teal)', color: 'white', borderColor: 'var(--teal)' } : { borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>
-                      {b.shortName}
-                    </button>
-                  ))}
-                </div>
+                <p className="text-xs mb-4" style={{ color: 'var(--mid-gray)' }}>One link for all med reps. Open it on a phone or tablet at the doctor&apos;s clinic; the med rep picks <span className="font-semibold">East</span> or <span className="font-semibold">Greenhills</span> on the form, the doctor or secretary signs on screen, and the referral pads are logged here and drawn from that branch&apos;s on-hand with the signed PDF on the row.</p>
                 <div className="flex justify-center mb-4 p-4 rounded-xl border bg-white" style={{ borderColor: 'var(--light-gray)' }}>
                   <QRCodeSVG value={url} size={184} marginSize={1} />
                 </div>
@@ -6305,9 +6294,9 @@ setTimeout(()=>window.print(),500);
                   </button>
                 </div>
                 <a href={path} target="_blank" rel="noopener" className="flex items-center justify-center gap-1.5 w-full py-2.5 rounded-lg border text-sm font-semibold" style={{ borderColor: 'var(--teal)', color: 'var(--teal)' }}>
-                  <ExternalLink size={15} /> Open signing form · {br?.shortName}
+                  <ExternalLink size={15} /> Open signing form
                 </a>
-                <p className="text-[11px] mt-3" style={{ color: 'var(--mid-gray)' }}>Med reps sign in once with their own hub account (it stays signed in on that phone). The link carries the branch, so pads always come out of {br?.shortName}&apos;s on-hand.</p>
+                <p className="text-[11px] mt-3" style={{ color: 'var(--mid-gray)' }}>Med reps sign in once with their own hub account (it stays signed in on that phone), so every signed form shows who delivered it.</p>
               </div>
             </div>
             )
