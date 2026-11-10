@@ -172,7 +172,7 @@ export default function Sidebar({ userRole, open, onClose, collapsed = false }: 
 
       <aside
         className={`
-          fixed top-0 left-0 z-50 h-full w-64 flex flex-col
+          fixed top-0 left-0 z-50 h-full w-64 flex flex-col antialiased
           transition-[transform,margin] duration-300 ease-in-out
           lg:translate-x-0 lg:static lg:z-auto
           ${open ? 'translate-x-0' : '-translate-x-full'}
