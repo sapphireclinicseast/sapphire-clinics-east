@@ -1,8 +1,8 @@
 'use client'
 
-// AR → For Follow Up → "Collection Report Settings": per-branch details printed
-// on the HMO Collection Report PDF (lib/collection-report). Company details are
-// the same row Invoice Settings edits.
+// AR → HMO report views → "Report Settings": per-branch details printed on the
+// branded HMO report PDFs (lib/collection-report). Company details are the same
+// row Invoice Settings edits.
 
 import { useEffect, useState } from 'react'
 import { Loader2, Settings, X } from 'lucide-react'
@@ -37,7 +37,7 @@ const SECTIONS: { title: string; hint: string; fields: { key: FieldKey; label: s
   },
   {
     title: 'Finance officer',
-    hint: 'The person who follows up HMO collections; signs the report.',
+    hint: 'The person who follows up HMO collections; signs the reports.',
     fields: [
       { key: 'officerName', label: 'Name' },
       { key: 'officerPosition', label: 'Position', placeholder: 'Finance Officer' },
@@ -105,10 +105,10 @@ export default function CollectionSettingsModal({ canEdit, initialBranch, notice
           <X size={18} style={{ color: 'var(--mid-gray)' }} />
         </button>
         <h3 className="text-lg font-bold mb-1" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>
-          <Settings size={18} className="inline mr-1" style={{ color: 'var(--teal)' }} /> Collection Report Settings
+          <Settings size={18} className="inline mr-1" style={{ color: 'var(--teal)' }} /> Report Settings
         </h3>
         <p className="text-xs mb-4" style={{ color: 'var(--mid-gray)' }}>
-          Printed on the HMO Collection Report (For Follow Up → Download as PDF), per branch.
+          Printed on the HMO report PDFs (Per HMO, Doctor Consults, For Follow Up, Left Out Sessions), per branch.
         </p>
         {notice && (
           <p className="text-xs rounded-lg px-3 py-2 mb-4" style={{ background: '#FEF2F2', color: '#B91C1C', border: '1px solid #FCA5A5' }}>{notice}</p>

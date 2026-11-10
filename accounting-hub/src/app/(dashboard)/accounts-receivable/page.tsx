@@ -26,8 +26,8 @@ import TuitionTab from './TuitionTab'
 import HmoDirectoryTab from './HmoDirectoryTab'
 import CollectionSettingsModal from './CollectionSettingsModal'
 import {
-  COLLECTION_SETTINGS_WRITE_ROLES, drawCollectionReport, mergeBranchSettings, missingCollectionSettings,
-  type CollectionBranchSettings, type CollectionGroup,
+  COLLECTION_SETTINGS_WRITE_ROLES, HMO_REPORTS, drawHmoReport, mergeBranchSettings, missingForReport, shortDate,
+  type CollectionBranchSettings, type CollectionGroup, type HmoReportKind,
 } from '@/lib/collection-report'
 import BreakdownDonut, { type DonutItem } from './BreakdownDonut'
 import { DIRECTORY_WRITE_ROLES } from '@/lib/hmo-directory'
@@ -2768,27 +2768,31 @@ export default function AccountsReceivablePage() {
           else { setPerHmoSortField(field); setPerHmoSortDir('asc') }
         }
 
-        // Variant-specific naming for the report downloads.
-        const reportTitle = isMdConsults ? 'HMO Doctor Consults Report'
-          : isSubUnpaid ? 'HMO Submitted-but-Unpaid Report'
-          : isFollowUp ? 'HMO Collection Report'
-          : 'HMO AR Report'
+        // Variant-specific file names for the report downloads (titles live in lib/collection-report).
         const reportSlug = isMdConsults ? 'hmo-doctor-consults'
-          : isSubUnpaid ? 'hmo-submitted-unpaid'
+          : isSubUnpaid ? 'hmo-left-out-collection'
           : isFollowUp ? 'hmo-collection-report'
           : 'hmo-ar-report'
 
-        // For Follow Up → PDF: the branded HMO Collection Report (lib/collection-report),
-        // one section per SOA branch × HMO, addressed to the HMO's directory contact.
-        const downloadCollectionPdf = async () => {
+        // Every Per HMO-like view downloads the branded report (lib/collection-report),
+        // one section per SOA branch × HMO with the branch letterhead, bank and finance
+        // officer from Collection Report Settings. For Follow Up and Left Out Sessions are
+        // collection reports addressed to the HMO's directory contact.
+        const reportKind: HmoReportKind = isFollowUp ? 'collection' : isSubUnpaid ? 'left-out' : isMdConsults ? 'md-consults' : 'ar'
+        const periodCoverage = perHmoFrom && perHmoTo ? `${shortDate(perHmoFrom)} to ${shortDate(perHmoTo)}`
+          : perHmoFrom ? `from ${shortDate(perHmoFrom)}` : perHmoTo ? `until ${shortDate(perHmoTo)}` : 'All dates'
+        const reportCoverage = isFollowUp ? `${followUpYear || 'All years'} | over 180 days`
+          : isSubUnpaid ? `${subUnpaidYear || 'All years'} | left out of paid SOAs`
+          : periodCoverage
+        const downloadPdf = async () => {
           setShowDownloadMenu(false)
-          if (!perHmoOrders.length) { alert('There are no claims in this view to put on a collection report.'); return }
+          if (!perHmoOrders.length) { alert('There are no sessions in this view to put on a report.'); return }
           try {
             const [{ jsPDF }, { default: autoTable }, logoMod, settingsRes, dirRes] = await Promise.all([
               import('jspdf'), import('jspdf-autotable'), import('@/lib/scei-logo'),
               fetch('/api/accounts-receivable/collection-settings'), fetch('/api/accounts-receivable/hmo-directory'),
             ])
-            if (!settingsRes.ok) { alert('Could not load the collection report settings. Try again.'); return }
+            if (!settingsRes.ok) { alert('Could not load the report settings. Try again.'); return }
             const { branches } = await settingsRes.json() as { branches: CollectionBranchSettings[] }
             type DirEntry = { walletId: string } & Partial<Record<'collectionName' | 'collectionEmail' | 'collectionNumber' | 'accreditationName' | 'accreditationEmail' | 'accreditationNumber', string | null>>
             const directory: DirEntry[] = dirRes.ok ? ((await dirRes.json()).entries || []) : []
@@ -2815,6 +2819,7 @@ export default function AccountsReceivablePage() {
               }
               const subs = [...(o.soaSubmissionItems || [])].sort((a, b) => a.submission.submittedDate.localeCompare(b.submission.submittedDate))
               const latest = subs[subs.length - 1]?.submission
+              const cp = o.clinicianPayment
               g.claims.push({
                 serviceDate: o.transactionDate,
                 patient: o.patientName || '',
@@ -2824,84 +2829,39 @@ export default function AccountsReceivablePage() {
                 soaDate: latest?.submittedDate || '',
                 arDays: arDaysOf(o),
                 amount: o.payments.reduce((s, p) => s + toNum(p.amount), 0),
+                paid: o.arPaymentItems.length > 0,
+                soaDays: soaDaysOf(o),
+                doctorPayment: cp
+                  ? `${/^PV/i.test(cp.pvNumber || '') ? cp.pvNumber : `PV ${cp.pvNumber || '-'}`}\n${shortDate(cp.pvDate)}`
+                  : isDirectToClinician(o) ? 'HMO pays the doctor' : '',
               })
             }
             const list = [...groups.values()].sort((a, b) => a.settings.branch.localeCompare(b.settings.branch) || a.hmoName.localeCompare(b.hmoName))
             const gaps = [...new Set(list.map(g => g.settings.branch))]
-              .map(br => { const m = missingCollectionSettings(byBranch.get(br) ?? mergeBranchSettings(br, null, null)); return m.length ? `${branchLabel(br) || br}: ${m.join(' and ')}` : '' })
+              .map(br => {
+                const needsRemit = list.some(g => g.settings.branch === br && HMO_REPORTS[reportKind].remit(g))
+                const m = missingForReport(byBranch.get(br) ?? mergeBranchSettings(br, null, null), needsRemit)
+                return m.length ? `${branchLabel(br) || br}: ${m.join(' and ')}` : ''
+              })
               .filter(Boolean)
-            if (gaps.length && !window.confirm(`The collection report settings are incomplete (${gaps.join('; ')}).\n\nOK downloads it anyway, with those parts left blank. Cancel opens the settings.`)) {
+            if (gaps.length && !window.confirm(`The report settings are incomplete (${gaps.join('; ')}).\n\nOK downloads it anyway, with those parts left blank. Cancel opens the settings.`)) {
               setCollectionSettings({ branch: list[0].settings.branch, notice: `Incomplete: ${gaps.join('; ')}.` })
               return
             }
             // compress: the logo is otherwise stored as ~900 KB of raw pixels.
             const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4', compress: true })
-            drawCollectionReport(doc, autoTable, {
+            drawHmoReport(doc, autoTable, reportKind, {
               groups: list,
-              coverage: `${followUpYear || 'All years'} | over 180 days`,
+              coverage: reportCoverage,
               generatedAt: new Date(),
               logo: { dataUri: logoMod.SCEI_LOGO_DATA_URI, w: logoMod.SCEI_LOGO_W, h: logoMod.SCEI_LOGO_H },
             })
             const only = list.length === 1 ? `-${list[0].branchCode}-${list[0].hmoName.replace(/[^A-Za-z0-9]+/g, '-')}` : ''
-            doc.save(`hmo-collection-report${only}-${new Date().toISOString().slice(0, 10)}.pdf`)
+            doc.save(`${reportSlug}${only}-${new Date().toISOString().slice(0, 10)}.pdf`)
           } catch (e) {
-            console.error('Collection report failed:', e)
-            alert('Could not build the collection report. Try again.')
+            console.error('HMO report PDF failed:', e)
+            alert('Could not build the report. Try again.')
           }
-        }
-
-        const downloadPdf = () => {
-          // Use jsPDF — dynamic import
-          import('jspdf').then(({ jsPDF }) => {
-            const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' })
-            const margin = 15
-            let y = margin
-            doc.setFontSize(14)
-            doc.text(reportTitle, margin, y); y += 8
-            doc.setFontSize(9)
-            doc.text(`Generated: ${new Date().toLocaleDateString('en-PH')}`, margin, y); y += 6
-            if (perHmoWallet) {
-              const w = wallets.find(w => w.id === perHmoWallet)
-              doc.text(`HMO: ${w?.patientName || perHmoWallet}`, margin, y); y += 6
-            }
-            if (perHmoFrom || perHmoTo) {
-              doc.text(`Period: ${perHmoFrom || '—'} to ${perHmoTo || '—'}`, margin, y); y += 6
-            }
-            y += 2
-            // Header
-            const cols = ['Date', 'Service', 'Patient', 'Clinician', 'HMO', 'Amount', 'SOA', 'SOA Date']
-            const colWidths = [24, 60, 40, 38, 36, 26, 14, 24]
-            let x = margin
-            doc.setFontSize(8); doc.setFont('helvetica', 'bold')
-            cols.forEach((c, i) => { doc.text(c, x, y); x += colWidths[i] }); y += 5
-            doc.setFont('helvetica', 'normal')
-            for (const o of perHmoOrders) {
-              if (y > 185) { doc.addPage(); y = margin }
-              x = margin
-              const wallet = wallets.find(w => w.id === o.payments[0]?.walletId)
-              const amt = o.payments.reduce((s, p) => s + toNum(p.amount), 0)
-              const amtStr = amt.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',')
-              const soaDates = (o.soaSubmissionItems || []).map(i => i.submission.submittedDate).sort()
-              const row = [
-                formatDate(o.transactionDate),
-                o.items.map(i => i.name).join(', '),
-                o.patientName || '—',
-                o.clinicianName || '—',
-                wallet?.patientName || '—',
-                amtStr,
-                soaDates.length ? 'Yes' : 'No',
-                soaDates.length ? formatDate(soaDates[soaDates.length - 1]) : '—',
-              ]
-              row.forEach((cell, i) => {
-                const maxW = colWidths[i] - 2
-                const text = doc.splitTextToSize(String(cell), maxW)[0] || ''
-                doc.text(text, x, y); x += colWidths[i]
-              })
-              y += 5
-            }
-            doc.save(`${reportSlug}.pdf`)
-          })
-          setShowDownloadMenu(false)
         }
 
         const downloadExcel = () => {
@@ -3007,15 +2967,13 @@ export default function AccountsReceivablePage() {
                   style={{ borderColor: 'var(--mid-gray)', color: 'var(--mid-gray)' }}>
                   <Settings size={14} /> Invoice Settings
                 </button>
-                {isFollowUp && (
-                  <button
-                    onClick={() => setCollectionSettings({ branch: branch || undefined })}
-                    className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium border"
-                    style={{ borderColor: 'var(--mid-gray)', color: 'var(--mid-gray)' }}
-                    title="Company, bank and finance officer details printed on the HMO Collection Report">
-                    <Settings size={14} /> Collection Report Settings
-                  </button>
-                )}
+                <button
+                  onClick={() => setCollectionSettings({ branch: branch || undefined })}
+                  className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium border"
+                  style={{ borderColor: 'var(--mid-gray)', color: 'var(--mid-gray)' }}
+                  title="Company, bank and finance officer details printed on the HMO report PDFs">
+                  <Settings size={14} /> Report Settings
+                </button>
                 <div className="relative">
                 <button
                   onClick={() => setShowDownloadMenu(v => !v)}
@@ -3025,8 +2983,8 @@ export default function AccountsReceivablePage() {
                 </button>
                 {showDownloadMenu && (
                   <div className="absolute right-0 top-full mt-1 z-20 rounded-xl border bg-white shadow-lg" style={{ borderColor: 'var(--light-gray)', minWidth: 150 }}>
-                    <button onClick={isFollowUp ? downloadCollectionPdf : downloadPdf} className="w-full text-left px-4 py-2.5 text-sm hover:bg-gray-50 rounded-t-xl" style={{ color: 'var(--charcoal)' }}>
-                      {isFollowUp ? 'Collection Report (PDF)' : 'Download as PDF'}
+                    <button onClick={downloadPdf} className="w-full text-left px-4 py-2.5 text-sm hover:bg-gray-50 rounded-t-xl" style={{ color: 'var(--charcoal)' }}>
+                      {isFollowUp || isSubUnpaid ? 'Collection Report (PDF)' : 'Download as PDF'}
                     </button>
                     <button onClick={downloadExcel} className="w-full text-left px-4 py-2.5 text-sm hover:bg-gray-50 rounded-b-xl" style={{ color: 'var(--charcoal)' }}>
                       Download as Excel
