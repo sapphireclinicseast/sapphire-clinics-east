@@ -68,6 +68,41 @@ export interface HmoDirectoryFields {
   serviceCategory: string | null
 }
 
+// What an HMO's directory card still lacks, in the order the card shows it.
+// Every contact, the accredited branches, the MOA (date and signed copy), the
+// price list, the doctor-payment rule and the Services category are expected
+// of every HMO; the early-submission discount and the LOA application link are
+// not — many HMOs simply have neither. Hannah 2026-11-10: highlight the HMOs
+// with missing information in red.
+type CompletenessInput = Partial<Record<`${'accreditation' | 'submission' | 'collection'}${'Name' | 'Email' | 'Number'}`, string | null>> & {
+  accreditedBranches?: string[] | null
+  moaValidUntil?: string | Date | null
+  moaFileUrls?: string[] | null
+  priceListFileUrls?: string[] | null
+  mdPayment?: string | null
+  serviceCategory?: string | null
+}
+const DIRECTORY_CONTACTS = [['accreditation', 'Accreditation'], ['submission', 'Submission'], ['collection', 'Collection']] as const
+const blankText = (v: unknown) => typeof v !== 'string' || !v.trim()
+
+export function missingInfo(e: CompletenessInput): string[] {
+  const out: string[] = []
+  for (const [key, title] of DIRECTORY_CONTACTS) {
+    const name = blankText(e[`${key}Name`]), email = blankText(e[`${key}Email`]), number = blankText(e[`${key}Number`])
+    if (name && email && number) { out.push(`${title} contact`); continue }
+    if (name) out.push(`${title} contact name`)
+    if (email) out.push(`${title} email`)
+    if (number) out.push(`${title} number`)
+  }
+  if (!e.accreditedBranches?.length) out.push('Accredited branches')
+  if (!e.mdPayment) out.push('Doctor payment')
+  if (!e.moaValidUntil) out.push('MOA validity date')
+  if (!e.moaFileUrls?.length) out.push('Signed MOA')
+  if (!e.priceListFileUrls?.length) out.push('Price list')
+  if (blankText(e.serviceCategory)) out.push('Category in Services Section')
+  return out
+}
+
 const TEXT_FIELDS = [
   'accreditationName', 'accreditationEmail', 'accreditationNumber',
   'submissionName', 'submissionEmail', 'submissionNumber',

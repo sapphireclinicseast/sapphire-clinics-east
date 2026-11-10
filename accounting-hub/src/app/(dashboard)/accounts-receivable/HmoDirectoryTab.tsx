@@ -10,8 +10,13 @@ import { ScanUpload } from '@/components/ScanUpload'
 import { NameCombobox } from '@/components/NameCombobox'
 import { formatCurrency } from '@/lib/utils'
 import {
-  ACCREDITABLE_BRANCHES, MD_PAYMENT_LABEL, MOA_ALERT_DAYS, categoriesMatching, moaDaysLeft, moaNeedsRenewal, moaStatusText, type MdPayment,
+  ACCREDITABLE_BRANCHES, MD_PAYMENT_LABEL, MOA_ALERT_DAYS, categoriesMatching, missingInfo, moaDaysLeft, moaNeedsRenewal, moaStatusText, type MdPayment,
 } from '@/lib/hmo-directory'
+
+// Red for an HMO whose card still has gaps (lib/hmo-directory missingInfo).
+const MISSING_RED = '#B91C1C'
+const MISSING_BG = '#FEF2F2'
+const MISSING_BORDER = '#FCA5A5'
 
 const CONTACTS = [
   { key: 'accreditation', title: 'Accreditation' },
@@ -108,7 +113,7 @@ function MoaBadge({ validUntil }: { validUntil?: string | null }) {
 }
 
 function FileChips({ label, urls, missing }: { label: string; urls: string[]; missing: string }) {
-  if (!urls.length) return <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>{missing}</span>
+  if (!urls.length) return <span className="text-xs font-medium" style={{ color: MISSING_RED }}>{missing}</span>
   return (
     <>
       {urls.map((u, i) => (
@@ -127,7 +132,7 @@ function ContactCard({ title, name, email, number }: { title: string; name?: str
     <div className="min-w-0">
       <p className="text-[11px] font-semibold uppercase tracking-wide mb-1" style={{ color: 'var(--mid-gray)' }}>{title}</p>
       {!name && !email && !number ? (
-        <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>No contact yet</p>
+        <p className="text-xs font-medium" style={{ color: MISSING_RED }}>No contact yet</p>
       ) : (
         <div className="text-xs space-y-0.5" style={{ color: 'var(--charcoal)' }}>
           {name && <p className="font-medium truncate">{name}</p>}
@@ -234,6 +239,7 @@ export default function HmoDirectoryTab({ canEdit, focusWalletId = '' }: { canEd
   const [loadError, setLoadError] = useState('')
   const [search, setSearch] = useState('')
   const [renewalOnly, setRenewalOnly] = useState(false)
+  const [missingOnly, setMissingOnly] = useState(false)
   // Rows flipped from their default: closed normally, open while searching.
   const [toggledRows, setToggledRows] = useState<Set<string>>(new Set())
   // Same idea for a row's prices: showing normally, hidden while searching.
@@ -263,15 +269,18 @@ export default function HmoDirectoryTab({ canEdit, focusWalletId = '' }: { canEd
   }, [focusWalletId, entries, canEdit])
 
   const renewalCount = useMemo(() => (entries || []).filter(e => moaNeedsRenewal(e.moaValidUntil)).length, [entries])
+  const missingByWallet = useMemo(() => new Map((entries || []).map(e => [e.walletId, missingInfo(e)])), [entries])
+  const missingCount = useMemo(() => [...missingByWallet.values()].filter(m => m.length).length, [missingByWallet])
   const shown = useMemo(() => {
     const q = search.trim().toLowerCase()
     return (entries || []).filter(e => {
       if (renewalOnly && !moaNeedsRenewal(e.moaValidUntil)) return false
+      if (missingOnly && !missingByWallet.get(e.walletId)?.length) return false
       if (!q) return true
       const contacts = CONTACTS.flatMap(c => [e[`${c.key}Name`], e[`${c.key}Email`], e[`${c.key}Number`]])
       return [e.hmoName, e.serviceCategory, ...contacts].some(v => v && v.toLowerCase().includes(q))
     })
-  }, [entries, search, renewalOnly])
+  }, [entries, search, renewalOnly, missingOnly, missingByWallet])
 
   const editing = form ? entries?.find(e => e.walletId === form.walletId) : null
 
@@ -331,6 +340,10 @@ export default function HmoDirectoryTab({ canEdit, focusWalletId = '' }: { canEd
           style={renewalOnly ? { background: 'var(--teal)', color: 'white' } : { background: 'var(--off-white)', color: 'var(--charcoal)', border: '1px solid var(--light-gray)' }}>
           Needs renewal ({renewalCount})
         </button>
+        <button onClick={() => setMissingOnly(v => !v)} className="px-3 py-2 rounded-xl text-xs font-medium"
+          style={missingOnly ? { background: MISSING_RED, color: 'white' } : { background: MISSING_BG, color: MISSING_RED, border: `1px solid ${MISSING_BORDER}` }}>
+          Missing info ({missingCount})
+        </button>
         <span className="text-sm" style={{ color: 'var(--mid-gray)' }}>
           {entries ? `${shown.length} HMO${shown.length === 1 ? '' : 's'}` : 'Loading…'}
         </span>
@@ -340,7 +353,7 @@ export default function HmoDirectoryTab({ canEdit, focusWalletId = '' }: { canEd
 
       {entries && !loadError && shown.length === 0 && (
         <p className="py-10 text-center text-sm" style={{ color: 'var(--mid-gray)' }}>
-          {renewalOnly ? 'No MOA is due for renewal.' : 'No HMO matches your search.'}
+          {renewalOnly ? 'No MOA is due for renewal.' : missingOnly ? 'Every HMO card is complete.' : 'No HMO matches your search.'}
         </p>
       )}
 
@@ -350,18 +363,29 @@ export default function HmoDirectoryTab({ canEdit, focusWalletId = '' }: { canEd
         const pricesOpen = !!chosen && flippedPrices.has(e.walletId) === !!search.trim()
         const isOpen = toggledRows.has(e.walletId) !== !!search.trim()
         const branches = ACCREDITABLE_BRANCHES.filter(b => (e.accreditedBranches || []).includes(b.value))
+        const missing = missingByWallet.get(e.walletId) || []
         return (
-          <div key={e.walletId} className="rounded-xl border" style={{ borderColor: 'var(--light-gray)', background: '#fff' }}>
-            <h3 className="text-sm font-bold" style={{ color: 'var(--charcoal)' }}>
+          <div key={e.walletId} className="rounded-xl border overflow-hidden" style={{ borderColor: missing.length ? MISSING_BORDER : 'var(--light-gray)', background: '#fff' }}>
+            <h3 className="text-sm font-bold" style={{ color: missing.length ? MISSING_RED : 'var(--charcoal)', background: missing.length ? MISSING_BG : undefined }}>
               <button type="button" aria-expanded={isOpen} onClick={() => toggleRow(e.walletId)} className="w-full flex flex-wrap items-center gap-2 px-4 py-3 text-left">
                 {isOpen ? <ChevronDown size={16} style={{ color: 'var(--mid-gray)' }} /> : <ChevronRight size={16} style={{ color: 'var(--mid-gray)' }} />}
                 <span>{e.hmoName}</span>
                 <MoaBadge validUntil={e.moaValidUntil} />
+                {missing.length > 0 && (
+                  <span title={`Missing: ${missing.join(', ')}`} className="px-2 py-0.5 rounded-full text-[11px] font-semibold whitespace-nowrap text-white" style={{ background: MISSING_RED }}>
+                    {missing.length} missing
+                  </span>
+                )}
               </button>
             </h3>
 
             {isOpen && (
-            <div className="border-t px-4 py-3 space-y-3" style={{ borderColor: 'var(--light-gray)' }}>
+            <div className="border-t px-4 py-3 space-y-3" style={{ borderColor: missing.length ? MISSING_BORDER : 'var(--light-gray)' }}>
+            {missing.length > 0 && (
+              <p className="text-xs rounded-lg px-3 py-2" style={{ background: MISSING_BG, color: MISSING_RED, border: `1px solid ${MISSING_BORDER}` }}>
+                <span className="font-semibold">Missing: </span>{missing.join(', ')}
+              </p>
+            )}
             <div className="flex flex-wrap items-center gap-2">
               <FileChips label="MOA" urls={e.moaFileUrls || []} missing="No MOA file" />
               <FileChips label="Price list" urls={e.priceListFileUrls || []} missing="No price list" />
@@ -379,14 +403,14 @@ export default function HmoDirectoryTab({ canEdit, focusWalletId = '' }: { canEd
               {CONTACTS.map(c => <ContactCard key={c.key} title={c.title} name={e[`${c.key}Name`]} email={e[`${c.key}Email`]} number={e[`${c.key}Number`]} />)}
               <div className="min-w-0">
                 <p className="text-[11px] font-semibold uppercase tracking-wide mb-1" style={{ color: 'var(--mid-gray)' }}>Accredited branches</p>
-                <p className="text-xs" style={{ color: branches.length ? 'var(--charcoal)' : 'var(--mid-gray)' }}>
+                <p className={`text-xs${branches.length ? '' : ' font-medium'}`} style={{ color: branches.length ? 'var(--charcoal)' : MISSING_RED }}>
                   {branches.length ? branches.map(b => b.label).join(', ') : 'Not set'}
                 </p>
               </div>
               <div className="min-w-0">
                 <p className="text-[11px] font-semibold uppercase tracking-wide mb-1" style={{ color: 'var(--mid-gray)' }}>Terms</p>
                 <div className="text-xs space-y-1" style={{ color: 'var(--charcoal)' }}>
-                  <p>{e.mdPayment ? MD_PAYMENT_LABEL[e.mdPayment] : <span style={{ color: 'var(--mid-gray)' }}>Doctor payment not set</span>}</p>
+                  <p>{e.mdPayment ? MD_PAYMENT_LABEL[e.mdPayment] : <span className="font-medium" style={{ color: MISSING_RED }}>Doctor payment not set</span>}</p>
                   {e.mdPayment === 'CLINIC' && !e.paysClinicForMd && (
                     <p className="text-[11px]" style={{ color: '#92400e' }}>The books still treat this HMO&apos;s doctor consults as paid directly, so they post no revenue or AR.</p>
                   )}
@@ -405,7 +429,7 @@ export default function HmoDirectoryTab({ canEdit, focusWalletId = '' }: { canEd
               <div className="flex flex-wrap items-center gap-2">
                 <p className="text-xs">
                   <span className="font-semibold" style={{ color: 'var(--charcoal)' }}>Category in Services Section: </span>
-                  <span style={{ color: chosen ? 'var(--charcoal)' : 'var(--mid-gray)' }}>{chosen || (canEdit ? 'Not chosen yet. Choose it in Edit.' : 'Not chosen yet')}</span>
+                  <span className={chosen ? undefined : 'font-medium'} style={{ color: chosen ? 'var(--charcoal)' : MISSING_RED }}>{chosen || (canEdit ? 'Not chosen yet. Choose it in Edit.' : 'Not chosen yet')}</span>
                 </p>
                 {chosen && (
                   <button onClick={() => togglePrices(e.walletId)} className="inline-flex items-center gap-1 text-xs font-medium" style={{ color: 'var(--teal)' }}>
