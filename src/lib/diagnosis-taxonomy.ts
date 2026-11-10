@@ -60,7 +60,7 @@ export const FAMILIES = [
 // Hedging language. "To consider ASD" and "ASD" are different clinical claims,
 // and the roster contains both; counting them together overstates the confirmed
 // caseload, which is the number service planning actually needs.
-const HEDGE = /\b(T\/C|TO CONSIDER|R\/O|RULE ?OUT|PROBABLE|POSSIBLE|POSSIBLY|SUSPECTED|ALLEGED|AT RISK OF|WORKING IMPRESSION|FOR ASSESSMENT|FOR EVALUATION|IF APPLICABLE)\b/
+const HEDGE = /\b(T\/C|TO CONSIDER|R\/O|RULE ?OUT|PROBABLE|POSSIBLE|POSSIBLY|SUSPECTED|ALLEGED|AT RISK OF|AT RISK FOR|CONSIDER|QUESTIONABLE|WORKING IMPRESSION|FOR ASSESSMENT|FOR EVALUATION|IF APPLICABLE)\b/
 
 // Text that is a reason for visiting, a service request, or a mis-keyed field —
 // not a condition. Checked before the clinical rules so "FOR OT AND PT" does not

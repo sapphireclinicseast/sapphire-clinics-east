@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { classifyDiagnosis } from '@/lib/diagnosis-taxonomy'
 
 // Never cache — branch filter query param must always be respected
 export const dynamic = 'force-dynamic'
@@ -39,8 +40,21 @@ export async function GET(req: NextRequest) {
     },
   })
 
-  // patientId -> { diagnosis, sex, depts }
-  const patients = new Map<string, { diagnosis: string; sex: 'male' | 'female' | 'other'; depts: Map<Dept, number> }>()
+  // patientId -> { families, sex, depts }
+  //
+  // FAMILIES, not the raw string. Patient.diagnosis is a free-text box and the
+  // same condition arrives under a dozen spellings — the legacy import wrote
+  // Title Case, the public QR route uppercases whatever is typed, and front
+  // desk type what the parent said. So ASD alone was drawn as four separate
+  // rows ("ASD / Autism Spectrum Disorder", the same in capitals, "ASD", and
+  // "AUTISM SPECTRUM DISORDER"), none of them its real size, and the chart's
+  // top twelve was spent on spellings instead of conditions.
+  //
+  // lib/diagnosis-taxonomy already does this for the patient stats page; this
+  // chart simply never used it. A patient legitimately carries more than one
+  // family — "ASD, ADHD" is one child with two — and appears in each row, the
+  // same way they already appear in each department column.
+  const patients = new Map<string, { families: string[]; sex: 'male' | 'female' | 'other'; depts: Map<Dept, number> }>()
 
   for (const s of schedules) {
     if (!s.patientId || !s.patient) continue
@@ -49,6 +63,11 @@ export async function GET(req: NextRequest) {
 
     const diagnosis = s.patient.diagnosis?.trim()
     if (!diagnosis) continue
+    // "FOR OT AND PT" and "N/A" are not conditions, and "T/C ADHD" is a
+    // differential rather than a diagnosis — counting either would inflate a
+    // family with entries nobody has actually been given.
+    const match = classifyDiagnosis(diagnosis)
+    if (match.nonClinical || match.provisional || !match.families.length) continue
 
     if (filterBranches && filterBranches.length > 0) {
       const bs: string[] = (s.patient.branches as unknown as string[]).length > 0
@@ -61,7 +80,7 @@ export async function GET(req: NextRequest) {
     if (!rec) {
       const sx = s.patient.sex?.toLowerCase() ?? ''
       rec = {
-        diagnosis,
+        families: match.families,
         sex: sx.startsWith('m') ? 'male' : sx.startsWith('f') ? 'female' : 'other',
         depts: new Map(),
       }
@@ -72,7 +91,9 @@ export async function GET(req: NextRequest) {
 
   // Rank diagnoses by unique patients (across departments) and keep the top N
   const diagTotals = new Map<string, number>()
-  for (const p of patients.values()) diagTotals.set(p.diagnosis, (diagTotals.get(p.diagnosis) ?? 0) + 1)
+  for (const p of patients.values()) {
+    for (const f of p.families) diagTotals.set(f, (diagTotals.get(f) ?? 0) + 1)
+  }
   const diagnoses = [...diagTotals.entries()]
     .sort((a, b) => b[1] - a[1])
     .slice(0, TOP_DIAGNOSES)
@@ -85,20 +106,22 @@ export async function GET(req: NextRequest) {
     maleSessions: number; femaleSessions: number; otherSessions: number // confirmed sessions
   }>()
   for (const p of patients.values()) {
-    if (!keep.has(p.diagnosis)) continue
-    for (const [dept, sessions] of p.depts) {
-      const key = `${p.diagnosis}||${dept}`
-      let c = cellMap.get(key)
-      if (!c) {
-        c = {
-          diagnosis: p.diagnosis, dept,
-          male: 0, female: 0, other: 0,
-          maleSessions: 0, femaleSessions: 0, otherSessions: 0,
+    for (const family of p.families) {
+      if (!keep.has(family)) continue
+      for (const [dept, sessions] of p.depts) {
+        const key = `${family}||${dept}`
+        let c = cellMap.get(key)
+        if (!c) {
+          c = {
+            diagnosis: family, dept,
+            male: 0, female: 0, other: 0,
+            maleSessions: 0, femaleSessions: 0, otherSessions: 0,
+          }
+          cellMap.set(key, c)
         }
-        cellMap.set(key, c)
+        c[p.sex]++
+        c[`${p.sex}Sessions` as 'maleSessions' | 'femaleSessions' | 'otherSessions'] += sessions
       }
-      c[p.sex]++
-      c[`${p.sex}Sessions` as 'maleSessions' | 'femaleSessions' | 'otherSessions'] += sessions
     }
   }
 
