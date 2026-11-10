@@ -1,5 +1,5 @@
 /**
- * Shared consultant payslip PDF builder.
+ * Shared consultant payslip PDF builder (look: lib/payslip-look.ts).
  * Used by both:
  *   • the accounting hub UI (when an accountant clicks Download / Email),
  *   • the internal /api/internal/my-payslips/pdf endpoint that streams
@@ -10,8 +10,12 @@
  * URL.createObjectURL, etc.).
  */
 
-import { SCEI_LOGO_DATA_URI, SCEI_LOGO_W, SCEI_LOGO_H } from './scei-logo'
 import { BRANCH_INFO } from './branch-info'
+import {
+  PS_M, PS_TEAL, PS_TEAL_SOFT, PS_INK, PS_GRAY, PS_WHITE, PS_RED, PS_GREEN, PS_AMBER,
+  T, money, peso, payslipCompany, newPayslipDoc, drawPayslipHeader, drawPayslipCards,
+  sectionLabel, payslipTable, drawNotesBox, drawPayslipFooters, roomLeft,
+} from './payslip-look'
 
 export interface ConsultantPayslipPreview {
   consultantId: string
@@ -154,10 +158,10 @@ export interface OverrideTotals {
 
 /**
  * Build the consultant payslip PDF and return the jsPDF doc object.
- * Same pixel-for-pixel layout the accounting hub uses — extracted from
- * payroll/page.tsx so the server can call it without duplicating logic.
+ * Page 1: earnings, incentives, adjustments, deductions and summary.
+ * Page 2+: session details per unit-pay line.
+ * Look: lib/payslip-look.ts (the HMO collection report's look, portrait).
  */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export async function buildConsultantPayslipPdf(
   p: ConsultantPayslipPreview,
   extras: ExtraUnitPayLine[],
@@ -178,312 +182,203 @@ export async function buildConsultantPayslipPdf(
   const totals = overrideTotals
     ? { ...computed, gross: overrideTotals.gross, tax: overrideTotals.tax, net: overrideTotals.net }
     : computed
-  const branchInfo = BRANCH_INFO[p.branch] || BRANCH_INFO['']
+  const co = payslipCompany(p.branch)
+  const branchLabel = (BRANCH_INFO[p.branch] || BRANCH_INFO['']).name.replace(/^Sapphire Clinics East Inc\. – /, '')
   const position = POSITION_LABELS[p.department] || p.department
   const deptLabel = DEPT_LABELS[p.department] || p.department
-  const fmtDate = (iso: string) =>
-    new Date(iso).toLocaleDateString('en-PH', { month: 'long', day: 'numeric', year: 'numeric', timeZone: 'Asia/Manila' })
-  const cutoffLabel = dateRange
-    ? `${fmtDate(dateRange.start)} \u2013 ${fmtDate(dateRange.end)}`
-    : getCutoffLabel(cutoffPeriod)
+  const shortDate = (iso: string) =>
+    new Date(iso).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'Asia/Manila' })
+  const [cy, cm, ch] = cutoffPeriod.split('-')
+  const monthIdx = parseInt(cm) - 1
+  const isRegular = /^\d{4}-\d{2}-[12]$/.test(cutoffPeriod)
+  const halfLabel = ch === '1' ? '1st cut-off' : '2nd cut-off'
+  const periodTitle = isRegular ? `${MONTHS[monthIdx]} ${cy} · ${halfLabel}` : getCutoffLabel(cutoffPeriod)
+  const periodShort = isRegular ? `${halfLabel}, ${MONTHS[monthIdx].slice(0, 3)} ${cy}` : periodTitle
+  const range = dateRange ? `${shortDate(dateRange.start)} – ${shortDate(dateRange.end)}` : ''
 
-  const ORANGE: [number, number, number] = [74, 128, 115]
-  const NET_GREEN: [number, number, number] = [237, 243, 217]
-  const GOLD: [number, number, number] = [198, 152, 73]
-  const CLAY_ACCENT: [number, number, number] = [207, 157, 136]
-  const WHITE: [number, number, number] = [255, 255, 255]
-  const DARK: [number, number, number] = [30, 30, 30]
-  const MID: [number, number, number] = [80, 80, 80]
-  const LIGHT_BORDER: [number, number, number] = [210, 210, 210]
-
-  const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' })
-  const pageW = doc.internal.pageSize.getWidth()
-  const margin = 25.4
-  const contentW = pageW - margin * 2
-  let y = margin
-
-  doc.setFont('helvetica', 'bold').setFontSize(16).setTextColor(...ORANGE)
-  doc.addImage(SCEI_LOGO_DATA_URI, 'PNG', margin, 10, SCEI_LOGO_W, SCEI_LOGO_H)
-  doc.text('SAPPHIRE CLINICS EAST INC.', pageW / 2, y + 8, { align: 'center' })
-  y += 14
-
-  doc.setFontSize(9).setFont('helvetica', 'bold').setTextColor(...DARK)
-  doc.text(branchInfo.name, margin, y); y += 5
-  doc.setFont('helvetica', 'normal').setFontSize(8).setTextColor(...MID)
-  const addrLines = doc.splitTextToSize(branchInfo.address, contentW)
-  addrLines.forEach((line: string) => { doc.text(line, margin, y); y += 4.5 })
-  if (branchInfo.phone) { doc.text(branchInfo.phone, margin, y); y += 4.5 }
-  if (branchInfo.tin) { doc.text(branchInfo.tin, margin, y); y += 4.5 }
-  y += 4
-
-  doc.setFontSize(16).setFont('helvetica', 'bold').setTextColor(...DARK)
-  doc.text('PAYSLIP', pageW / 2, y, { align: 'center' })
-  y += 8
-
-  const details: [string, string][] = [
-    ['Name', p.consultantName],
-    ['Position', position],
-    ['Department', deptLabel],
-    ['Branch', branchInfo.name],
-    ['Cutoff Period', cutoffLabel],
-  ]
-  const labelColW = 42
-  for (const [label, value] of details) {
-    doc.setFontSize(9).setFont('helvetica', 'bold').setTextColor(...MID)
-    doc.text(`${label}:`, margin, y)
-    doc.setFont('helvetica', 'normal').setTextColor(...DARK)
-    doc.text(value, margin + labelColW, y)
-    y += 6
-  }
-  y += 4
-
-  const tableHeadStyles = { fillColor: ORANGE, textColor: WHITE, fontStyle: 'bold' as const, fontSize: 9, lineColor: GOLD, lineWidth: 0.5 }
-  const tableBodyStyles = { fontSize: 9, textColor: DARK, lineColor: LIGHT_BORDER, lineWidth: 0.3 }
-
-  const earningsBody: string[][] = []
-  for (const item of p.items) {
-    earningsBody.push([item.unitPayName, String(item.quantity), fmtPHP(item.unitAmount), fmtPHP(item.lineTotal)])
-  }
-  for (const e of extras) {
-    earningsBody.push([`${e.unitPayName} (added)`, String(e.qty), fmtPHP(e.unitAmount), fmtPHP(e.unitAmount * e.qty)])
-  }
-  if (p.retainerAmount > 0) {
-    earningsBody.push(['Monthly Retainer (\u00bd cutoff)', '\u2014', '\u2014', fmtPHP(p.retainerAmount)])
-  }
-
-  doc.setFontSize(9).setFont('helvetica', 'bold').setTextColor(...DARK)
-  doc.text('EARNINGS', margin, y); y += 2
-
-  autoTable(doc, {
-    startY: y,
-    head: [['Description', 'Quantity', 'Rate', 'Total']],
-    body: earningsBody,
-    theme: 'grid',
-    headStyles: tableHeadStyles,
-    bodyStyles: tableBodyStyles,
-    columnStyles: {
-      0: { cellWidth: 'auto' },
-      1: { halign: 'center', cellWidth: 22 },
-      2: { halign: 'right', cellWidth: 36 },
-      3: { halign: 'right', cellWidth: 36 },
-    },
-    margin: { left: margin, right: margin },
-  })
+  const doc = newPayslipDoc(jsPDF)
+  const W = doc.internal.pageSize.getWidth()
+  const M = PS_M
+  const header = (compact: boolean) => drawPayslipHeader(doc, co, { compact, title: 'PAYSLIP', period: periodTitle, issued: compact ? undefined : new Date() })
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  y = (doc as any).lastAutoTable?.finalY ?? y
-  y += 8
+  const lastY = () => (doc as any).lastAutoTable?.finalY as number
+  const ensure = (y: number, need: number) => (roomLeft(doc, y) < need ? (doc.addPage(), header(true)) : y)
+  const base = { ...payslipTable(), margin: { left: M, right: M, top: 27, bottom: 16 }, didDrawPage: (d: { pageNumber: number }) => { if (d.pageNumber > 1) header(true) } }
+  const R = (content: string) => ({ content, styles: { halign: 'right' as const } })
 
+  // ── Page 1 ──
+  let y = header(false)
+  y = drawPayslipCards(doc, y, {
+    who: { label: 'CONSULTANT', name: p.consultantName, lines: [position, deptLabel !== position ? deptLabel : ''] },
+    period: { label: 'PAY PERIOD', rows: [['Cut-off', periodShort], ['Dates', range || '-'], ['Branch', branchLabel]] },
+    net: { label: 'NET PAY', value: totals.net, sub: `Gross ${peso(totals.gross)}` },
+  })
+
+  // Earnings
+  const earningsBody: string[][] = []
+  for (const item of p.items) earningsBody.push([T(item.unitPayName), String(item.quantity), money(item.unitAmount), money(item.lineTotal)])
+  for (const e of extras) earningsBody.push([T(`${e.unitPayName} (added)`), String(e.qty), money(e.unitAmount), money(e.unitAmount * e.qty)])
+  if (p.retainerAmount > 0) earningsBody.push(['Monthly Retainer (½ cut-off)', '-', '-', money(p.retainerAmount)])
+  autoTable(doc, {
+    ...base,
+    startY: sectionLabel(doc, 'EARNINGS', y),
+    head: [['Description', 'Qty', 'Rate (PHP)', 'Total (PHP)']],
+    body: earningsBody.length ? earningsBody : [['No unit pay this cut-off', '', '', money(0)]],
+    foot: [[{ content: 'TOTAL EARNINGS', colSpan: 3, styles: { halign: 'right' } }, R(money(totals.totalUnitPay + p.retainerAmount))]],
+    columnStyles: { 1: { halign: 'center', cellWidth: 16 }, 2: { halign: 'right', cellWidth: 30 }, 3: { halign: 'right', cellWidth: 32 } },
+  })
+  y = lastY() + 7
+
+  // Incentives
   if (p.incentives && p.incentives.length > 0) {
-    doc.setFontSize(9).setFont('helvetica', 'bold').setTextColor(...DARK)
-    doc.text('INCENTIVES', margin, y); y += 2
-
+    y = ensure(y, 30)
     const incBody = p.incentives.map(line => {
       const d = new Date(line.date + 'T00:00:00+08:00')
       const dateStr = d.toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'Asia/Manila' })
-      return [`${line.ruleName} \u2014 ${dateStr}`, String(line.patientCount), fmtPHP(line.bonusPerUnit), fmtPHP(line.bonus)]
+      return [T(`${line.ruleName} - ${dateStr}`), String(line.patientCount), money(line.bonusPerUnit), money(line.bonus)]
     })
-
     autoTable(doc, {
-      startY: y,
-      head: [['Description', 'Sessions', 'Rate / Session', 'Total']],
+      ...base,
+      startY: sectionLabel(doc, 'INCENTIVES', y),
+      head: [['Description', 'Sessions', 'Rate / Session (PHP)', 'Total (PHP)']],
       body: incBody,
-      theme: 'grid',
-      headStyles: tableHeadStyles,
-      bodyStyles: tableBodyStyles,
-      columnStyles: {
-        0: { cellWidth: 'auto' },
-        1: { halign: 'center', cellWidth: 20 },
-        2: { halign: 'right', cellWidth: 36 },
-        3: { halign: 'right', cellWidth: 36 },
-      },
-      margin: { left: margin, right: margin },
-    })
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    y = (doc as any).lastAutoTable?.finalY ?? y
-    y += 8
+      foot: [[{ content: 'TOTAL INCENTIVES', colSpan: 3, styles: { halign: 'right' } }, R(money(p.incentiveTotal ?? p.incentives.reduce((s, l) => s + l.bonus, 0)))]],
+      columnStyles: { 1: { halign: 'center', cellWidth: 18 }, 2: { halign: 'right', cellWidth: 34 }, 3: { halign: 'right', cellWidth: 32 } },
+      })
+    y = lastY() + 7
   }
 
+  // Adjustments
   if (adjs.length > 0) {
-    const adjBody = adjs.map(a => [a.name, (a.isAddition ? '+ ' : '- ') + fmtPHP(a.amount), a.remarks || '\u2014'])
-
-    doc.setFontSize(9).setFont('helvetica', 'bold').setTextColor(...DARK)
-    doc.text('ADJUSTMENTS', margin, y); y += 2
-
+    y = ensure(y, 30)
     autoTable(doc, {
-      startY: y,
-      head: [['Description', 'Amount', 'Remarks']],
-      body: adjBody,
-      theme: 'grid',
-      headStyles: tableHeadStyles,
-      bodyStyles: tableBodyStyles,
-      columnStyles: {
-        0: { cellWidth: 'auto' },
-        1: { halign: 'right', cellWidth: 38 },
-        2: { cellWidth: 45 },
-      },
-      margin: { left: margin, right: margin },
-    })
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    y = (doc as any).lastAutoTable?.finalY ?? y
-    y += 8
-  }
-
-  // DEDUCTIONS — laid out like the employee payslip: each government
-  // contribution on its own line, then withholding tax, then the total.
-  const totalDeductions = totals.tax + totals.benefitEE
-  if (totalDeductions > 0) {
-    doc.setFontSize(9).setFont('helvetica', 'bold').setTextColor(...DARK)
-    doc.text('DEDUCTIONS', margin, y); y += 2
-
-    const dedBody: string[][] = [
-      ['SSS', fmtPHP(totals.sss)],
-      ['PhilHealth', fmtPHP(totals.philhealth)],
-      ['Pag-IBIG', fmtPHP(totals.pagibig)],
-      ['Withholding Tax (5%)', fmtPHP(totals.tax)],
-    ]
-    autoTable(doc, {
-      startY: y,
-      head: [['Description', 'Amount']],
-      body: [...dedBody, ['Total Deductions', fmtPHP(totalDeductions)]],
-      theme: 'grid',
-      headStyles: tableHeadStyles,
-      bodyStyles: tableBodyStyles,
-      columnStyles: {
-        0: { cellWidth: 'auto' },
-        1: { halign: 'right', cellWidth: 50 },
-      },
-      margin: { left: margin, right: margin },
+      ...base,
+      startY: sectionLabel(doc, 'ADJUSTMENTS', y),
+      head: [['Description', 'Amount (PHP)', 'Remarks']],
+      body: adjs.map(a => [T(a.name), (a.isAddition ? '+ ' : '- ') + money(a.amount), T(a.remarks || '-')]),
+      columnStyles: { 1: { halign: 'right', cellWidth: 34 }, 2: { cellWidth: 60 } },
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       didParseCell: (data: any) => {
-        if (data.section === 'body' && data.row.index === dedBody.length) data.cell.styles.fontStyle = 'bold'
+        if (data.section === 'body' && data.column.index === 1) data.cell.styles.textColor = adjs[data.row.index]?.isAddition ? PS_GREEN : PS_RED
       },
     })
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    y = (doc as any).lastAutoTable?.finalY ?? y
-    y += 8
+    y = lastY() + 7
   }
 
-  doc.setFontSize(9).setFont('helvetica', 'bold').setTextColor(...DARK)
-  doc.text('SUMMARY', margin, y); y += 2
-
-  type SummaryRow = { label: string; value: string; netPay?: boolean; bold?: boolean; red?: boolean }
+  // Deductions (left) beside the summary (right), notes below
+  type SummaryRow = { label: string; value: string; kind?: 'gross' | 'net' | 'less' }
   const summaryRows: SummaryRow[] = [
-    { label: 'Unit Pay Total', value: fmtPHP(totals.totalUnitPay) },
-    ...(p.retainerAmount > 0 ? [{ label: 'Retainer (\u00bd cutoff)', value: fmtPHP(p.retainerAmount) }] : []),
-    ...((p.incentiveTotal ?? 0) > 0 ? [{ label: 'Incentive Bonus', value: fmtPHP(p.incentiveTotal ?? 0) }] : []),
+    { label: 'Unit Pay Total', value: money(totals.totalUnitPay) },
+    ...(p.retainerAmount > 0 ? [{ label: 'Retainer (\u00bd cut-off)', value: money(p.retainerAmount) }] : []),
+    ...((p.incentiveTotal ?? 0) > 0 ? [{ label: 'Incentive Bonus', value: money(p.incentiveTotal ?? 0) }] : []),
     ...(adjs.length > 0 ? [{
       label: 'Adjustments (net)',
-      value: (totals.taxedAdj + totals.nonTaxedAdj >= 0 ? '+ ' : '- ') + fmtPHP(Math.abs(totals.taxedAdj + totals.nonTaxedAdj)),
+      value: (totals.taxedAdj + totals.nonTaxedAdj >= 0 ? '+ ' : '- ') + money(Math.abs(totals.taxedAdj + totals.nonTaxedAdj)),
     }] : []),
-    { label: 'Gross Pay', value: fmtPHP(totals.gross), bold: true },
-    ...(totals.tax > 0 ? [{ label: 'Tax Deduction (5%)', value: '(' + fmtPHP(totals.tax) + ')', red: true }] : []),
-    ...(totals.benefitEE > 0 ? [{ label: 'SSS / PhilHealth / Pag-IBIG', value: '(' + fmtPHP(totals.benefitEE) + ')', red: true }] : []),
-    { label: 'NET PAY', value: fmtPHP(totals.net), bold: true, netPay: true },
+    { label: 'Gross Pay', value: money(totals.gross), kind: 'gross' as const },
+    ...(totals.tax > 0 ? [{ label: 'Less: Withholding Tax (5%)', value: `(${money(totals.tax)})`, kind: 'less' as const }] : []),
+    ...(totals.benefitEE > 0 ? [{ label: 'Less: SSS / PhilHealth / Pag-IBIG', value: `(${money(totals.benefitEE)})`, kind: 'less' as const }] : []),
+    { label: 'NET PAY', value: peso(totals.net), kind: 'net' as const },
   ]
-
+  const gap = 6
+  const half = (W - 2 * M - gap) / 2
+  const totalDeductions = totals.tax + totals.benefitEE
+  const dedRows: string[][] = [
+    ['SSS', money(totals.sss)],
+    ['PhilHealth', money(totals.philhealth)],
+    ['Pag-IBIG', money(totals.pagibig)],
+    ['Withholding Tax (5%)', money(totals.tax)],
+  ]
+  y = ensure(y, Math.max(summaryRows.length, dedRows.length + 2) * 7.6 + 8)
+  const sy = sectionLabel(doc, 'SUMMARY', y, undefined, M + half + gap)
   autoTable(doc, {
-    startY: y,
-    head: undefined,
-    body: summaryRows.map(r => [r.label, r.value]),
-    theme: 'grid',
-    bodyStyles: tableBodyStyles,
-    columnStyles: {
-      0: { cellWidth: 'auto', fontStyle: 'normal' },
-      1: { halign: 'right', cellWidth: 50 },
-    },
-    margin: { left: margin, right: margin },
+    ...payslipTable(),
+    startY: sy,
+    margin: { left: M + half + gap, right: M, top: 27, bottom: 16 },
+    tableWidth: half,
+    body: summaryRows.map(r => [T(r.label), r.value]),
+    columnStyles: { 1: { halign: 'right', cellWidth: 34 } },
+    alternateRowStyles: {},
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     didParseCell: (data: any) => {
       const row = summaryRows[data.row.index]
       if (!row) return
-      if (row.netPay) {
-        data.cell.styles.fillColor = NET_GREEN
-        data.cell.styles.fontStyle = 'bold'
-        data.cell.styles.fontSize = 10
-        data.cell.styles.textColor = [30, 30, 30]
-      } else if (row.bold) {
-        data.cell.styles.fillColor = CLAY_ACCENT
-        data.cell.styles.textColor = [36, 73, 82]
-        data.cell.styles.fontStyle = 'bold'
-      } else if (row.red) {
-        data.cell.styles.textColor = [160, 30, 30]
-      }
+      if (row.kind === 'net') { data.cell.styles.fillColor = PS_TEAL; data.cell.styles.textColor = PS_WHITE; data.cell.styles.fontStyle = 'bold'; data.cell.styles.fontSize = 10 }
+      else if (row.kind === 'gross') { data.cell.styles.fillColor = PS_TEAL_SOFT; data.cell.styles.textColor = PS_TEAL; data.cell.styles.fontStyle = 'bold' }
+      else if (row.kind === 'less') data.cell.styles.textColor = PS_RED
     },
   })
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  y = (doc as any).lastAutoTable?.finalY ?? y
+  const sumBottom = lastY()
+  const hasSessions = p.items.some(item => item.sessions && item.sessions.length > 0)
+  const notes = [
+    'This payslip is computer-generated and does not require a signature.',
+    ...(p.taxDeduction === 'FIVE_PERCENT' ? ['5% withholding tax applies to taxable earnings this cut-off.'] : []),
+    ...(hasSessions ? ['Every session paid is listed on the following page(s).'] : []),
+  ]
+  if (totalDeductions > 0) {
+    // each government contribution on its own line, then withholding tax
+    sectionLabel(doc, 'DEDUCTIONS', y)
+    autoTable(doc, {
+      ...payslipTable(),
+      startY: sy,
+      margin: { left: M, right: W - M - half, top: 27, bottom: 16 },
+      tableWidth: half,
+      head: [['Description', 'Amount (PHP)']],
+      body: dedRows,
+      foot: [['TOTAL DEDUCTIONS', R(money(totalDeductions))]],
+      columnStyles: { 1: { halign: 'right', cellWidth: 30 } },
+    })
+    y = Math.max(sumBottom, lastY()) + 6
+    y = ensure(y, 24)
+    drawNotesBox(doc, M, y, W - 2 * M, notes)
+  } else {
+    drawNotesBox(doc, M, sy, half, notes, sumBottom - sy)
+  }
 
-  y += 10
-  doc.setDrawColor(...LIGHT_BORDER).setLineWidth(0.4).line(margin, y, pageW - margin, y)
-  y += 6
-  doc.setFontSize(7.5).setFont('helvetica', 'italic').setTextColor(160, 160, 160)
-  doc.text('This payslip is computer-generated and does not require a signature.', pageW / 2, y, { align: 'center' })
-  doc.text(
-    `Generated: ${new Date().toLocaleDateString('en-PH', { timeZone: 'Asia/Manila', year: 'numeric', month: 'long', day: 'numeric' })}`,
-    pageW / 2, y + 5, { align: 'center' }
-  )
-
-  // Page 2 — session details
+  // ── Page 2+: session details ──
   const itemsWithSessions = p.items.filter(item => item.sessions && item.sessions.length > 0)
   if (itemsWithSessions.length > 0) {
     doc.addPage()
-    let y2 = margin
-
-    doc.setFont('helvetica', 'bold').setFontSize(16).setTextColor(...ORANGE)
-    doc.text('SAPPHIRE CLINICS EAST INC.', pageW / 2, y2 + 8, { align: 'center' })
-    y2 += 14
-    doc.setFontSize(14).setFont('helvetica', 'bold').setTextColor(...DARK)
-    doc.text('SESSION DETAILS', pageW / 2, y2, { align: 'center' })
-    y2 += 8
-    doc.setFontSize(9).setFont('helvetica', 'bold').setTextColor(...MID)
-    doc.text(`${p.consultantName}  \u2014  ${cutoffLabel}`, pageW / 2, y2, { align: 'center' })
-    y2 += 10
+    let y2 = header(true)
+    y2 = sectionLabel(doc, 'SESSION DETAILS', y2 + 2, `${p.consultantName}   |   ${range || periodShort}`) + 4
 
     for (const item of itemsWithSessions) {
-      doc.setFontSize(10).setFont('helvetica', 'bold').setTextColor(...ORANGE)
-      const sessionQtyTotal = item.sessions!.reduce((s, x) => s + (x.quantity ?? 1), 0)
-      doc.text(`${item.unitPayName}  (${sessionQtyTotal} session${sessionQtyTotal !== 1 ? 's' : ''})`, margin, y2)
-      y2 += 2
+      y2 = ensure(y2, 30)
+      const qty = item.sessions!.reduce((s, x) => s + (x.quantity ?? 1), 0)
+      doc.setTextColor(...PS_INK); doc.setFont('helvetica', 'bold'); doc.setFontSize(8.5)
+      doc.text(T(item.unitPayName), M, y2)
+      const iw = doc.getTextWidth(T(item.unitPayName))
+      doc.setTextColor(...PS_GRAY); doc.setFont('helvetica', 'normal'); doc.setFontSize(7.5)
+      doc.text(`${qty} session${qty !== 1 ? 's' : ''}`, M + iw + 3, y2)
 
-      const sessionRows = [...item.sessions!].sort((a, b) => a.date.localeCompare(b.date)).map(s => {
-        const d = new Date(s.date + 'T00:00:00+08:00')
-        const dateStr = d.toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'Asia/Manila' })
-        const status = (s.orderStatus || 'COMPLETED').toUpperCase()
-        const statusLabel = status === 'CANCELLED' || status === 'VOIDED' ? 'Voided'
-          : status === 'REOPENED' ? 'Reopened' : 'Completed'
-        return [dateStr, s.patientName || '\u2014', s.serviceName || '\u2014', String(s.quantity ?? 1), statusLabel]
-      })
-
+      const sorted = [...item.sessions!].sort((a, b) => a.date.localeCompare(b.date))
+      const statusOf = (s: { orderStatus?: string }) => {
+        const st = (s.orderStatus || 'COMPLETED').toUpperCase()
+        return st === 'CANCELLED' || st === 'VOIDED' ? 'Voided' : st === 'REOPENED' ? 'Reopened' : 'Completed'
+      }
       autoTable(doc, {
-        startY: y2,
+        ...base,
+        startY: y2 + 2,
         head: [['Date', 'Patient', 'Service', 'Qty', 'Status']],
-        body: sessionRows,
-        theme: 'grid',
-        headStyles: { ...tableHeadStyles, fontSize: 8 },
-        bodyStyles: { ...tableBodyStyles, fontSize: 8 },
-        columnStyles: {
-          0: { cellWidth: 28 },
-          1: { cellWidth: 38 },
-          2: { cellWidth: 'auto' },
-          3: { cellWidth: 12, halign: 'center' },
-          4: { cellWidth: 22, halign: 'center' },
-        },
-        margin: { left: margin, right: margin },
+        body: sorted.map(s => {
+          const d = new Date(s.date + 'T00:00:00+08:00')
+          const dateStr = d.toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'Asia/Manila' })
+          return [dateStr, T(s.patientName || '-'), T(s.serviceName || '-'), String(s.quantity ?? 1), statusOf(s)]
+        }),
+        styles: { ...payslipTable().styles, fontSize: 7.8 },
+        columnStyles: { 0: { cellWidth: 26 }, 1: { cellWidth: 46 }, 2: { cellWidth: 'auto' }, 3: { cellWidth: 12, halign: 'center' }, 4: { cellWidth: 22, halign: 'center' } },
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         didParseCell: (data: any) => {
-          if (data.section === 'body' && data.column.index === 4) {
-            const val = data.cell.raw as string
-            if (val === 'Voided') data.cell.styles.textColor = [180, 40, 40]
-            else if (val === 'Reopened') data.cell.styles.textColor = [180, 130, 20]
-            else data.cell.styles.textColor = [30, 120, 60]
-          }
+          if (data.section !== 'body' || data.column.index !== 4) return
+          const v = data.cell.raw as string
+          data.cell.styles.textColor = v === 'Voided' ? PS_RED : v === 'Reopened' ? PS_AMBER : PS_GREEN
+          data.cell.styles.fontStyle = 'bold'
         },
       })
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      y2 = (doc as any).lastAutoTable?.finalY ?? y2
-      y2 += 8
+      y2 = lastY() + 8
     }
   }
 
+  drawPayslipFooters(doc, `${co.companyName}${co.tradeName ? `   |   ${co.tradeName}` : ''}`, `Payslip - ${p.consultantName}`)
   return doc
 }
