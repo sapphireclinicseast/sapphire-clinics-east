@@ -3346,6 +3346,24 @@ function OrderFormModal({
    ORDERS PANEL
    ══════════════════════════════════════════════════════════════ */
 
+const orderBranchLabel = (b: string) =>
+  b === 'SANDBOX_EAST' ? 'AHEA' : b === 'SANDBOX_GREENHILLS' ? 'AHGH' : b === 'VERDANA_STORE' ? 'Verdana' : b === 'AURA_INSTITUTE' ? 'AHI' : b
+
+// Marks where the search term sits inside a value (the Orders table's Ref #), so a
+// row that matched on its reference, not its order number, is obvious.
+function MarkMatch({ text, term }: { text: string; term: string }) {
+  const t = term.trim()
+  const i = t ? text.toLowerCase().indexOf(t.toLowerCase()) : -1
+  if (i < 0) return <>{text}</>
+  return (
+    <>
+      {text.slice(0, i)}
+      <mark className="rounded px-0.5" style={{ background: '#FEF3C7', color: '#92400E' }}>{text.slice(i, i + t.length)}</mark>
+      {text.slice(i + t.length)}
+    </>
+  )
+}
+
 function OrdersPanel({ branch, canSelectBranch, focusOrderId, onFocusHandled }: { branch: string; canSelectBranch: boolean; focusOrderId?: string; onFocusHandled?: () => void }) {
   const [selectedBranch, setSelectedBranch] = useState(canSelectBranch ? '' : branch)
   const [dateFrom, setDateFrom] = useState(firstOfMonth())
@@ -3536,6 +3554,39 @@ function OrdersPanel({ branch, canSelectBranch, focusOrderId, onFocusHandled }: 
         return true
       })
   ), [showVoided, statusFilter, dateFrom, dateTo, selectedBranch])
+
+  // Searching an order number that is in the books but not on screen (voided
+  // with "Show voided" off, outside the dates, another branch, another status)
+  // used to look like a wrong result — only Ref # look-alikes showed (Hannah
+  // 2026-11-10). Say why it is hidden, with one click to show it.
+  const searchedOrderNo = /^\d{1,9}$/.test(debouncedSearch.trim()) ? Number(debouncedSearch.trim()) : null
+  const searchedOrderLocal = useMemo(() => {
+    if (searchedOrderNo === null || loading) return null
+    if (applyOrderGuards(orders).some(o => Number(o.orderNumber) === searchedOrderNo)) return null // on screen
+    return orders.find(o => Number(o.orderNumber) === searchedOrderNo) ?? 'lookup'
+  }, [searchedOrderNo, loading, orders, applyOrderGuards])
+  const [searchedOrderLookup, setSearchedOrderLookup] = useState<{ num: number; order: Order | null } | null>(null)
+  useEffect(() => {
+    if (searchedOrderLocal !== 'lookup' || searchedOrderNo === null) return
+    let alive = true
+    // Outside the current filters, so ask again without them — but a branch-locked
+    // user only ever looks inside their own branch.
+    const p = new URLSearchParams({ search: String(searchedOrderNo), pageSize: '20' })
+    if (!canSelectBranch && branch) p.set('branch', branch)
+    fetch(`/api/pos/orders?${p}`)
+      .then(r => (r.ok ? r.json() : null))
+      .then(d => {
+        if (!alive) return
+        const hit = d ? (normalize(d) as Order[]).find(o => Number(o.orderNumber) === searchedOrderNo) : undefined
+        setSearchedOrderLookup({ num: searchedOrderNo, order: hit ?? null })
+      })
+      .catch(() => { if (alive) setSearchedOrderLookup(null) })
+    return () => { alive = false }
+  }, [searchedOrderLocal, searchedOrderNo, canSelectBranch, branch])
+  const hiddenOrder: { num: number; order: Order | null } | null =
+    searchedOrderNo === null || !searchedOrderLocal ? null
+      : searchedOrderLocal !== 'lookup' ? { num: searchedOrderNo, order: searchedOrderLocal }
+      : searchedOrderLookup?.num === searchedOrderNo ? searchedOrderLookup : null
 
   const fetchOrders = useCallback(async () => {
     setLoading(true)
@@ -3937,6 +3988,52 @@ function OrdersPanel({ branch, canSelectBranch, focusOrderId, onFocusHandled }: 
         </div>
       </div>
 
+      {/* Searched order number that the filters hide (or that does not exist) */}
+      {hiddenOrder && (() => {
+        const o = hiddenOrder.order
+        if (!o) {
+          return (
+            <div className="rounded-xl px-4 py-2.5 text-sm" style={{ background: '#F7F9FA', border: '1px solid var(--light-gray)', color: 'var(--charcoal)' }}>
+              There is no order #{hiddenOrder.num}{canSelectBranch ? '' : ' at this branch'}.
+              {applyOrderGuards(orders).length > 0 && ' The rows below match it in another column, such as the Ref #.'}
+            </div>
+          )
+        }
+        const day = new Date(o.transactionDate).toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' })
+        const voidedHidden = o.status === 'VOIDED' && !(showVoided || statusFilter === 'VOIDED')
+        const statusHidden = !!statusFilter && o.status !== statusFilter
+        const dateHidden = (!!dateFrom && day < dateFrom) || (!!dateTo && day > dateTo)
+        const branchHidden = !!selectedBranch && o.branch !== selectedBranch
+        const STATUS_NAME: Record<string, string> = { COMPLETED: 'Completed', REOPENED: 'Reopened', VOIDED: 'Voided' }
+        const why = [
+          voidedHidden && 'it is voided and "Show voided" is off',
+          statusHidden && !voidedHidden && `its status is ${STATUS_NAME[o.status] || o.status} and the list shows ${STATUS_NAME[statusFilter] || statusFilter} only`,
+          dateHidden && `it is dated ${formatDate(o.transactionDate)}, outside the dates shown`,
+          branchHidden && `it is a ${orderBranchLabel(o.branch)} order and the list shows ${orderBranchLabel(selectedBranch)} only`,
+        ].filter(Boolean) as string[]
+        const canShow = !branchHidden || canSelectBranch
+        const show = () => {
+          if (voidedHidden) setShowVoided(true)
+          if (statusHidden) setStatusFilter('')
+          if (dateFrom && day < dateFrom) setDateFrom(day)
+          if (dateTo && day > dateTo) setDateTo(day)
+          if (branchHidden && canSelectBranch) setSelectedBranch('')
+          setOrdColFilter({}); setOrdClinFilter([]); setOrdPage(1)
+        }
+        return (
+          <div className="flex flex-wrap items-center gap-2 rounded-xl px-4 py-2.5 text-sm" style={{ background: '#FFFBEB', border: '1px solid #FDE68A', color: '#92400E' }}>
+            <span>
+              Order <b>#{o.orderNumber}</b> ({orderBranchLabel(o.branch)} · {formatDate(o.transactionDate)} · {formatCurrency(toNum(o.netAmount))}{o.status === 'VOIDED' ? ' · Voided' : ''}) is not in the list: {why.length ? why.join('; ') : 'a column filter hides it'}.
+            </span>
+            {canShow && (
+              <button onClick={show} className="ml-auto px-3 py-1 rounded-lg text-xs font-semibold text-white" style={{ background: 'var(--teal)' }}>
+                Show it
+              </button>
+            )}
+          </div>
+        )
+      })()}
+
       {/* Orders Table */}
       <div className="rounded-2xl border bg-white overflow-x-auto" style={{ borderColor: 'var(--light-gray)' }}>
         {loading ? (
@@ -4056,7 +4153,16 @@ function OrdersPanel({ branch, canSelectBranch, focusOrderId, onFocusHandled }: 
                 const badge = ORDER_STATUS_BADGE[o.status] || ORDER_STATUS_BADGE.COMPLETED
                 return (
                   <tr key={o.id} className="border-b hover:bg-gray-50 cursor-pointer" style={{ borderColor: 'var(--light-gray)' }} onClick={() => setViewOrder(o)}>
-                    <td className="px-4 py-3 font-mono text-xs" style={{ color: 'var(--charcoal)' }}>{o.orderNumber}</td>
+                    <td className="px-4 py-3 font-mono text-xs" style={{ color: 'var(--charcoal)' }}>
+                      {o.orderNumber}
+                      {debouncedSearch.trim() && Number(o.orderNumber) !== searchedOrderNo
+                        && (o.referenceNumber || '').toLowerCase().includes(debouncedSearch.trim().toLowerCase()) && (
+                        <span className="block mt-0.5 w-fit px-1.5 py-0.5 rounded text-[10px] font-sans font-semibold whitespace-nowrap"
+                          style={{ background: '#FEF3C7', color: '#92400E' }} title={`"${debouncedSearch.trim()}" is in this order's Ref #, not its order number`}>
+                          matched Ref #
+                        </span>
+                      )}
+                    </td>
                     <td className="px-4 py-3 text-xs" style={{ color: 'var(--mid-gray)' }}>{formatDate(o.transactionDate)}</td>
                     <td className="px-4 py-3 text-xs" style={{ color: 'var(--mid-gray)' }}>
                       {o.branch === 'SANDBOX_EAST' ? 'AHEA' : o.branch === 'SANDBOX_GREENHILLS' ? 'AHGH' : o.branch === 'VERDANA_STORE' ? 'Verdana' : o.branch === 'AURA_INSTITUTE' ? 'AHI' : o.branch}
@@ -4071,7 +4177,7 @@ function OrdersPanel({ branch, canSelectBranch, focusOrderId, onFocusHandled }: 
                       {o.items.map(it => it.name).join(', ')}
                     </td>
                     <td className="px-4 py-3" style={{ color: 'var(--mid-gray)' }}>{formatClinicianName(o.clinicianName)}</td>
-                    <td className="px-4 py-3 text-xs font-mono" style={{ color: 'var(--mid-gray)' }}>{o.referenceNumber || '—'}</td>
+                    <td className="px-4 py-3 text-xs font-mono" style={{ color: 'var(--mid-gray)' }}>{o.referenceNumber ? <MarkMatch text={o.referenceNumber} term={debouncedSearch} /> : '—'}</td>
                     <td className="px-4 py-3 font-medium" style={{ color: 'var(--charcoal)' }}>
                       {formatCurrency(toNum(o.netAmount))}
                       {(o.hmoSettlements?.length || 0) > 0 && (
