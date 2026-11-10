@@ -497,6 +497,7 @@ async function pushTab(
   api: sheets_v4.Sheets, spreadsheetId: string, tab: string, grid: Grid, patientRows: number,
   payOptions: string[], robot: string,
   lastWrote?: Map<string, string>,
+  consumed?: Set<string>,
 ) {
   const need = grid.rows.length + 60
   const { id: sheetId, rowCount } = await tabId(api, spreadsheetId, tab, SAFE_COL + 8, need)
@@ -534,6 +535,8 @@ async function pushTab(
     const keep: { c: CellRef; now: string; mine: string }[] = []
     for (const c of grid.cells) {
       if (c.row >= reached) continue                // the read never got this far
+      // The pull has already taken this cell into the hub this run.
+      if (consumed?.has(`${tab}|${c.dayOfWeek} ${c.startTime}`)) continue
       const mine = lastWrote.get(`${c.row}|${c.col}`)
       if (mine === undefined) continue              // a cell this sync has not written before
       const now = norm(rows[c.row]?.[c.col])
@@ -1074,8 +1077,13 @@ async function pullTabs(
       const seen = new Set<string>()
       const want: string[] = []
       for (const n of lineNames) { if (!seen.has(n)) { seen.add(n); want.push(n) } }
-      const extraNames = slot.sheet.extras
-        .map(n => n.trim().toUpperCase()).filter(n => n && !seen.has(n))
+      // Deduped against the lines AND against each other: "+ A  +  A" is one
+      // child written twice, not an hour with two of them.
+      const extraNames: string[] = []
+      for (const n of slot.sheet.extras.map(x => x.trim().toUpperCase())) {
+        if (!n || seen.has(n)) continue
+        seen.add(n); extraNames.push(n)
+      }
 
       const resolved: string[] = []
       let bad = false
@@ -1185,6 +1193,18 @@ export async function syncBranch(branch: string, spreadsheetId: string): Promise
 
   await pullTabs(api, spreadsheetId, branch, report).catch(e => report.errors.push(`pull: ${(e as Error).message}`))
 
+  // Cells the pull has just taken into the hub.
+  //
+  // Their text has been read and acted on, so the push may write the hub's
+  // version over it — that is the whole point of a round trip. Without this
+  // the push preserves them instead, because what front desk typed and what
+  // the hub made of it are not always the same string: "+ NATIVIDAD, RAFAEL"
+  // is stored as the note "NATIVIDAD, RAFAEL" once it turns out to be nobody
+  // the clinic has on file. The cell then never settles — preserved on every
+  // push, re-applied on every pull, reported unknown every five minutes for
+  // as long as it stands.
+  const consumed = new Set(report.applied.map(a => `${a.tab}|${a.cell}`))
+
   // CASH, GL, and one entry per live insurer — mirrored from the Accounting
   // Hub's HMO wallets, so the picker cannot drift from the receivable list.
   const providers = await prisma.hmoProvider.findMany({ where: { active: true }, orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }], select: { name: true } })
@@ -1214,7 +1234,7 @@ export async function syncBranch(branch: string, spreadsheetId: string): Promise
       const { staff, slots, dated, classes } = await loadDepartment(branch, dept)
       const grid = buildGrid({ staff, slots, dated, classes, paired: PAIRED_DEPARTMENTS.has(dept) })
       if (!grid) continue
-      const res = await pushTab(api, spreadsheetId, dept, grid, patientRows, payOptions, client.identity, lastWrote.get(dept))
+      const res = await pushTab(api, spreadsheetId, dept, grid, patientRows, payOptions, client.identity, lastWrote.get(dept), consumed)
       for (const c of grid.cells) mapEntries.push({ ...c, tab: dept })
       report.pushed.push({ tab: dept, staff: grid.staffCount, rows: res.rows, kept: res.preserved })
 
@@ -1231,7 +1251,7 @@ export async function syncBranch(branch: string, spreadsheetId: string): Promise
         const iGrid = buildGrid({ ...interns, paired: PAIRED_DEPARTMENTS.has(dept) })
         if (iGrid) {
           const iTab = `${dept} INTERNS`
-          const iRes = await pushTab(api, spreadsheetId, iTab, iGrid, patientRows, payOptions, client.identity, lastWrote.get(iTab))
+          const iRes = await pushTab(api, spreadsheetId, iTab, iGrid, patientRows, payOptions, client.identity, lastWrote.get(iTab), consumed)
           for (const c of iGrid.cells) mapEntries.push({ ...c, tab: iTab })
           report.pushed.push({ tab: iTab, staff: iGrid.staffCount, rows: iRes.rows, kept: iRes.preserved })
         }
