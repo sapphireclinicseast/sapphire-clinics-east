@@ -3,7 +3,7 @@
 import { Fragment, useEffect, useState, useRef, useCallback } from 'react'
 import { daySlots, dayStarts, hourlySlots, slotMinutes, splitSpan, toMinutes, fromMinutes, isCustomLength } from '@/lib/decking-slots'
 import { internWindowCovers, internWindowLabel } from '@/lib/intern-window'
-import { ChevronDown, Plus, X, Settings2, Ban, Search, Users, CalendarCheck, CalendarPlus, CalendarDays, Percent, BarChart3, Info, Lock, Loader2, Clock, Rows3, Rows4, ChevronsDownUp, ChevronsUpDown, GraduationCap, UserCheck, AlertTriangle, MapPin, Video, Home, Building2 } from 'lucide-react'
+import { ChevronDown, Plus, X, Settings2, Ban, Search, Users, UserPlus, CalendarCheck, CalendarPlus, CalendarDays, Percent, BarChart3, Info, Lock, Loader2, Clock, Rows3, Rows4, ChevronsDownUp, ChevronsUpDown, GraduationCap, UserCheck, AlertTriangle, MapPin, Video, Home, Building2 } from 'lucide-react'
 import { DashCard, KpiCard, Skeleton, EmptyState, DeptChip, CARD_STYLE } from '../patients/dashboard/ui'
 import {
   CONTROL, CONTROL_SM, CONTROL_STYLE, LABEL, BTN_PRIMARY, BTN_SECONDARY, BTN_SM, SUBTLE_BG, TEAL_HEX, DECK_CSS,
@@ -35,6 +35,17 @@ const DEFAULT_HOURS: Record<string, { startTime: string; endTime: string }> = {
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface StaffMember { id: string; firstName: string; lastName: string; department: string; branch: string; extraBranches?: string[]; employmentType?: string | null; isInternshipSupervisor?: boolean | null; dateHired?: string | null; contractExpiry?: string | null; workArrangement?: string | null; branchEmployment?: Record<string, { arrangement?: string | null } | null> }
 interface Patient { id: string; firstName: string; lastName: string }
+/** A patient on a clinician's list with no day and no hour. */
+interface CaseEntry {
+  id: string
+  staffId: string
+  branch: string
+  department: string
+  paymentType: string
+  hmoProvider: string | null
+  reason: string | null
+  patient: { id: string; firstName: string; lastName: string }
+}
 interface SlotCapacity { staffId: string; dayOfWeek: string; startTime: string; date: string | null; capacity: number }
 interface TherapistConfig { id: string; staffId: string; workDays: string[]; startTime: string; endTime: string; useDefault: boolean; branch: string; department: string; deliveryMode?: string | null; slotsPerDay?: number | null }
 interface DeckingSlot { id: string; staffId: string; patientId: string | null; patient: Patient | null; dayOfWeek: string; startTime: string; endTime: string; branch: string; department: string; notes: string | null; disabled: boolean; paymentType?: string; isClass?: boolean; deliveryMode?: string | null; supervisorId?: string | null; date?: string | null }
@@ -66,6 +77,11 @@ const CELL_RADIUS = 6            // one radius for open, booked and unavailable 
 const OFF_BORDER  = '#DDE3E7'
 const OFF_FG      = '#66717D'
 const ONEOFF_FG   = '#BE185D'
+// The no-fixed-date list. Its own colour, so a clinician's card never reads a
+// standing case as an hour somebody is coming in.
+const CASE_FG     = '#6D28D9'
+const CASE_BORDER = '#C4B5FD'
+const CASE_BG     = '#F5F3FF'
 // Homecare accents: the brand teal, so it never reads as a pay type.
 const HOMECARE_FG     = TEAL_HEX
 const HOMECARE_BORDER = '#B9DAD6'
@@ -245,6 +261,10 @@ function shortBranch(code?: string | null): string {
 
 function addHour(time: string): string {
   const [h, m] = time.split(':').map(Number)
+  // Clamped at the end of the day. The one-off times are typed freely now, so
+  // a start of 23:30 would otherwise produce "24:30" — not a time, and the
+  // field silently rejects it, leaving the end blank with no explanation.
+  if (h >= 23) return '23:59'
   return `${String(h + 1).padStart(2, '0')}:${String(m).padStart(2, '0')}`
 }
 
@@ -667,7 +687,7 @@ function SeatsButton({ seats, onChange, where, tone }: {
   )
 }
 
-function TherapistRow({ staff, activeBranch, sectionMode, config, slots, defaultHours, capacity, onSetCapacity, onSaveConfig, onClearServiceConfig, onSaveSlot, onDeleteSlot, onOpenLoa, density = 'comfortable', collapsed = false, onToggleCollapse, datedSlots = [], onAddDated, onDatedChanged, showCapacity = true, startClosed = false }: {
+function TherapistRow({ staff, activeBranch, sectionMode, config, slots, defaultHours, capacity, onSetCapacity, caseload = [], onAddCase, onRemoveCase, onSaveConfig, onClearServiceConfig, onSaveSlot, onDeleteSlot, onOpenLoa, density = 'comfortable', collapsed = false, onToggleCollapse, datedSlots = [], onAddDated, onDatedChanged, showCapacity = true, startClosed = false }: {
   staff: StaffMember
   /** Keep the schedule form closed when nothing is set (interns). Display only. */
   startClosed?: boolean
@@ -684,6 +704,10 @@ function TherapistRow({ staff, activeBranch, sectionMode, config, slots, default
   /** `staffId|DAY|HH:MM` → patients that hour holds, where it is not one. */
   capacity: Map<string, number>
   onSetCapacity: (staffId: string, department: string, dayOfWeek: string, startTime: string, next: number) => Promise<void>
+  /** This clinician's patients with no day and no hour. */
+  caseload?: CaseEntry[]
+  onAddCase?: (staffId: string, department: string, patient: Patient, reason: string) => Promise<void>
+  onRemoveCase?: (id: string) => Promise<void>
   config: TherapistConfig | undefined
   slots: DeckingSlot[]
   defaultHours: { startTime: string; endTime: string }
@@ -739,6 +763,10 @@ function TherapistRow({ staff, activeBranch, sectionMode, config, slots, default
   const [pendingPatient, setPendingPatient] = useState<
     { dayOfWeek: string; slotTime: string; patient: Patient } | null
   >(null)
+  // The no-fixed-date list: whether the add row is open, and what is typed in
+  // its reason field before a patient has been picked.
+  const [addingCase, setAddingCase] = useState(false)
+  const [caseReason, setCaseReason] = useState('')
   const dualTagged = isDualTagged(arrangementFor(staff, activeBranch))
 
   function onPatientPicked(dayOfWeek: string, slotTime: string, patient: Patient) {
@@ -1750,7 +1778,14 @@ function TherapistRow({ staff, activeBranch, sectionMode, config, slots, default
               <div className="grid grid-cols-2 gap-2">
                 <div>
                   <label className={LABEL} style={{ color: 'var(--mid-gray)' }} htmlFor={`ds-start-${staff.id}`}>From</label>
-                  <select id={`ds-start-${staff.id}`} value={datedForm.startTime}
+                  {/* A clock, not a list of whole hours.
+                      A one-off is somebody coming in at a time they agreed —
+                      2:30, 2:45, quarter past — and the dropdown only offered
+                      the hour, so the nearest the board could record was wrong
+                      by up to half an hour. The field steps in five minutes
+                      and accepts anything typed. */}
+                  <input id={`ds-start-${staff.id}`} type="time" step={300}
+                    value={datedForm.startTime}
                     onChange={e => setDatedForm(f => ({
                       ...f,
                       startTime: e.target.value,
@@ -1759,21 +1794,14 @@ function TherapistRow({ staff, activeBranch, sectionMode, config, slots, default
                       // no explanation.
                       endTime: f.endTime <= e.target.value ? addHour(e.target.value) : f.endTime,
                     }))}
-                    className={`${CONTROL} w-full`} style={{ ...CONTROL_STYLE, width: '100%' }}>
-                    {generateHourlySlots('07:00', '21:00').map(t => (
-                      <option key={t} value={t}>{formatTime(t)}</option>
-                    ))}
-                  </select>
+                    className={`${CONTROL} w-full`} style={{ ...CONTROL_STYLE, width: '100%' }} />
                 </div>
                 <div>
                   <label className={LABEL} style={{ color: 'var(--mid-gray)' }} htmlFor={`ds-end-${staff.id}`}>To</label>
-                  <select id={`ds-end-${staff.id}`} value={datedForm.endTime}
+                  <input id={`ds-end-${staff.id}`} type="time" step={300}
+                    value={datedForm.endTime}
                     onChange={e => setDatedForm(f => ({ ...f, endTime: e.target.value }))}
-                    className={`${CONTROL} w-full`} style={{ ...CONTROL_STYLE, width: '100%' }}>
-                    {generateHourlySlots('08:00', '22:00')
-                      .filter(t => t > datedForm.startTime)
-                      .map(t => (<option key={t} value={t}>{formatTime(t)}</option>))}
-                  </select>
+                    className={`${CONTROL} w-full`} style={{ ...CONTROL_STYLE, width: '100%' }} />
                 </div>
               </div>
               <div className="col-span-2">
@@ -2248,6 +2276,87 @@ function TherapistRow({ staff, activeBranch, sectionMode, config, slots, default
                 <CalendarPlus size={12} /> One-off date
               </button>
             )}
+            {onAddCase && (
+              <button type="button" onClick={() => setAddingCase(true)}
+                className={BTN_SM}
+                title="A patient on this clinician's list with no day and no hour — an annulment case and the like"
+                style={{ background: '#fff', border: `1px dashed ${CASE_BORDER}`, color: CASE_FG }}>
+                <UserPlus size={12} /> No fixed date
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
+
+      {/* ── No fixed date ──────────────────────────────────────────────────
+          Patients this clinician carries with no day and no hour: an
+          annulment evaluation runs over whatever sittings it needs, arranged
+          between the psychologist and the family. Listed, never drawn as an
+          hour — the work occupies no time on the board, and counting it as a
+          filled slot would make the fill rate describe something that is not
+          happening. Dates, when there are any, are booked as one-offs above. */}
+      {showBody && onAddCase && (caseload.length > 0 || addingCase) && (
+        <div className="px-3 pb-3">
+          <div className="rounded-xl px-3 py-2.5" style={{ background: CASE_BG, border: `1px solid ${CASE_BORDER}` }}>
+            <div className="flex items-center gap-2 mb-2">
+              <UserPlus size={12} style={{ color: CASE_FG }} aria-hidden />
+              <p className="text-[11px] font-bold uppercase tracking-wider" style={{ color: CASE_FG }}>
+                No fixed date
+              </p>
+              <span className="text-[11px]" style={{ color: 'var(--mid-gray)' }}>
+                {caseload.length} {caseload.length === 1 ? 'patient' : 'patients'} &middot; no hour held on the board
+              </span>
+            </div>
+
+            <ul className="flex flex-col gap-1">
+              {caseload.map(c => (
+                <li key={c.id} className="flex items-center gap-2 rounded-lg px-2 py-1.5"
+                  style={{ background: '#fff', border: `1px solid ${CASE_BORDER}` }}>
+                  <span className="flex-1 min-w-0 truncate text-[11.5px] font-semibold" style={{ color: 'var(--charcoal)' }}>
+                    {personLabel(c.patient)}
+                  </span>
+                  {c.reason && (
+                    <span className="truncate text-[10.5px] max-w-[45%]" style={{ color: 'var(--mid-gray)' }} title={c.reason}>
+                      {c.reason}
+                    </span>
+                  )}
+                  {onRemoveCase && (
+                    <button type="button" onClick={() => void onRemoveCase(c.id)}
+                      className="dk-btn dk-icon-btn rounded p-0.5 flex-shrink-0" style={{ color: '#B0453A' }}
+                      title="Take off this list" aria-label={`Take ${personLabel(c.patient)} off the list`}>
+                      <X size={11} />
+                    </button>
+                  )}
+                </li>
+              ))}
+            </ul>
+
+            {addingCase ? (
+              <div className="mt-2 flex flex-col gap-1.5">
+                <input
+                  value={caseReason}
+                  onChange={e => setCaseReason(e.target.value)}
+                  placeholder="Why — annulment, for assessment, a case number (optional)"
+                  className={CONTROL} style={{ ...CONTROL_STYLE, width: '100%', fontSize: '0.72rem' }}
+                />
+                <PatientCellSearch
+                  current={null}
+                  onSelect={async p => {
+                    await onAddCase(staff.id, staff.department, p, caseReason.trim())
+                    setCaseReason(''); setAddingCase(false)
+                  }}
+                  onClear={() => { setCaseReason(''); setAddingCase(false) }}
+                  onClose={() => setAddingCase(false)}
+                />
+              </div>
+            ) : (
+              <button type="button" onClick={() => setAddingCase(true)}
+                className={`${BTN_SM} mt-2`}
+                style={{ background: '#fff', border: `1px dashed ${CASE_BORDER}`, color: CASE_FG }}>
+                <Plus size={12} /> Add a patient
+              </button>
+            )}
           </div>
         </div>
       )}
@@ -2473,6 +2582,8 @@ export default function DeckingClient({ role }: { role: string }) {
   // Which hours have been declared shared: `staffId|DAY|HH:MM` → 2 or 3.
   // Absent means one patient, which is almost every hour in the clinic.
   const [capacity, setCapacity] = useState<Map<string, number>>(new Map())
+  // Patients carried with no day and no hour, by clinician.
+  const [caseload, setCaseload] = useState<CaseEntry[]>([])
   const [slots, setSlots] = useState<DeckingSlot[]>([])
   const [clinicHoursData, setClinicHoursData] = useState<AllClinicHours>({})
 
@@ -2541,10 +2652,11 @@ export default function DeckingClient({ role }: { role: string }) {
     const req = ++branchReq.current
     setLoadingData(true)
     try {
-      const [cfgs, slts, caps] = await Promise.all([
+      const [cfgs, slts, caps, cases] = await Promise.all([
         fetch(`/api/decking/therapists?branch=${branch}`).then(r => { if (!r.ok) throw new Error(String(r.status)); return r.json() }),
         fetch(`/api/decking/slots?branch=${branch}&includeDated=1`).then(r => { if (!r.ok) throw new Error(String(r.status)); return r.json() }),
         fetch(`/api/decking/capacity?branch=${branch}`).then(r => (r.ok ? r.json() : [])).catch(() => []),
+        fetch(`/api/decking/caseload?branch=${branch}`).then(r => (r.ok ? r.json() : [])).catch(() => []),
       ])
       if (req !== branchReq.current) return
       setConfigs(Array.isArray(cfgs) ? cfgs : [])
@@ -2552,6 +2664,7 @@ export default function DeckingClient({ role }: { role: string }) {
       setCapacity(new Map((Array.isArray(caps) ? caps : [])
         .filter((c: SlotCapacity) => !c.date)
         .map((c: SlotCapacity) => [`${c.staffId}|${c.dayOfWeek}|${c.startTime}`, c.capacity])))
+      setCaseload(Array.isArray(cases) ? cases : [])
       setLoadedBranch(branch)
       setDataError(false)
     } catch {
@@ -2560,6 +2673,7 @@ export default function DeckingClient({ role }: { role: string }) {
       setConfigs([])
       setSlots([])
       setCapacity(new Map())
+      setCaseload([])
       setLoadedBranch(null)
       setDataError(true)
     } finally {
@@ -2911,6 +3025,37 @@ export default function DeckingClient({ role }: { role: string }) {
       })
       alert((await res.json().catch(() => null))?.error ?? 'That change could not be saved.')
     }
+  }
+
+  /** Put a patient on a clinician's list — no day, no hour. */
+  async function handleAddCase(staffId: string, department: string, patient: Patient, reason: string) {
+    const res = await fetch('/api/decking/caseload', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        staffId, patientId: patient.id, branch: activeBranch, department,
+        reason, deliveryMode: sectionMode,
+      }),
+    })
+    if (!res.ok) {
+      alert((await res.json().catch(() => null))?.error ?? 'That patient could not be added.')
+      return
+    }
+    const added: CaseEntry = await res.json()
+    setCaseload(list => [...list, added])
+  }
+
+  async function handleRemoveCase(id: string) {
+    const res = await fetch('/api/decking/caseload', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id }),
+    })
+    if (!res.ok) {
+      alert((await res.json().catch(() => null))?.error ?? 'That patient could not be taken off the list.')
+      return
+    }
+    setCaseload(list => list.filter(c => c.id !== id))
   }
 
   async function handleSaveConfig(staffId: string, data: { workDays: string[]; startTime: string; endTime: string; useDefault: boolean; branch: string; department: string; deliveryMode?: string | null; slotsPerDay?: number | null }) {
@@ -3542,6 +3687,9 @@ export default function DeckingClient({ role }: { role: string }) {
                       sectionMode={sectionMode}
                       capacity={capacity}
                       onSetCapacity={handleSetCapacity}
+                      caseload={caseload.filter(c => c.staffId === s.id)}
+                      onAddCase={handleAddCase}
+                      onRemoveCase={handleRemoveCase}
                       config={configMap.get(s.id)}
                       slots={slotsByStaff.get(s.id) ?? []}
                       defaultHours={resolvedDefaultHours}

@@ -338,6 +338,7 @@ model Patient {
   viberSubscriptions    ViberSubscription[]
   surveyAssignments     SurveyAssignment[]
   deckingSlots          DeckingSlot[]
+  deckingCaseload       DeckingCaseload[]
   referralTokens        ReferralUploadToken[]
   pwdIdTokens           PwdIdUploadToken[]
   cancellationLogs      CancellationLog[]
@@ -656,6 +657,7 @@ model Staff {
   deckingConfigs         DeckingTherapistConfig[]
   deckingSlots           DeckingSlot[]
   deckingCapacities      DeckingSlotCapacity[]
+  deckingCaseload        DeckingCaseload[]
   peerEvalAssor          PeerEvalAssignment[]     @relation("PeerEvalAssor")
   peerEvalAssee          PeerEvalAssignment[]     @relation("PeerEvalAssee")
   peerEvalRespAssor      PeerEvalResponse[]       @relation("PeerEvalRespAssor")
@@ -2700,6 +2702,43 @@ model DeckingSlotCapacity {
   updatedAt  DateTime  @updatedAt
 
   @@unique([staffId, dayOfWeek, startTime, date])
+  @@index([branch, department])
+}
+
+/// A patient attached to a clinician with NO day and NO hour.
+///
+/// Some work does not sit in an hour on a board. An annulment evaluation runs
+/// over whatever sittings it needs, arranged between the psychologist and the
+/// family; the clinic still has to know whose case it is, and front desk still
+/// have to be able to answer "who is Dr Chua carrying at the moment".
+///
+/// Deliberately NOT a DeckingSlot with the time left blank. Every part of this
+/// module reads a slot as an hour — the grid draws one, the capacity maths
+/// counts one, the snapshot files one as filled or open, the spreadsheet gives
+/// one a cell. A row with no hour would be drawn somewhere, counted as
+/// something, and would distort the fill rate for work that occupies no time
+/// on the board at all.
+///
+/// A standing record: it says whose case this is, not when they are coming. It
+/// stays until the case closes, and dates are booked separately as one-offs.
+model DeckingCaseload {
+  id          String   @id @default(cuid())
+  staffId     String
+  staff       Staff    @relation(fields: [staffId], references: [id], onDelete: Cascade)
+  patientId   String
+  patient     Patient  @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  branch      String
+  department  String
+  /// Same vocabulary as a slot — front desk colour-code by it everywhere else.
+  paymentType String   @default("CASH")
+  hmoProvider String?
+  /// Why they are on the list: "annulment", "for assessment", a case number.
+  reason      String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  /// One entry per patient per clinician. Twice is a mistake, not two cases.
+  @@unique([staffId, patientId])
   @@index([branch, department])
 }
 
