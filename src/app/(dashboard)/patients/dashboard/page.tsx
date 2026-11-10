@@ -621,9 +621,14 @@ export default function PatientDashboardPage() {
             {/* ── Affinity matrix ── */}
             <div>
               <SubHeading title="Pairwise Affinity Matrix">
-                Row = base service · Each cell = chance that row patient also uses that column service · ✓ = statistically significant after Bonferroni correction
+                Row = base service · Each cell = chance that row patient also uses that column service · ✓ = significant after Benjamini–Hochberg correction across the 15 distinct pairs (q &lt; 0.05)
               </SubHeading>
-              {/* Legend */}
+              {/* Legend. The colour follows LIFT, which is the band these
+                  cells have always been shaded by; the cell also prints a risk
+                  ratio, and the two legitimately differ — lift divides by the
+                  rate across everyone, RR by the rate among patients who do
+                  NOT use the row service. Saying so stops the pair reading as
+                  a contradiction. */}
               <div className="flex flex-wrap gap-2 mb-4">
                 {[
                   { label: '↑↑ Strong — over 2× more likely than chance',    bg: '#dcfce7', fg: '#15803d' },
