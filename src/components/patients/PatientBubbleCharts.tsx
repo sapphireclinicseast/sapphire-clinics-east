@@ -80,8 +80,8 @@ export default function PatientBubbleCharts({ data }: { data: DiagnosisDeptData 
         Diagnosis × Department × Sex
       </p>
       <p className="text-xs mt-0.5 mb-4" style={{ color: 'var(--mid-gray)' }}>
-        Top {diagnoses.length} diagnoses (most patients first) · bubble size = total confirmed sessions
-        they've had with us · pink = female, teal = male · hover for patients and sessions per patient ·
+        Top {diagnoses.length} diagnoses (most patients first) · bubble size = number of patients ·
+        pink = female, teal = male · hover for sessions with us ·
         a patient seen by two departments appears in both columns
       </p>
       <ResponsiveContainer width="100%" height={height}>
@@ -103,7 +103,7 @@ export default function PatientBubbleCharts({ data }: { data: DiagnosisDeptData 
             width={170}
             tick={{ fontSize: 11, fill: 'var(--mid-gray)' }}
           />
-          <ZAxis type="number" dataKey="sessions" name="Sessions" range={[60, 1100]} />
+          <ZAxis type="number" dataKey="patients" name="Patients" range={[60, 1100]} />
           <Tooltip
             cursor={{ strokeDasharray: '3 3' }}
             content={({ active, payload }) => {
