@@ -35,6 +35,7 @@ const DEFAULT_HOURS: Record<string, { startTime: string; endTime: string }> = {
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface StaffMember { id: string; firstName: string; lastName: string; department: string; branch: string; extraBranches?: string[]; employmentType?: string | null; isInternshipSupervisor?: boolean | null; dateHired?: string | null; contractExpiry?: string | null; workArrangement?: string | null; branchEmployment?: Record<string, { arrangement?: string | null } | null> }
 interface Patient { id: string; firstName: string; lastName: string }
+interface SlotCapacity { staffId: string; dayOfWeek: string; startTime: string; date: string | null; capacity: number }
 interface TherapistConfig { id: string; staffId: string; workDays: string[]; startTime: string; endTime: string; useDefault: boolean; branch: string; department: string; deliveryMode?: string | null; slotsPerDay?: number | null }
 interface DeckingSlot { id: string; staffId: string; patientId: string | null; patient: Patient | null; dayOfWeek: string; startTime: string; endTime: string; branch: string; department: string; notes: string | null; disabled: boolean; paymentType?: string; isClass?: boolean; deliveryMode?: string | null; supervisorId?: string | null; date?: string | null }
 
@@ -633,7 +634,40 @@ function CustomSlotModal({ staff, activeBranch, workDays, hourlyStarts = [], onC
 }
 
 // ─── Therapist Row ─────────────────────────────────────────────────────────────
-function TherapistRow({ staff, activeBranch, sectionMode, config, slots, defaultHours, onSaveConfig, onClearServiceConfig, onSaveSlot, onDeleteSlot, onOpenLoa, density = 'comfortable', collapsed = false, onToggleCollapse, datedSlots = [], onAddDated, onDatedChanged, showCapacity = true, startClosed = false }: {
+/**
+ * How many patients this one hour may hold: 1, 2 or 3, cycled by clicking.
+ *
+ * Almost every hour is one patient, so the control stays out of the way until
+ * the pointer is on the cell — and then stays put once an hour is shared, because
+ * which hours are shared is something front desk need to be able to SEE on the
+ * board rather than discover by hovering.
+ *
+ * It is the declaration that matters, not the count: an hour declared for two
+ * gets a second validated dropdown on the spreadsheet while it is still empty,
+ * which is the whole point. Typing a second child's name into free text could
+ * never be checked against the patient list, and a single misspelling booked
+ * nobody at all.
+ */
+function SeatsButton({ seats, onChange, where, tone }: {
+  seats: number
+  onChange: (next: number) => void
+  where: string
+  tone: string
+}) {
+  const next = seats >= 3 ? 1 : seats + 1
+  return (
+    <button type="button"
+      onClick={e => { e.stopPropagation(); onChange(next) }}
+      title={`${seats === 1 ? 'One patient' : `${seats} patients`} this hour — click for ${next === 1 ? 'one' : next}`}
+      aria-label={`Patients allowed at ${where}: ${seats}. Change to ${next}.`}
+      className={`dk-btn dk-icon-btn rounded px-0.5 flex items-center gap-0.5 flex-shrink-0${seats > 1 ? '' : ' dk-reveal'}`}
+      style={{ color: tone, fontSize: 9, fontWeight: 800, lineHeight: 1 }}>
+      <Users size={10} aria-hidden />{seats}
+    </button>
+  )
+}
+
+function TherapistRow({ staff, activeBranch, sectionMode, config, slots, defaultHours, capacity, onSetCapacity, onSaveConfig, onClearServiceConfig, onSaveSlot, onDeleteSlot, onOpenLoa, density = 'comfortable', collapsed = false, onToggleCollapse, datedSlots = [], onAddDated, onDatedChanged, showCapacity = true, startClosed = false }: {
   staff: StaffMember
   /** Keep the schedule form closed when nothing is set (interns). Display only. */
   startClosed?: boolean
@@ -647,6 +681,9 @@ function TherapistRow({ staff, activeBranch, sectionMode, config, slots, default
   activeBranch: string
   /** The service this board is showing, or null on an aggregate view. */
   sectionMode: string | null
+  /** `staffId|DAY|HH:MM` → patients that hour holds, where it is not one. */
+  capacity: Map<string, number>
+  onSetCapacity: (staffId: string, department: string, dayOfWeek: string, startTime: string, next: number) => Promise<void>
   config: TherapistConfig | undefined
   slots: DeckingSlot[]
   defaultHours: { startTime: string; endTime: string }
@@ -793,6 +830,13 @@ function TherapistRow({ staff, activeBranch, sectionMode, config, slots, default
   )
   // The rows this consultant's day is divided into — whole hours unless they
   // are set to a patient count, in which case the window is divided backwards.
+  // What the board says this hour may hold — never fewer than the patients
+  // already in it, which is how adding a second child in the hub opens the
+  // second line on the spreadsheet without anyone declaring anything.
+  const seatsAt = (day: string, time: string) => Math.min(3, Math.max(
+    capacity.get(`${staff.id}|${day}|${time}`) ?? 1,
+    getSlotsForCell(day, time).length,
+  ))
   const daySlotList = config ? daySlots(config.startTime, config.endTime, config.slotsPerDay) : []
   const timeSlots = daySlotList.map(s => s.startTime)
   const customLength = isCustomLength(config?.slotsPerDay)
@@ -1988,6 +2032,12 @@ function TherapistRow({ staff, activeBranch, sectionMode, config, slots, default
                                 {/* Says what a click does once the pointer is on it. */}
                                 <span className="truncate"><span className="dk-open-idle">Available</span><span className="dk-open-hover">Add patient</span></span>
                               </button>
+                              <SeatsButton
+                                seats={seatsAt(day, slot)}
+                                where={where}
+                                tone={OPEN_FG}
+                                onChange={n => void onSetCapacity(staff.id, staff.department, day, slot, n)}
+                              />
                               <button type="button"
                                 onClick={() => handleDisableSlot(day, slot)}
                                 title="Mark unavailable (break, blocked hour)"
@@ -2053,6 +2103,14 @@ function TherapistRow({ staff, activeBranch, sectionMode, config, slots, default
                                         style={{ ...miniBtn, border: `1px solid ${st.border}`, color: st.fg, fontWeight: 800 }}>
                                         LOA
                                       </button>
+                                    )}
+                                    {isLast && (
+                                      <SeatsButton
+                                        seats={seatsAt(day, slot)}
+                                        where={where}
+                                        tone={st.fg}
+                                        onChange={n => void onSetCapacity(staff.id, staff.department, day, slot, n)}
+                                      />
                                     )}
                                     {isLast && cellSlots.length < 3 && (
                                       <button type="button"
@@ -2412,6 +2470,9 @@ export default function DeckingClient({ role }: { role: string }) {
 
   const [staff, setStaff] = useState<StaffMember[]>([])
   const [configs, setConfigs] = useState<TherapistConfig[]>([])
+  // Which hours have been declared shared: `staffId|DAY|HH:MM` → 2 or 3.
+  // Absent means one patient, which is almost every hour in the clinic.
+  const [capacity, setCapacity] = useState<Map<string, number>>(new Map())
   const [slots, setSlots] = useState<DeckingSlot[]>([])
   const [clinicHoursData, setClinicHoursData] = useState<AllClinicHours>({})
 
@@ -2480,13 +2541,17 @@ export default function DeckingClient({ role }: { role: string }) {
     const req = ++branchReq.current
     setLoadingData(true)
     try {
-      const [cfgs, slts] = await Promise.all([
+      const [cfgs, slts, caps] = await Promise.all([
         fetch(`/api/decking/therapists?branch=${branch}`).then(r => { if (!r.ok) throw new Error(String(r.status)); return r.json() }),
         fetch(`/api/decking/slots?branch=${branch}&includeDated=1`).then(r => { if (!r.ok) throw new Error(String(r.status)); return r.json() }),
+        fetch(`/api/decking/capacity?branch=${branch}`).then(r => (r.ok ? r.json() : [])).catch(() => []),
       ])
       if (req !== branchReq.current) return
       setConfigs(Array.isArray(cfgs) ? cfgs : [])
       setSlots(Array.isArray(slts) ? slts : [])
+      setCapacity(new Map((Array.isArray(caps) ? caps : [])
+        .filter((c: SlotCapacity) => !c.date)
+        .map((c: SlotCapacity) => [`${c.staffId}|${c.dayOfWeek}|${c.startTime}`, c.capacity])))
       setLoadedBranch(branch)
       setDataError(false)
     } catch {
@@ -2494,6 +2559,7 @@ export default function DeckingClient({ role }: { role: string }) {
       // Never leave one branch's slots on screen under the other's name.
       setConfigs([])
       setSlots([])
+      setCapacity(new Map())
       setLoadedBranch(null)
       setDataError(true)
     } finally {
@@ -2804,6 +2870,46 @@ export default function DeckingClient({ role }: { role: string }) {
       setLoaPanel({ loa, slot })
     } finally {
       setLoaBusy(null)
+    }
+  }
+
+  /**
+   * How many patients ONE hour of this consultant's week may hold.
+   *
+   * One is the default and the overwhelming majority, and it is stored as the
+   * absence of a row. Declaring more is what gives the hour a second — and
+   * third — real dropdown line on the spreadsheet, instead of asking front
+   * desk to type a name by hand on the notes line where nothing can check it.
+   */
+  async function handleSetCapacity(
+    staffId: string, department: string, dayOfWeek: string, startTime: string, next: number,
+  ) {
+    const key = `${staffId}|${dayOfWeek}|${startTime}`
+    const before = capacity.get(key) ?? 1
+    // Moved on screen first: the board is a working surface and a seat count
+    // that waits for a round trip reads as a click that did nothing.
+    setCapacity(m => {
+      const copy = new Map(m)
+      if (next <= 1) copy.delete(key); else copy.set(key, next)
+      return copy
+    })
+    const res = await fetch('/api/decking/capacity', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        staffId, branch: activeBranch, department, dayOfWeek, startTime,
+        capacity: next, deliveryMode: sectionMode,
+      }),
+    })
+    if (!res.ok) {
+      // Put it back, and say what the server said — a silent revert looks like
+      // the board losing the click rather than refusing it.
+      setCapacity(m => {
+        const copy = new Map(m)
+        if (before <= 1) copy.delete(key); else copy.set(key, before)
+        return copy
+      })
+      alert((await res.json().catch(() => null))?.error ?? 'That change could not be saved.')
     }
   }
 
@@ -3434,6 +3540,8 @@ export default function DeckingClient({ role }: { role: string }) {
                       staff={s}
                       activeBranch={activeBranch}
                       sectionMode={sectionMode}
+                      capacity={capacity}
+                      onSetCapacity={handleSetCapacity}
                       config={configMap.get(s.id)}
                       slots={slotsByStaff.get(s.id) ?? []}
                       defaultHours={resolvedDefaultHours}
@@ -3582,6 +3690,8 @@ export default function DeckingClient({ role }: { role: string }) {
                               staff={s}
                               activeBranch={activeBranch}
                               sectionMode={sectionMode}
+                              capacity={capacity}
+                              onSetCapacity={handleSetCapacity}
                               config={configMap.get(s.id)}
                               slots={mine}
                               defaultHours={resolvedDefaultHours}
