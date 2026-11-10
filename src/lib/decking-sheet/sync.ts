@@ -30,10 +30,11 @@ import { sheetsClient } from '@/lib/google-sheets-auth'
 import { recordDeckingSnapshot } from '@/lib/decking-snapshot'
 import {
   payLabel,
-  buildGrid, nameFor, hhmm, parsePay,
+  buildGrid, nameFor, hhmm, parsePay, spanLabel, DAYS,
   SAFE_COL, FREE_TEXT_HINT, FREE_TEXT_HINTS, BLOCKED, BREAK, INK,
   type SheetSlot, type SheetStaff, type SheetClass, type Grid, type CellRef,
 } from './grid'
+import { daySlots } from '@/lib/decking-slots'
 import type { sheets_v4 } from 'googleapis'
 
 export const DEPARTMENTS = ['OT', 'PT', 'SLP', 'SPED', 'MD', 'PSYCHOLOGY'] as const
@@ -57,6 +58,21 @@ const MAX_PER_CELL = 3
  */
 const MAX_BLANKED_PER_TAB = 40
 const PATIENTS_TAB = '_patients'
+const OPEN_TAB = 'OPEN SLOTS'
+const OPEN_DATA_TAB = '_open'
+
+/** One bookable hour with a seat still free in it. */
+interface OpenSlot {
+  dayIdx: number
+  day: string
+  dayLabel: string
+  timeKey: string
+  timeLabel: string
+  department: string
+  clinician: string
+  free: number
+  seats: number
+}
 
 export interface SyncReport {
   branch: string
@@ -492,6 +508,167 @@ async function tabId(api: sheets_v4.Sheets, spreadsheetId: string, title: string
     requestBody: { requests: [{ addSheet: { properties: { title, hidden, gridProperties: { rowCount: rows, columnCount: cols } } } }] },
   })
   return { id: added.data.replies![0].addSheet!.properties!.sheetId!, rowCount: rows }
+}
+
+/**
+ * Which hours of a department still have a seat free.
+ *
+ * Worked out from the HUB — the same schedules, slots and capacities the grid
+ * is drawn from — and not by reading the department tabs.
+ *
+ * It used to be the other way round: a frozen list of hours, each carrying a
+ * formula pointing at a cell like =OT!G108, generated once by hand. Every
+ * change to the board's shape moved the cells out from under those references,
+ * and by the time this was written 266 of the 604 rows pointed at something
+ * that was no longer a patient cell at all — one of them was reading a PAYMENT
+ * cell and calling the hour taken. A reference that has to be re-derived every
+ * time the layout moves is a reference that will be wrong.
+ *
+ * Reading the hub also answers both halves of the question at once: the pull
+ * runs before the push, so anything typed into the spreadsheet is already in
+ * the hub by the time this is built. An hour is listed when the decking
+ * schedule says it exists, nobody has closed it, and it has a free seat.
+ */
+function openSlotsFor(
+  department: string,
+  staff: SheetStaff[],
+  slots: SheetSlot[],
+  capacity: Map<string, number>,
+): OpenSlot[] {
+  const weekly = slots.filter(s => !s.date)
+  const at = new Map<string, SheetSlot[]>()
+  for (const s of weekly) {
+    const k = `${s.staffId}|${s.dayOfWeek}|${s.startTime}`
+    at.set(k, [...(at.get(k) ?? []), s])
+  }
+
+  const out: OpenSlot[] = []
+  for (const st of staff) {
+    for (const day of st.workDays ?? []) {
+      const dayIdx = DAYS.findIndex(d => d.key === day)
+      if (dayIdx < 0) continue
+      const hours = st.dayHours?.[day]
+      for (const sl of daySlots(hours?.startTime ?? st.startTime, hours?.endTime ?? st.endTime, st.slotsPerDay)) {
+        const k = `${st.id}|${day}|${sl.startTime}`
+        const here = at.get(k) ?? []
+        // A closed hour is not capacity anybody can sell.
+        if (here.some(x => x.disabled)) continue
+        const taken = here.filter(x => x.patient).length
+        const seats = Math.min(3, Math.max(capacity.get(k) ?? 1, taken))
+        if (seats - taken <= 0) continue
+        out.push({
+          dayIdx, day,
+          dayLabel: DAYS[dayIdx].label.charAt(0) + DAYS[dayIdx].label.slice(1).toLowerCase(),
+          timeKey: sl.startTime,
+          timeLabel: spanLabel(sl.startTime, sl.endTime),
+          department,
+          clinician: `${st.lastName}, ${st.firstName}`.toUpperCase(),
+          free: seats - taken,
+          seats,
+        })
+      }
+    }
+  }
+  return out
+}
+
+/**
+ * Write the OPEN SLOTS tab and the hidden list behind it.
+ *
+ * Two tabs because of the search box: `_open` is the data, `OPEN SLOTS` is one
+ * FILTER over it that narrows as front desk type. The box itself (B5) is
+ * theirs and is never written — a sync that cleared what somebody was in the
+ * middle of typing would be worse than no search at all.
+ */
+async function pushOpenSlots(
+  api: sheets_v4.Sheets, spreadsheetId: string, branchLabel: string, rows: OpenSlot[], bookable: number,
+) {
+  rows.sort((a, b) =>
+    a.dayIdx - b.dayIdx || a.timeKey.localeCompare(b.timeKey)
+    || a.department.localeCompare(b.department) || a.clinician.localeCompare(b.clinician))
+
+  // ── the hidden list ──────────────────────────────────────────────────────
+  const dataRows = rows.map(r => [
+    r.dayLabel, r.timeLabel, r.department, r.clinician,
+    // What the search box matches against: everything about the row in one
+    // string, so "sat ot" and "sulit" both find it.
+    `${r.dayLabel} ${r.timeLabel} ${r.department} ${r.clinician}`,
+    r.free > 1 ? `${r.free} free` : '',
+  ])
+  const dataSpan = Math.max(dataRows.length + 50, 200)
+  const { id: dataId } = await tabId(api, spreadsheetId, OPEN_DATA_TAB, 6, dataSpan, true)
+  await api.spreadsheets.batchUpdate({ spreadsheetId, requestBody: { requests: [
+    { updateSheetProperties: { properties: { sheetId: dataId, hidden: true, gridProperties: { rowCount: dataSpan, columnCount: 6 } }, fields: 'hidden,gridProperties.rowCount,gridProperties.columnCount' } },
+    { updateCells: { range: { sheetId: dataId, startRowIndex: 0, endRowIndex: dataSpan, startColumnIndex: 0, endColumnIndex: 6 }, fields: 'userEnteredValue' } },
+  ] } })
+  await api.spreadsheets.values.update({
+    spreadsheetId, range: `'${OPEN_DATA_TAB}'!A1`, valueInputOption: 'RAW',
+    requestBody: { values: [['DAY', 'TIME', 'DEPARTMENT', 'CLINICIAN', 'SEARCH KEY', 'SEATS'], ...dataRows] },
+  })
+
+  // ── the tab front desk read ──────────────────────────────────────────────
+  const { id: sheetId } = await tabId(api, spreadsheetId, OPEN_TAB, 6, 1000)
+  await api.spreadsheets.batchUpdate({ spreadsheetId, requestBody: { requests: [
+    { updateSheetProperties: {
+      properties: { sheetId, gridProperties: { rowCount: Math.max(dataRows.length + 60, 300), columnCount: 6, frozenRowCount: 8, hideGridlines: true } },
+      fields: 'gridProperties.rowCount,gridProperties.columnCount,gridProperties.frozenRowCount,gridProperties.hideGridlines',
+    } },
+    { updateDimensionProperties: { range: { sheetId, dimension: 'COLUMNS', startIndex: 0, endIndex: 1 }, properties: { pixelSize: 110 }, fields: 'pixelSize' } },
+    { updateDimensionProperties: { range: { sheetId, dimension: 'COLUMNS', startIndex: 1, endIndex: 2 }, properties: { pixelSize: 130 }, fields: 'pixelSize' } },
+    { updateDimensionProperties: { range: { sheetId, dimension: 'COLUMNS', startIndex: 2, endIndex: 3 }, properties: { pixelSize: 120 }, fields: 'pixelSize' } },
+    { updateDimensionProperties: { range: { sheetId, dimension: 'COLUMNS', startIndex: 3, endIndex: 4 }, properties: { pixelSize: 240 }, fields: 'pixelSize' } },
+    { updateDimensionProperties: { range: { sheetId, dimension: 'COLUMNS', startIndex: 5, endIndex: 6 }, properties: { pixelSize: 90 }, fields: 'pixelSize' } },
+  ] } })
+
+  const head = (v: string) => ({ userEnteredValue: { stringValue: v }, userEnteredFormat: {
+    backgroundColor: rgb('#1F3A5F'), horizontalAlignment: 'LEFT',
+    textFormat: { bold: true, fontSize: 9, fontFamily: 'Roboto', foregroundColor: rgb('#FFFFFF') },
+  } })
+  const plain = (v: string, fmt: Record<string, unknown> = {}) => ({
+    userEnteredValue: v ? { stringValue: v } : {},
+    userEnteredFormat: { textFormat: { fontFamily: 'Roboto', ...(fmt.textFormat as object ?? {}) }, ...fmt },
+  })
+  const formula = (f: string, fmt: Record<string, unknown> = {}) => ({
+    userEnteredValue: { formulaValue: f },
+    userEnteredFormat: { textFormat: { fontFamily: 'Roboto', ...(fmt.textFormat as object ?? {}) }, ...fmt },
+  })
+
+  // Written cell by cell, deliberately: row 5 column B is the search box and
+  // belongs to whoever is typing in it.
+  const put = (row: number, col: number, cell: object) => ({ updateCells: {
+    rows: [{ values: [cell] }], fields: 'userEnteredValue,userEnteredFormat',
+    start: { sheetId, rowIndex: row, columnIndex: col },
+  } })
+
+  await api.spreadsheets.batchUpdate({ spreadsheetId, requestBody: { requests: [
+    // Everything from row 9 down is the FILTER's to spill into.
+    { updateCells: { range: { sheetId, startRowIndex: 8, endRowIndex: Math.max(dataRows.length + 60, 300), startColumnIndex: 0, endColumnIndex: 6 }, fields: 'userEnteredValue,userEnteredFormat' } },
+    put(0, 0, plain(`OPEN SLOTS — ${branchLabel}`, { textFormat: { bold: true, fontSize: 14, foregroundColor: rgb('#1F3A5F') } })),
+    put(1, 0, formula(
+      `=SUMPRODUCT(('${OPEN_DATA_TAB}'!A2:A<>"")*1)&" hours with a free seat, out of ${bookable} bookable."`,
+      { textFormat: { fontSize: 10, foregroundColor: rgb('#5A6470') } })),
+    put(2, 0, plain('Built from the Decking module every few minutes — book in the Hub or on the department tab, and this follows.',
+      { textFormat: { fontSize: 9, italic: true, foregroundColor: rgb('#8A8F98') } })),
+    put(4, 0, plain('FIND AN OPEN SLOT', { textFormat: { bold: true, fontSize: 10, foregroundColor: rgb('#1F3A5F') } })),
+    put(5, 0, plain('🔍', { horizontalAlignment: 'CENTER' })),
+    put(5, 2, plain('Type a department, a day, a time or a clinician — leave it empty to see everything',
+      { textFormat: { fontSize: 9, italic: true, foregroundColor: rgb('#8A8F98') } })),
+    // Six headers for six filtered columns; the fifth is the search key and
+    // is hidden, because FILTER cannot skip a column in the middle of a range.
+    ...['DAY', 'TIME', 'DEPARTMENT', 'CLINICIAN', '', 'SEATS'].map((h, i) => put(7, i, head(h))),
+    put(8, 0, formula(
+      `=IFERROR(FILTER('${OPEN_DATA_TAB}'!A2:F, ('${OPEN_DATA_TAB}'!A2:A<>"")`
+      + `*((($B$6="")+ISNUMBER(SEARCH($B$6,'${OPEN_DATA_TAB}'!E2:E)))>0)), "No open slot matches that.")`,
+      { textFormat: { fontSize: 10 } })),
+  ] } })
+
+  // The FILTER returns six columns, of which E is the search key. Hidden
+  // rather than left out, because FILTER cannot skip a column mid-range.
+  await api.spreadsheets.batchUpdate({ spreadsheetId, requestBody: { requests: [
+    { updateDimensionProperties: { range: { sheetId, dimension: 'COLUMNS', startIndex: 4, endIndex: 5 }, properties: { hiddenByUser: true }, fields: 'hiddenByUser' } },
+  ] } })
+
+  return rows.length
 }
 
 /**
@@ -1309,11 +1486,24 @@ export async function syncBranch(branch: string, spreadsheetId: string): Promise
   } catch { /* no map yet — first push writes everything, which is correct */ }
 
   const mapEntries: (CellRef & { tab: string })[] = []
+  // Gathered as the departments go past, and written once at the end.
+  const openRows: OpenSlot[] = []
+  let bookableHours = 0
   for (const dept of DEPARTMENTS) {
     try {
       const { staff, slots, dated, classes, capacity } = await loadDepartment(branch, dept)
       const grid = buildGrid({ staff, slots, dated, classes, capacity })
       if (!grid) continue
+      const free = openSlotsFor(dept, staff, slots, capacity)
+      openRows.push(...free)
+      // Every hour the department offers, free or not — the denominator of
+      // the line at the top of the tab.
+      for (const st of staff) {
+        for (const day of st.workDays ?? []) {
+          const h = st.dayHours?.[day]
+          bookableHours += daySlots(h?.startTime ?? st.startTime, h?.endTime ?? st.endTime, st.slotsPerDay).length
+        }
+      }
       const res = await pushTab(api, spreadsheetId, dept, grid, patientRows, payOptions, client.identity, lastWrote.get(dept), consumed)
       for (const c of grid.cells) mapEntries.push({ ...c, tab: dept })
       report.pushed.push({ tab: dept, staff: grid.staffCount, rows: res.rows, kept: res.preserved })
@@ -1341,6 +1531,16 @@ export async function syncBranch(branch: string, spreadsheetId: string): Promise
     }
   }
   await pushMap(api, spreadsheetId, mapEntries)
+
+  // The open-slot board. Built last, from what the departments just reported,
+  // so it can never describe a layout the sync has already moved on from.
+  try {
+    const label = branch === 'SBEA' ? 'AURA HEALTH EAST' : branch === 'SBGH' ? 'AURA HEALTH GREENHILLS' : branch
+    await pushOpenSlots(api, spreadsheetId, label, openRows, bookableHours)
+  } catch (e) {
+    // The boards are the point; a list OF the boards is not worth failing for.
+    report.errors.push(`open slots: ${(e as Error).message}`)
+  }
 
   // Re-read today's capacity after anything moved.
   //
