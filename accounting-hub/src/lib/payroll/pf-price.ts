@@ -35,6 +35,39 @@ export function rateAt(rate: PfRate, branch: string, basis: number) {
   return reduced ? Number(rate.reducedAmount) : full
 }
 
+interface PfLine {
+  unitPrice?: unknown
+  lineTotal?: unknown
+  service?: { unitPayId?: string | null; unitPayEnabled?: boolean | null } | null
+}
+const isPriced = (i: PfLine) => Number(i.unitPrice) > 0 || Number(i.lineTotal) > 0
+
+/**
+ * A ₱0 line whose unit pay a priced line on the same order also carries is the
+ * same session, not a second one: the priced line already pays that PF. (Hannah
+ * 2026-11-10: from Oct 31 the GH front desk added a ₱0 BASIC SESSION to PEDIA
+ * BASIC SESSION orders, whose service already pays BASIC SESSION — payroll would
+ * have paid ₱620 twice per session.) A ₱0 line is still the session's PF carrier
+ * when no priced line on the order carries its unit pay.
+ */
+export function isRedundantCarrier(item: PfLine, items: PfLine[]): boolean {
+  if (isPriced(item)) return false
+  const unitPayId = item.service?.unitPayId
+  if (!unitPayId || item.service?.unitPayEnabled === false) return false
+  return items.some(o => o !== item && isPriced(o) && o.service?.unitPayId === unitPayId && o.service?.unitPayEnabled !== false)
+}
+
+/**
+ * What some lines brought in after the order's discount: their list total scaled
+ * by the order's net over the list total of all its lines (the discount spread
+ * pro rata). A ₱0 carrier's "rest of the order" is the net less this — not the net
+ * less the lines' list prices, which turned a PWD discount into a negative charge.
+ */
+export function netShareOfLines(linesListTotal: number, orderNet: number, allLinesListTotal: number): number {
+  if (!(allLinesListTotal > 0)) return 0
+  return linesListTotal * (orderNet / allLinesListTotal)
+}
+
 /** A service a unit pay pays for. `branch` is the service's branch (ALL, SANDBOX_EAST, …);
  *  `branchPrices` are its per-branch price overrides, keyed by payroll branch (SBEA, SBGH). */
 export interface PricedService { id: string; name: string; price: number; branch: string; branchPrices?: Record<string, number> }

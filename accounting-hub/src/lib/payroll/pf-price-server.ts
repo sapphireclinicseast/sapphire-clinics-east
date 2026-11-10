@@ -4,7 +4,7 @@
 
 import { prisma } from '@/lib/prisma'
 import { notMigratedOrder } from './exclude-migrated'
-import { ORDER_TO_PAYROLL_BRANCH, branchPriceMap, overPrice, rateAt, type OverPrice, type PfRate, type PricedService } from './pf-price'
+import { ORDER_TO_PAYROLL_BRANCH, branchPriceMap, isRedundantCarrier, netShareOfLines, overPrice, rateAt, type OverPrice, type PfRate, type PricedService } from './pf-price'
 
 export interface RateIssue extends OverPrice {
   consultantId: string
@@ -292,7 +292,8 @@ export async function sessionIssues(since: Date, hubStart: string | null, opts: 
         now = priced.reduce((t, i) => t + (Number(i.lineTotal) || 0), 0) / units * qty
       } else if (matching.length) {
         const paidUps = paidOn.get(`${l.order_id}|${l.consultant_id}`) || new Set<string>()
-        now = net - o.items.reduce((t, i) => t + (i.service?.unitPayId && paidUps.has(i.service.unitPayId) ? Number(i.lineTotal) || 0 : 0), 0)
+        const paidList = o.items.reduce((t, i) => t + (i.service?.unitPayId && paidUps.has(i.service.unitPayId) ? Number(i.lineTotal) || 0 : 0), 0)
+        now = net - netShareOfLines(paidList, net, o.items.reduce((t, i) => t + (Number(i.lineTotal) || 0), 0))
       } else {
         now = net // the line is gone from the order — compare with the whole order
       }
@@ -350,6 +351,7 @@ export async function sessionIssues(since: Date, hubStart: string | null, opts: 
     const paid: { item: (typeof o.items)[number]; unitPayId: string; unitPay: string; pay: number }[] = []
     for (const i of o.items) {
       if (!i.service || i.service.unitPayEnabled === false) continue
+      if (isRedundantCarrier(i, o.items)) continue // the priced line with its unit pay pays this session
       const r = rateOf(i.service.unitPayId)
       if (!r) continue
       if (hmoPaid && (String(i.service.department || '').toUpperCase() === 'MD' || i.service.hmoPaysClinicianDirect)) continue
@@ -373,7 +375,7 @@ export async function sessionIssues(since: Date, hubStart: string | null, opts: 
     // ₱0 carrier lines are paid out of the rest of the order.
     const carriers = paid.filter(p => !(Number(p.item.unitPrice) > 0) && !(Number(p.item.lineTotal) > 0) && !p.item.service?.allowPfAbovePrice)
     if (carriers.length && carriers.every(p => notRun(p.unitPayId))) {
-      const rest = net - paid.reduce((t, p) => t + (Number(p.item.lineTotal) || 0), 0)
+      const rest = net - netShareOfLines(paid.reduce((t, p) => t + (Number(p.item.lineTotal) || 0), 0), net, o.items.reduce((t, i) => t + (Number(i.lineTotal) || 0), 0))
       const qty = carriers.reduce((t, p) => t + (Number(p.item.quantity) || 1), 0)
       const pf = carriers.reduce((t, p) => t + p.pay * (Number(p.item.quantity) || 1), 0)
       if (pf > rest + 0.005) {

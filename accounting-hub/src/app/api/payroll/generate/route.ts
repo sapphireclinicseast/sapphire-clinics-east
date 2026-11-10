@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { notMigratedOrder } from '@/lib/payroll/exclude-migrated'
+import { isRedundantCarrier, netShareOfLines } from '@/lib/payroll/pf-price'
 import { recoveryLines, stampRecoveries } from '@/lib/payroll/pf-recovery'
 import { redBlockMessage, zeroUnitPays } from '@/lib/payroll/unit-pay-gaps'
 import { redConsultants } from '@/lib/payroll/unit-pay-gaps-server'
@@ -518,7 +519,9 @@ export async function GET(req: Request) {
         const allOrderServices = order.items.map(i => i.name).join(', ')
 
         // What each paid line was charged, for the session details' PF-vs-charge check:
-        // a priced line its own total; a ₱0 BASIC SESSION carrier the rest of the order.
+        // a priced line its own total; a ₱0 BASIC SESSION carrier the rest of the order —
+        // the net less the paid lines' share of it after the discount (lib/payroll/pf-price).
+        const allLinesTotal = order.items.reduce((t, i) => t + toFloat(i.lineTotal), 0)
         let paidLinesTotal = 0
         for (const item of order.items) {
           if (!item.service?.unitPayId || item.service.unitPayEnabled === false) continue
@@ -527,9 +530,14 @@ export async function GET(req: Request) {
           paidLinesTotal += toFloat(item.lineTotal)
         }
 
+        const carrierCharged = orderNet - netShareOfLines(paidLinesTotal, orderNet, allLinesTotal)
+
         for (const item of order.items) {
           if (!item.service?.unitPayId) continue
           if (item.service.unitPayEnabled === false) continue
+          // A ₱0 line whose unit pay a priced line on this order also carries is that
+          // same session — the priced line pays it, so no second PF.
+          if (isRedundantCarrier(item, order.items)) continue
           const rate = c.unitPayRates.find(r => r.unitPayId === item.service!.unitPayId)
           if (!rate || rate.disabled) continue
 
@@ -579,14 +587,14 @@ export async function GET(req: Request) {
           if (rate.varies) {
             variesSessions.push({
               orderId: order.id, orderNumber: order.orderNumber, date: orderDate, patientName: order.patientName || 'N/A', serviceName: item.name,
-              quantity: item.quantity, charged: lineTotal > 0 ? lineTotal : orderNet - paidLinesTotal, orderNetAmount: orderNet,
+              quantity: item.quantity, charged: lineTotal > 0 ? lineTotal : carrierCharged, orderNetAmount: orderNet,
               unitPayId: item.service.unitPayId, unitPayName: rate.unitPay.name,
             })
             continue
           }
           const sessionEntry = {
             orderId: order.id, date: orderDate, patientName: order.patientName || 'N/A', serviceName: allOrderServices, quantity: item.quantity, orderNetAmount: orderNet, orderStatus: 'COMPLETED' as string,
-            charged: lineTotal > 0 ? lineTotal : orderNet - paidLinesTotal,
+            charged: lineTotal > 0 ? lineTotal : carrierCharged,
             pf: effectiveAmount * item.quantity,
             // The service allows PF above its price (Services → "Allow PF to be higher than price").
             ...(item.service.allowPfAbovePrice ? { pfAboveOk: true } : {}),

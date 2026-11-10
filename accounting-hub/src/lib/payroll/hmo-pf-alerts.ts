@@ -3,7 +3,7 @@
 // Adjustments, the bell, and the payslip generator's automatic PF recovery lines.
 
 import { prisma } from '@/lib/prisma'
-import { ORDER_TO_PAYROLL_BRANCH, rateAt } from '@/lib/payroll/pf-price'
+import { ORDER_TO_PAYROLL_BRANCH, isRedundantCarrier, rateAt } from '@/lib/payroll/pf-price'
 import { HMO_VOID_REF } from '@/lib/hmo-session-void'
 
 const round2 = (n: number) => Math.round(n * 100) / 100
@@ -236,6 +236,7 @@ export async function hmoPfAlerts(includeSettled: boolean) {
       const lines: { rate: (typeof c.unitPayRates)[number]; quantity: number }[] = []
       for (const it of s.order.items) {
         if (!it.service?.unitPayId || it.service.unitPayEnabled === false) continue
+        if (isRedundantCarrier(it, s.order.items)) continue // same session as the priced line — paid once
         const rate = c.unitPayRates.find(x => x.unitPayId === it.service!.unitPayId)
         if (!rate || rate.disabled) continue
         const dept = String(it.service.department || '').toUpperCase()
