@@ -497,17 +497,50 @@ const rgb = (hex: string) => ({
   blue: parseInt(hex.slice(5, 7), 16) / 255,
 })
 
-async function tabId(api: sheets_v4.Sheets, spreadsheetId: string, title: string, cols: number, rows: number, hidden = false) {
+/**
+ * Every tab's id and height, read ONCE per run.
+ *
+ * tabId used to fetch the whole workbook's metadata on every call, which is
+ * once per tab — about eleven reads a branch, all of them the same answer.
+ * Sheets allows sixty read requests a minute per user and a full sync of one
+ * branch was spending around forty-five of them, so a second sync inside the
+ * same minute lost tabs to a quota error. The cron staggers the two branches
+ * for that reason; this widens the margin rather than relying on it.
+ */
+type TabIndex = Map<string, { id: number; rowCount: number }>
+
+async function loadTabs(api: sheets_v4.Sheets, spreadsheetId: string): Promise<TabIndex> {
   const meta = await api.spreadsheets.get({ spreadsheetId, fields: 'sheets.properties' })
-  const found = meta.data.sheets?.find(s => s.properties?.title === title)
-  if (found?.properties?.sheetId != null) {
-    return { id: found.properties.sheetId, rowCount: found.properties.gridProperties?.rowCount ?? 0 }
+  const index: TabIndex = new Map()
+  for (const sh of meta.data.sheets ?? []) {
+    const title = sh.properties?.title
+    if (title == null || sh.properties?.sheetId == null) continue
+    index.set(title, { id: sh.properties.sheetId, rowCount: sh.properties.gridProperties?.rowCount ?? 0 })
+  }
+  return index
+}
+
+async function tabId(
+  api: sheets_v4.Sheets, spreadsheetId: string, title: string, cols: number, rows: number,
+  hidden = false, index?: TabIndex,
+) {
+  const cached = index?.get(title)
+  if (cached) return cached
+  // No index, or a tab this run has not seen: ask, then remember.
+  if (!index) {
+    const meta = await api.spreadsheets.get({ spreadsheetId, fields: 'sheets.properties' })
+    const found = meta.data.sheets?.find(s => s.properties?.title === title)
+    if (found?.properties?.sheetId != null) {
+      return { id: found.properties.sheetId, rowCount: found.properties.gridProperties?.rowCount ?? 0 }
+    }
   }
   const added = await api.spreadsheets.batchUpdate({
     spreadsheetId,
     requestBody: { requests: [{ addSheet: { properties: { title, hidden, gridProperties: { rowCount: rows, columnCount: cols } } } }] },
   })
-  return { id: added.data.replies![0].addSheet!.properties!.sheetId!, rowCount: rows }
+  const made = { id: added.data.replies![0].addSheet!.properties!.sheetId!, rowCount: rows }
+  index?.set(title, made)
+  return made
 }
 
 /**
@@ -582,6 +615,7 @@ function openSlotsFor(
  */
 async function pushOpenSlots(
   api: sheets_v4.Sheets, spreadsheetId: string, branchLabel: string, rows: OpenSlot[], bookable: number,
+  tabs?: TabIndex,
 ) {
   rows.sort((a, b) =>
     a.dayIdx - b.dayIdx || a.timeKey.localeCompare(b.timeKey)
@@ -596,7 +630,7 @@ async function pushOpenSlots(
     r.free > 1 ? `${r.free} free` : '',
   ])
   const dataSpan = Math.max(dataRows.length + 50, 200)
-  const { id: dataId } = await tabId(api, spreadsheetId, OPEN_DATA_TAB, 6, dataSpan, true)
+  const { id: dataId } = await tabId(api, spreadsheetId, OPEN_DATA_TAB, 6, dataSpan, true, tabs)
   await api.spreadsheets.batchUpdate({ spreadsheetId, requestBody: { requests: [
     { updateSheetProperties: { properties: { sheetId: dataId, hidden: true, gridProperties: { rowCount: dataSpan, columnCount: 6 } }, fields: 'hidden,gridProperties.rowCount,gridProperties.columnCount' } },
     { updateCells: { range: { sheetId: dataId, startRowIndex: 0, endRowIndex: dataSpan, startColumnIndex: 0, endColumnIndex: 6 }, fields: 'userEnteredValue' } },
@@ -607,7 +641,7 @@ async function pushOpenSlots(
   })
 
   // ── the tab front desk read ──────────────────────────────────────────────
-  const { id: sheetId } = await tabId(api, spreadsheetId, OPEN_TAB, 6, 1000)
+  const { id: sheetId } = await tabId(api, spreadsheetId, OPEN_TAB, 6, 1000, false, tabs)
   await api.spreadsheets.batchUpdate({ spreadsheetId, requestBody: { requests: [
     { updateSheetProperties: {
       properties: { sheetId, gridProperties: { rowCount: Math.max(dataRows.length + 60, 300), columnCount: 6, frozenRowCount: 8, hideGridlines: true } },
@@ -764,9 +798,10 @@ async function pushTab(
   payOptions: string[], robot: string,
   lastWrote?: Map<string, string>,
   consumed?: Set<string>,
+  tabs?: TabIndex,
 ) {
   const need = grid.rows.length + 60
-  const { id: sheetId, rowCount } = await tabId(api, spreadsheetId, tab, SAFE_COL + 8, need)
+  const { id: sheetId, rowCount } = await tabId(api, spreadsheetId, tab, SAFE_COL + 8, need, false, tabs)
   const span = Math.max(rowCount, need)
 
   // ── Anything typed since the last push is kept, not overwritten ──────────
@@ -1001,11 +1036,11 @@ async function pushTab(
   return { sheetId, rows: grid.rows.length, preserved }
 }
 
-async function pushPatients(api: sheets_v4.Sheets, spreadsheetId: string, names: string[]) {
+async function pushPatients(api: sheets_v4.Sheets, spreadsheetId: string, names: string[], tabs?: TabIndex) {
   // N/A and BREAK ride at the top of the same list: the cells are strict, so
   // anything front desk must be able to put in a slot has to be an option.
   const list = [BLOCKED, BREAK, ...names]
-  const { id: sheetId, rowCount } = await tabId(api, spreadsheetId, PATIENTS_TAB, 2, list.length + 100, true)
+  const { id: sheetId, rowCount } = await tabId(api, spreadsheetId, PATIENTS_TAB, 2, list.length + 100, true, tabs)
   const span = Math.max(rowCount, list.length + 100)
   await api.spreadsheets.batchUpdate({ spreadsheetId, requestBody: { requests: [
     { updateSheetProperties: { properties: { sheetId, hidden: true, gridProperties: { rowCount: span, columnCount: 2 } }, fields: 'hidden,gridProperties.rowCount,gridProperties.columnCount' } },
@@ -1020,8 +1055,8 @@ async function pushPatients(api: sheets_v4.Sheets, spreadsheetId: string, names:
 }
 
 /** The snapshot: one row per editable cell, with what this push wrote in it. */
-async function pushMap(api: sheets_v4.Sheets, spreadsheetId: string, entries: (CellRef & { tab: string })[]) {
-  const { id: sheetId, rowCount } = await tabId(api, spreadsheetId, MAP_TAB, 10, entries.length + 200, true)
+async function pushMap(api: sheets_v4.Sheets, spreadsheetId: string, entries: (CellRef & { tab: string })[], tabs?: TabIndex) {
+  const { id: sheetId, rowCount } = await tabId(api, spreadsheetId, MAP_TAB, 10, entries.length + 200, true, tabs)
   const span = Math.max(rowCount, entries.length + 200)
   const rows = [
     { values: ['TAB', 'ROW', 'COL', 'LINE', 'STAFF', 'DAY', 'TIME', 'WROTE', 'DATE', 'SLOT'].map(h => ({ userEnteredValue: { stringValue: h } })) },
@@ -1494,7 +1529,9 @@ export async function syncBranch(branch: string, spreadsheetId: string): Promise
   const payOptions = ['CASH', 'GL', ...providers.map(p => `HMO\u2013${p.name.toUpperCase()}`.replace('HMO\u2013', 'HMO \u2013 '))]
 
   const names = await loadPatientNames(branch)
-  const patientRows = await pushPatients(api, spreadsheetId, names)
+  // Every tab's id, read once and reused by each writer below.
+  const tabs = await loadTabs(api, spreadsheetId)
+  const patientRows = await pushPatients(api, spreadsheetId, names, tabs)
 
   // What this sync last wrote into each cell, per tab. Read once, before any
   // tab is rewritten, so pushTab can tell a cell it wrote from a cell somebody
@@ -1530,7 +1567,7 @@ export async function syncBranch(branch: string, spreadsheetId: string): Promise
           bookableHours += daySlots(h?.startTime ?? st.startTime, h?.endTime ?? st.endTime, st.slotsPerDay).length
         }
       }
-      const res = await pushTab(api, spreadsheetId, dept, grid, patientRows, payOptions, client.identity, lastWrote.get(dept), consumed)
+      const res = await pushTab(api, spreadsheetId, dept, grid, patientRows, payOptions, client.identity, lastWrote.get(dept), consumed, tabs)
       for (const c of grid.cells) mapEntries.push({ ...c, tab: dept })
       report.pushed.push({ tab: dept, staff: grid.staffCount, rows: res.rows, kept: res.preserved })
 
@@ -1547,7 +1584,7 @@ export async function syncBranch(branch: string, spreadsheetId: string): Promise
         const iGrid = buildGrid({ ...interns })
         if (iGrid) {
           const iTab = `${dept} INTERNS`
-          const iRes = await pushTab(api, spreadsheetId, iTab, iGrid, patientRows, payOptions, client.identity, lastWrote.get(iTab), consumed)
+          const iRes = await pushTab(api, spreadsheetId, iTab, iGrid, patientRows, payOptions, client.identity, lastWrote.get(iTab), consumed, tabs)
           for (const c of iGrid.cells) mapEntries.push({ ...c, tab: iTab })
           report.pushed.push({ tab: iTab, staff: iGrid.staffCount, rows: iRes.rows, kept: iRes.preserved })
         }
@@ -1556,13 +1593,13 @@ export async function syncBranch(branch: string, spreadsheetId: string): Promise
       report.errors.push(`${dept}: ${(e as Error).message}`)
     }
   }
-  await pushMap(api, spreadsheetId, mapEntries)
+  await pushMap(api, spreadsheetId, mapEntries, tabs)
 
   // The open-slot board. Built last, from what the departments just reported,
   // so it can never describe a layout the sync has already moved on from.
   try {
     const label = branch === 'SBEA' ? 'AURA HEALTH EAST' : branch === 'SBGH' ? 'AURA HEALTH GREENHILLS' : branch
-    await pushOpenSlots(api, spreadsheetId, label, openRows, bookableHours)
+    await pushOpenSlots(api, spreadsheetId, label, openRows, bookableHours, tabs)
   } catch (e) {
     // The boards are the point; a list OF the boards is not worth failing for.
     report.errors.push(`open slots: ${(e as Error).message}`)
