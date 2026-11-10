@@ -4,7 +4,7 @@ import { useSession } from 'next-auth/react'
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { ChevronLeft, ChevronRight, Video, Stethoscope, CalendarDays } from 'lucide-react'
-import { formatTime, formatDate, toDateString } from '@/lib/utils'
+import { formatTime, formatDate, manilaDateString, shiftDateString } from '@/lib/utils'
 import { useBranchSwitcher } from '@/components/BranchSwitcher'
 import {
   Avatar, DashCard, EmptyState, Icon, KpiCard, PageHeader, RowsSkeleton, StatusPill, Tag, type Tone,
@@ -49,7 +49,7 @@ const titleCase = (s: string) => s.charAt(0) + s.slice(1).toLowerCase()
 export default function DashboardPage() {
   const { data: session } = useSession()
   const router = useRouter()
-  const [date, setDate] = useState(toDateString(new Date()))
+  const [date, setDate] = useState(manilaDateString())
   const [sessions, setSessions] = useState<SessionItem[]>([])
   const [loading, setLoading] = useState(true)
   const { isMultiBranch, sharedStaffId, activeStaffId, activeBranch } = useBranchSwitcher()
@@ -82,13 +82,13 @@ export default function DashboardPage() {
     }
   }
 
+  // Stepped as a calendar day, not as 24 hours from a UTC midnight: the two
+  // differ for every Manila morning, which is when the desk is busiest.
   function changeDate(offset: number) {
-    const d = new Date(date)
-    d.setDate(d.getDate() + offset)
-    setDate(toDateString(d))
+    setDate(shiftDateString(date, offset))
   }
 
-  const isToday = toDateString(new Date()) === date
+  const isToday = manilaDateString() === date
   const completed = sessions.filter((s) => s.sessionNote?.status === 'COMPLETED').length
   const pending = sessions.filter((s) => !s.sessionNote).length
   const discontinued = sessions.filter((s) => s.sessionNote?.status === 'DISCONTINUED').length
@@ -108,7 +108,7 @@ export default function DashboardPage() {
             <input
               type="date"
               value={date}
-              onChange={(e) => setDate(e.target.value)}
+              onChange={(e) => { if (e.target.value) setDate(e.target.value) }}
               aria-label="Pick a date"
               className={CONTROL}
               style={CONTROL_STYLE}
@@ -118,7 +118,7 @@ export default function DashboardPage() {
               <ChevronRight size={16} />
             </button>
             {!isToday && (
-              <button type="button" onClick={() => setDate(toDateString(new Date()))}
+              <button type="button" onClick={() => setDate(manilaDateString())}
                 className={BTN_SECONDARY} style={{ ...SECONDARY_STYLE, color: 'var(--deep-teal)' }}>
                 Today
               </button>
