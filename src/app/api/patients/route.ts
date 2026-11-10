@@ -106,6 +106,32 @@ const ROLE_BRANCH: Record<string, string> = {
   AHGH_FRONT_DESK: 'SANDBOX_GREENHILLS',
 }
 
+/**
+ * A name search that reads a name the way it is written.
+ *
+ * Every name in this system reads "LIM, RAYNE GIULIANNA ADRIELE", so that is
+ * what front desk type — and matching the query whole against firstName and
+ * lastName finds nothing for it, because "lim, rayne" is neither. Split on
+ * commas and spaces and require every word to appear somewhere in the name.
+ *
+ * An email still matches whole: an address has no words to split.
+ */
+function nameSearch(search: string) {
+  const words = search.split(/[\s,]+/).map(w => w.trim()).filter(Boolean)
+  if (words.length === 0) return undefined
+  return {
+    OR: [
+      { AND: words.map(w => ({
+        OR: [
+          { firstName: { contains: w, mode: 'insensitive' as const } },
+          { lastName: { contains: w, mode: 'insensitive' as const } },
+        ],
+      })) },
+      { email: { contains: search, mode: 'insensitive' as const } },
+    ],
+  }
+}
+
 export async function GET(req: NextRequest) {
   const session = await auth()
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -152,13 +178,7 @@ export async function GET(req: NextRequest) {
   const where: any = {
     ...(branchFilterIds !== null ? { id: { in: branchFilterIds } } : {}),
     ...(type ? { patientType: type as any } : {}),
-    ...(search ? {
-      OR: [
-        { firstName: { contains: search, mode: 'insensitive' } },
-        { lastName: { contains: search, mode: 'insensitive' } },
-        { email: { contains: search, mode: 'insensitive' } },
-      ],
-    } : {}),
+    ...(search ? (nameSearch(search) ?? {}) : {}),
   }
 
   const patients = await prisma.patient.findMany({ where, orderBy: { lastName: 'asc' } })
@@ -173,13 +193,7 @@ export async function GET(req: NextRequest) {
   let outOfBranch: typeof patients = []
   if (forcedBranch && search && patients.length === 0 && !exportCsv) {
     outOfBranch = await prisma.patient.findMany({
-      where: {
-        OR: [
-          { firstName: { contains: search, mode: 'insensitive' } },
-          { lastName: { contains: search, mode: 'insensitive' } },
-          { email: { contains: search, mode: 'insensitive' } },
-        ],
-      },
+      where: nameSearch(search) ?? {},
       orderBy: { lastName: 'asc' },
       take: 25,
     })
