@@ -2490,7 +2490,7 @@ export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoff
                                   <div key={ps.id} className="flex items-center justify-between px-3 py-2 rounded-lg bg-white border text-xs" style={{ borderColor: 'var(--light-gray)' }}>
                                     <div className="flex items-center gap-4">
                                       <span className="font-medium" style={{ color: 'var(--charcoal)' }}>{ps.cutoffPeriod}</span>
-                                      <span style={{ color: 'var(--mid-gray)' }}>{ps.branch}</span>
+                                      <span style={{ color: 'var(--mid-gray)' }}>{branchShort(ps.branch)}</span>
                                       <span className="font-mono" style={{ color: 'var(--charcoal)' }}>Net: {formatCurrency(toNum(ps.netPay))}</span>
                                       <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold"
                                         style={ps.status === 'FINAL' ? { background: '#dcfce7', color: '#166534' } : { background: '#fef3c7', color: '#92400e' }}>
@@ -4208,7 +4208,7 @@ export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoff
                       <tr key={emp.id} className="border-t hover:bg-gray-50/50" style={{ borderColor: 'var(--light-gray)' }}>
                         <td className="px-3 py-2.5 font-medium sticky left-0 bg-white" style={{ color: 'var(--charcoal)' }}>
                           {emp.firstName} {emp.lastName}
-                          <span className="ml-1.5 text-[10px] px-1 py-0.5 rounded" style={{ background: 'var(--off-white)', color: 'var(--mid-gray)' }}>{emp.branch}</span>
+                          <span className="ml-1.5 text-[10px] px-1 py-0.5 rounded" style={{ background: 'var(--off-white)', color: 'var(--mid-gray)' }}>{branchShort(emp.branch)}</span>
                         </td>
                         {LEAVE_TYPES.map(lt => {
                           const used = emp.used[lt.value] || 0

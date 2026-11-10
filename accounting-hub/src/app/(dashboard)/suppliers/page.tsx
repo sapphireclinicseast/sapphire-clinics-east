@@ -1,5 +1,6 @@
 'use client'
 
+import { branchShort } from '@/lib/branch'
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useSession } from 'next-auth/react'
 import { Download, Loader2, Maximize2, Merge, Minimize2, Pencil, Plus, Search, Trash2, Truck, Upload, X } from 'lucide-react'
@@ -658,7 +659,7 @@ function SuppliersInner() {
                           <tr key={a.controlNumber + a.name} className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
                             <td className="px-2 py-1.5 font-mono whitespace-nowrap" style={{ color: 'var(--mid-gray)' }}>{a.controlNumber}</td>
                             <td className="px-2 py-1.5" style={{ color: 'var(--charcoal)' }}>{a.name}{a.quantity > 1 ? ` ×${a.quantity}` : ''}</td>
-                            <td className="px-2 py-1.5" style={{ color: 'var(--mid-gray)' }}>{a.branch}</td>
+                            <td className="px-2 py-1.5" style={{ color: 'var(--mid-gray)' }}>{branchShort(a.branch)}</td>
                             <td className="px-2 py-1.5 whitespace-nowrap" style={{ color: 'var(--mid-gray)' }}>{a.date}</td>
                             <td className="px-2 py-1.5 text-right font-mono">{peso(a.total)}</td>
                           </tr>
@@ -676,7 +677,7 @@ function SuppliersInner() {
                           <tr key={i.sku + i.branch} className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
                             <td className="px-2 py-1.5 font-mono whitespace-nowrap" style={{ color: 'var(--mid-gray)' }}>{i.sku}</td>
                             <td className="px-2 py-1.5" style={{ color: 'var(--charcoal)' }}>{i.name}</td>
-                            <td className="px-2 py-1.5" style={{ color: 'var(--mid-gray)' }}>{i.branch}</td>
+                            <td className="px-2 py-1.5" style={{ color: 'var(--mid-gray)' }}>{branchShort(i.branch)}</td>
                             <td className="px-2 py-1.5 text-right" style={{ color: 'var(--mid-gray)' }}>{i.quantity} on hand</td>
                           </tr>
                         ))}
@@ -699,7 +700,7 @@ function SuppliersInner() {
                         {history.entries.map((t, i) => (
                           <tr key={i} className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
                             <td className="px-2 py-1.5 whitespace-nowrap" style={{ color: 'var(--mid-gray)' }}>{t.date || '—'}</td>
-                            <td className="px-2 py-1.5" style={{ color: 'var(--mid-gray)' }}>{t.branch}</td>
+                            <td className="px-2 py-1.5" style={{ color: 'var(--mid-gray)' }}>{branchShort(t.branch)}</td>
                             <td className="px-2 py-1.5 font-mono whitespace-nowrap" style={{ color: 'var(--mid-gray)' }}>{t.pcvNumber}</td>
                             <td className="px-2 py-1.5" style={{ color: 'var(--charcoal)' }}>{t.description || '—'}</td>
                             <td className="px-2 py-1.5" style={{ color: 'var(--mid-gray)' }}>{accountName(t.accountTitle) || '—'}</td>

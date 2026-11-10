@@ -15,6 +15,7 @@
  *      { action: 'set-fee', fee }
  */
 
+import { branchShort } from '@/lib/branch'
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
@@ -133,7 +134,7 @@ export async function POST(req: Request) {
 
   const already = await prisma.mentorshipMeetingCharge.findFirst({ where: { externalMeetingId: meetingId } })
   if (already) {
-    return NextResponse.json({ error: `Already included in cutoff ${already.cutoffPeriod} (${already.branch}).` }, { status: 400 })
+    return NextResponse.json({ error: `Already included in cutoff ${already.cutoffPeriod} (${branchShort(already.branch)}).` }, { status: 400 })
   }
 
   const feeRow = await prisma.mentorshipFeeSetting.findUnique({ where: { id: 1 } })

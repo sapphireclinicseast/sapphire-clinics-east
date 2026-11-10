@@ -1,5 +1,6 @@
 'use client'
 
+import { branchFileTag } from '@/lib/branch'
 import { useState, useCallback, useEffect } from 'react'
 import { useSession } from 'next-auth/react'
 import { userBranchScope, canViewAllBranchesSI } from '@/lib/branch-scope'
@@ -930,7 +931,7 @@ function WithSiTab({ branch: initialBranch, scopeEnum, canViewAll }: { branch: s
         { name: 'Flagged Sales Invoices', headers: ['SI No.', 'Issue', 'Count', 'Amount'], rows: flagged.map(f => [f.si, f.issue, f.count, f.amount]) },
       ]
       if (outliers.length) sheets.push({ name: 'Outside SI sequence', headers: ['SI field', 'Date', 'Patient / Customer', 'Order #', 'Amount'], rows: outliers })
-      downloadXlsx(`with-si_${branch}_${label}`, sheets)
+      downloadXlsx(`with-si_${branchFileTag(branch)}_${label}`, sheets)
       setXlOpen(false)
     } finally { setXlBusy(false) }
   }

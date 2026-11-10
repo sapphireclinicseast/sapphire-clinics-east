@@ -155,7 +155,7 @@ function SoaSettingsModal({
           <div>
             <p className="text-xs font-bold uppercase tracking-wider mb-3" style={{ color: 'var(--teal)' }}>Contact Information</p>
             <div className="space-y-3">
-              {field('Email', 'contactEmail', 'east.sandboxclinic@gmail.com')}
+              {field('Email', 'contactEmail', 'east@sapphireclinicseast.org')}
               {field('Phone 1', 'contactPhone1', '0917 118 9289')}
               {field('Phone 2', 'contactPhone2', '(02) 5310 4991')}
             </div>

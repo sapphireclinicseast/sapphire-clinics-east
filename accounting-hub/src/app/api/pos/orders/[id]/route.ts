@@ -1,3 +1,4 @@
+import { branchShort } from '@/lib/branch'
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { TUITION_SERVICE_NAME } from '@/lib/tuition'
@@ -398,7 +399,7 @@ export async function PUT(
       //    adjustment so it appears in the item's Qty history with a clear reference.
       //    (Uses the adjustment mechanism, NOT restoreFifoLots — that would double-restock.)
       if (isReturn && updated.orderType === 'PRODUCT') {
-        const refLabel = `Order #${updated.orderNumber} RETURNED BY BUYER · ${updated.branch}`
+        const refLabel = `Order #${updated.orderNumber} RETURNED BY BUYER · ${branchShort(updated.branch)}`
         const restock = async (itemId: string, addQty: number, unitCost: number | null) => {
           const it = await prisma.inventoryItem.findUnique({ where: { id: itemId } })
           if (!it || addQty <= 0) return

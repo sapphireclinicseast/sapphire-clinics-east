@@ -1,5 +1,6 @@
 'use client'
 
+import { branchShort } from '@/lib/branch'
 import React, { Suspense, useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useFocusTarget } from '@/lib/use-focus-target'
 import { isItemBreakdown } from '@/lib/asset-parts'
@@ -3310,7 +3311,7 @@ function DepartmentTotalsTab({ assets, loading, branchFilter, setBranchFilter, l
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-3">
         {lockedBranch ? (
-          <span className="text-sm text-gray-500">Showing: <strong>{lockedBranch}</strong></span>
+          <span className="text-sm text-gray-500">Showing: <strong>{branchShort(lockedBranch)}</strong></span>
         ) : (
           <div>
             <label className="text-xs font-medium text-gray-500 mr-2">Branch</label>

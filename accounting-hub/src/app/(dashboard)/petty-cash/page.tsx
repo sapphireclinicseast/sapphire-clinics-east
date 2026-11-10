@@ -1,5 +1,6 @@
 'use client'
 
+import { branchFileTag, branchShort } from '@/lib/branch'
 import { Suspense, useState, useEffect, useCallback, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { toChequeInput } from '@/lib/cheque-number'
@@ -454,14 +455,14 @@ function PettyCashInner() {
     const rows = entries.filter(e => inDateRange(e.date, dlFrom, dlTo))
     const headers = ['PCV Number', 'Requestor', 'Department', 'Date', 'Description', 'Vatable', 'SI Number', 'TIN', 'Registered Name', 'Account Title', 'Validity', 'PCF Status', 'Gross Amount']
     const body = rows.map(e => [e.pcvNumber, e.requestor || '', e.department || '', e.date ? String(e.date).slice(0, 10) : '', e.description || '', vatLabel(e), e.siNumber || '', e.tinNumber || '', e.registeredName || '', e.accountTitle || '', e.validity || '', e.pcfStatus || '', num(e.grossAmount).toFixed(2)])
-    if (fmt === 'xlsx') downloadXlsx(`petty-cash-entries-${branch}`, [{ name: 'Petty Cash', headers, rows: body }])
+    if (fmt === 'xlsx') downloadXlsx(`petty-cash-entries-${branchFileTag(branch)}`, [{ name: 'Petty Cash', headers, rows: body }])
     else downloadPdf({ title: `Petty Cash Entries — ${brName}`, subtitle: `Range: ${dlFrom || 'start'} → ${dlTo || 'end'} · ${body.length} entr${body.length === 1 ? 'y' : 'ies'}`, headers, rows: body, landscape: true })
   }
   const exportReimb = (fmt: ExportFormat) => {
     const rows = shownReimb.filter(r => inDateRange(r.createdAt, dlFrom, dlTo))
     const headers = ['Reference Number', 'Date', 'Payable to', 'Entries', 'Gross Total', 'Amount Payable', 'Status']
     const body = rows.map(r => [r.refNumber, new Date(r.createdAt).toISOString().slice(0, 10), r.payableTo || '', r._count.entries, num(r.grossTotal).toFixed(2), num(r.payableTotal).toFixed(2), r.status === 'PAID' ? 'Paid' : 'Pending'])
-    if (fmt === 'xlsx') downloadXlsx(`petty-cash-rfp-${branch}`, [{ name: 'RFP', headers, rows: body }])
+    if (fmt === 'xlsx') downloadXlsx(`petty-cash-rfp-${branchFileTag(branch)}`, [{ name: 'RFP', headers, rows: body }])
     else downloadPdf({ title: `Petty Cash RFP — ${brName}`, subtitle: `Range: ${dlFrom || 'start'} → ${dlTo || 'end'} · ${body.length} RFP(s)`, headers, rows: body, landscape: true })
   }
 
@@ -2694,7 +2695,7 @@ function CeoPcfHistoryPanel() {
                   {rows.map(r => (
                     <tr key={r.id} className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
                       <td className="px-3 py-1.5 whitespace-nowrap tabular-nums">{r.date}</td>
-                      <td className="px-3 py-1.5">{r.branch}</td>
+                      <td className="px-3 py-1.5">{branchShort(r.branch)}</td>
                       <td className="px-3 py-1.5 max-w-md truncate" style={{ color: 'var(--charcoal)' }} title={r.particulars}>{r.particulars}</td>
                       <td className="px-3 py-1.5">{r.receivedBy}</td>
                       <td className="px-3 py-1.5 text-right tabular-nums" style={{ color: r.cashIn ? '#166534' : 'var(--light-gray)' }}>{r.cashIn ? peso(r.cashIn) : ''}</td>

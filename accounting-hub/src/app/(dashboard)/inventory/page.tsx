@@ -1,5 +1,6 @@
 'use client'
 
+import { branchFromInput, branchShort } from '@/lib/branch'
 import React, { Suspense, useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { createPortal } from 'react-dom'
 import { useFocusTarget } from '@/lib/use-focus-target'
@@ -147,7 +148,7 @@ interface TransmittalData {
 }
 
 function generateTransmittalPDF(data: TransmittalData) {
-  const logoUrl = `${window.location.origin}/brand/sandbox-clinic-logo.png`
+  const logoUrl = `${window.location.origin}/aura-logo.png`
   const today = new Date().toLocaleDateString('en-PH', { year: 'numeric', month: 'long', day: 'numeric' })
 
   // Build item rows — always 10 rows minimum (matching transmittal form)
@@ -243,7 +244,7 @@ function generateTransmittalPDF(data: TransmittalData) {
   <!-- From section -->
   <div class="section-label">From:</div>
   <table class="info-table">
-    <tr><td class="field-label">Aura Health Rehab Clinic Branch</td><td>${data.fromBranch}</td></tr>
+    <tr><td class="field-label">Aura Health Rehab Clinic Branch</td><td>${branchShort(data.fromBranch)}</td></tr>
     <tr><td class="field-label">Staff Name</td><td>${data.fromStaff || data.requestedBy}</td></tr>
     <tr><td class="field-label">Position & Contact No.</td><td>${[data.fromPosition, data.fromContact].filter(Boolean).join(' — ')}</td></tr>
   </table>
@@ -252,7 +253,7 @@ function generateTransmittalPDF(data: TransmittalData) {
   <div class="section-label">To:</div>
   <table class="info-table">
     <tr><td class="field-label">Receiver's Name</td><td>${data.toReceiver || ''}</td></tr>
-    <tr><td class="field-label">Branch</td><td>${data.toBranch}</td></tr>
+    <tr><td class="field-label">Branch</td><td>${branchShort(data.toBranch)}</td></tr>
     <tr><td class="field-label">Contact No.</td><td>${data.toContact || ''}</td></tr>
   </table>
 
@@ -2589,7 +2590,7 @@ setTimeout(()=>window.print(),500);
               <DownloadMenu onDownload={handleDownloadInventory} label="Download" />
               {canWrite && (<>
                 <button onClick={() => {
-                  const csv = 'name,department,category,subcategory,branch,unit_cost,selling_price,reward_points_price,quantity,reorder_level\nPRODUCT NAME,OT,Equipment,Fine Motor,VERDANA_STORE,300,1200,,10,3'
+                  const csv = 'name,department,category,subcategory,branch,unit_cost,selling_price,reward_points_price,quantity,reorder_level\nPRODUCT NAME,OT,Equipment,Fine Motor,Verdana,300,1200,,10,3'
                   const blob = new Blob([csv], { type: 'text/csv' })
                   const url = URL.createObjectURL(blob)
                   const a = document.createElement('a'); a.href = url; a.download = 'inventory-import-template.csv'; a.click()
@@ -3926,7 +3927,7 @@ setTimeout(()=>window.print(),500);
                         const lines = text.trim().split('\n')
                         const rows = lines.slice(1).map(line => {
                           const cols = line.split(',').map(c => c.trim().replace(/^"|"$/g, ''))
-                          return { name: cols[0] || '', department: cols[1] || '', category: cols[2] || '', subcategory: cols[3] || '', branch: cols[4] || 'VERDANA_STORE', unitCost: cols[5] || '', sellingPrice: cols[6] || '', rewardPointsPrice: cols[7] || '', quantity: cols[8] || '', reorderLevel: cols[9] || '' }
+                          return { name: cols[0] || '', department: cols[1] || '', category: cols[2] || '', subcategory: cols[3] || '', branch: branchFromInput(cols[4]) || 'VERDANA_STORE', unitCost: cols[5] || '', sellingPrice: cols[6] || '', rewardPointsPrice: cols[7] || '', quantity: cols[8] || '', reorderLevel: cols[9] || '' }
                         }).filter(r => r.name)
                         if (rows.length === 0) { setError('No valid rows'); return }
                         setBulkItemCsv(rows); setBulkItemStep('review'); setError('')
@@ -3957,7 +3958,7 @@ setTimeout(()=>window.print(),500);
                               <td className="px-2 py-1.5">{r.department}</td>
                               <td className="px-2 py-1.5">{r.category}</td>
                               <td className="px-2 py-1.5">{r.subcategory}</td>
-                              <td className="px-2 py-1.5">{r.branch}</td>
+                              <td className="px-2 py-1.5">{branchShort(r.branch)}</td>
                               <td className="px-2 py-1.5">{r.unitCost}</td>
                               <td className="px-2 py-1.5">{r.sellingPrice}</td>
                               <td className="px-2 py-1.5">{r.quantity}</td>
@@ -5165,7 +5166,7 @@ setTimeout(()=>window.print(),500);
               {canWrite && (
                 <>
                   <button onClick={() => {
-                    const csv = 'sku,quantity,to_branch,remarks\nOT-EQP-FIN-001,2,SANDBOX_GREENHILLS,Consignment\nEDU-MAT-BOK-001,3,SANDBOX_EAST,'
+                    const csv = 'sku,quantity,to_branch,remarks\nOT-EQP-FIN-001,2,Greenhills,Consignment\nEDU-MAT-BOK-001,3,East,'
                     const blob = new Blob([csv], { type: 'text/csv' })
                     const url = URL.createObjectURL(blob)
                     const a = document.createElement('a'); a.href = url; a.download = 'consignment-import-template.csv'; a.click()
@@ -5576,7 +5577,7 @@ setTimeout(()=>window.print(),500);
                       <p className="font-semibold mb-1" style={{ color: 'var(--charcoal)' }}>Branch values:</p>
                       <ul className="space-y-0.5">
                         {BRANCH_OPTIONS.map(b => (
-                          <li key={b.value}><code className="font-mono">{b.value}</code> — {b.label}</li>
+                          <li key={b.value}><code className="font-mono">{branchShort(b.value)}</code> — {b.label}</li>
                         ))}
                       </ul>
                     </div>
@@ -5596,7 +5597,7 @@ setTimeout(()=>window.print(),500);
                           const cols = line.split(',').map(c => c.trim().replace(/^"|"$/g, ''))
                           const sku = cols[0] || ''
                           const quantity = parseInt(cols[1]) || 0
-                          const toBranch = cols[2] || ''
+                          const toBranch = branchFromInput(cols[2])
                           const remarks = cols[3] || ''
                           // Look up item by SKU
                           const item = allItems.find(i => i.sku === sku)
@@ -5695,10 +5696,10 @@ setTimeout(()=>window.print(),500);
                                 }),
                               })
                               const data = await res.json()
-                              if (!res.ok) { allErrors.push(data.error || `Failed for ${branch}`); continue }
+                              if (!res.ok) { allErrors.push(data.error || `Failed for ${branchShort(branch)}`); continue }
                               totalSuccess += data.transfers?.length || 0
                               if (data.errors?.length) allErrors.push(...data.errors)
-                            } catch { allErrors.push(`Network error for ${branch}`) }
+                            } catch { allErrors.push(`Network error for ${branchShort(branch)}`) }
                           }
                           setConCsvResult({ success: totalSuccess, errors: allErrors })
                           setConCsvStep('result')

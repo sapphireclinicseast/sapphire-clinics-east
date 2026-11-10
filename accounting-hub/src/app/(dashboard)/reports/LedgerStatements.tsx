@@ -5,6 +5,7 @@
 // underlying entries with Excel export), the Income Statement offers monthly /
 // quarterly columns and a vertical-analysis mode (every line as % of gross
 // revenue), and the integrity card sits at the bottom in plain language.
+import { branchFileTag } from '@/lib/branch'
 import { Fragment, createContext, useContext, useEffect, useState } from 'react'
 import { CheckCircle2, AlertTriangle, Loader2, X, Download, ChevronDown } from 'lucide-react'
 import { formatCurrency } from '@/lib/utils'
@@ -262,7 +263,7 @@ function DrillDown({ year, branch, account, title, month, cumulative, onClose }:
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
-    a.download = `${account}-${year}-${branch}${month ? '-' + MONTHS[month - 1] : ''}.csv`
+    a.download = `${account}-${year}-${branchFileTag(branch)}${month ? '-' + MONTHS[month - 1] : ''}.csv`
     a.click()
     URL.revokeObjectURL(url)
   }

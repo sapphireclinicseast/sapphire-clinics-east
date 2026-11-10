@@ -1,3 +1,4 @@
+import { branchShort } from '@/lib/branch'
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
@@ -67,7 +68,7 @@ export async function POST(req: Request) {
     }
     for (const t of targets) {
       if (!VALID_BRANCHES.includes(t.branch)) {
-        return NextResponse.json({ error: `CEO / unallocated entries need a branch allocation before they can become assets (got "${t.branch}").` }, { status: 400 })
+        return NextResponse.json({ error: `CEO / unallocated entries need a branch allocation before they can become assets (got "${branchShort(t.branch)}").` }, { status: 400 })
       }
     }
 

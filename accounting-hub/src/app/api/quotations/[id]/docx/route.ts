@@ -5,6 +5,7 @@
  * what was saved, even if a service price moved afterwards.
  */
 
+import { branchShort } from '@/lib/branch'
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
@@ -49,7 +50,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
   const template = await prisma.quotationTemplate.findUnique({ where: { branch: quotation.branch } })
   if (!template) {
     return NextResponse.json(
-      { error: `No quotation template uploaded for ${quotation.branch}. Add one under Quotations → Settings.` },
+      { error: `No quotation template uploaded for ${branchShort(quotation.branch)}. Add one under Quotations → Settings.` },
       { status: 400 },
     )
   }

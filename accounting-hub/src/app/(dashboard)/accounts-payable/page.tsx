@@ -288,7 +288,7 @@ function AddModal({ onClose, onDone }: { onClose: () => void; onDone: () => void
         <div className="flex gap-2">
           <input type="date" value={dateIncurred} onChange={e => setDateIncurred(e.target.value)} className="flex-1 min-w-0 px-3 py-2 rounded-lg border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
           <select value={branch} onChange={e => setBranch(e.target.value)} className="flex-1 min-w-0 px-2 py-2 rounded-lg border text-sm" style={{ borderColor: 'var(--light-gray)' }}>
-            {['ALL', 'SANDBOX_EAST', 'SANDBOX_GREENHILLS', 'VERDANA', 'VERDANA_STORE'].map(b => <option key={b} value={b}>{b}</option>)}
+            {['ALL', 'SANDBOX_EAST', 'SANDBOX_GREENHILLS', 'VERDANA', 'VERDANA_STORE'].map(b => <option key={b} value={b}>{BRANCH_LABEL[b] || b}</option>)}
           </select>
         </div>
         {foreign && (

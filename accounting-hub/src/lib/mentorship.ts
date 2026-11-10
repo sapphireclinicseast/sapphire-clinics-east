@@ -3,6 +3,7 @@
  * Mentorship Meetings) — the payroll-side bridge to the staff portal.
  */
 
+import { branchShort } from '@/lib/branch'
 import { prisma } from '@/lib/prisma'
 import { cutoffRange } from '@/lib/payroll-cutoff'
 
@@ -95,7 +96,7 @@ export async function lockAndNotifyMentorshipCharges(cutoffPeriod: string, branc
     const res = await fetch(`${TELETHERAPY_URL}/api/external/mentorship-meetings`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${EXTERNAL_API_KEY}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'mark-paid', meetingIds: toNotify, cutoffLabel: `${cutoffPeriod} · ${branch}` }),
+      body: JSON.stringify({ action: 'mark-paid', meetingIds: toNotify, cutoffLabel: `${cutoffPeriod} · ${branchShort(branch)}` }),
       signal: AbortSignal.timeout(10000),
     })
     if (res.ok) {

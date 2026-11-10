@@ -20,6 +20,7 @@
  * Synthesis is deduplicated per reference id, so turning ENABLE_GL_POSTING on
  * later will not double-count: a source with a real JE is never synthesized.
  */
+import { branchShort } from '@/lib/branch'
 import { prisma } from '@/lib/prisma'
 import { INCOME_TAX_RATE } from '@/lib/reports/income-statement-totals'
 import { productSubtypeLabel } from '@/lib/sku-taxonomy'
@@ -1995,7 +1996,7 @@ export async function computeLedgerStatements(
         const who = [s.employee?.lastName, s.employee?.firstName].filter(Boolean).join(', ') || 'Unnamed employee'
         perPerson.push({
           month, source: 'Employee payroll',
-          label: `${who} — ${s.cutoffPeriod} — ${s.branch} (taxable pay)`,
+          label: `${who} — ${s.cutoffPeriod} — ${branchShort(s.branch)} (taxable pay)`,
           debit: taxable, credit: 0,
         })
       }
@@ -2026,7 +2027,7 @@ export async function computeLedgerStatements(
         const who = nameById.get(e.consultantId) || 'Unnamed consultant'
         perPerson.push({
           month, source: 'Consultant payroll',
-          label: `${who} — ${e.cutoffPeriod} — ${e.branch}`,
+          label: `${who} — ${e.cutoffPeriod} — ${branchShort(e.branch)}`,
           debit: amt, credit: 0,
         })
       }

@@ -1,5 +1,6 @@
 'use client'
 
+import { branchShort } from '@/lib/branch'
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { useSession } from 'next-auth/react'
 import { redirect, useSearchParams } from 'next/navigation'
@@ -512,7 +513,8 @@ function printThermalReceipt(order: {
   const branchName = order.branch === 'SANDBOX_EAST' ? 'Aura Health Rehab Clinic \u2013 East' : order.branch === 'SANDBOX_GREENHILLS' ? 'Aura Health Rehab Clinic \u2013 Greenhills' : isVerdana ? 'VERDANA STORE' : order.branch === 'AURA_INSTITUTE' ? 'Aura Health Rehab Clinic \u2013 Institute' : order.branch || ''
   const address = isVerdana ? 'Room 210B, Henry\'s Building, 80 Ortigas Extension, San Juan City' : order.branch === 'SANDBOX_GREENHILLS' ? 'Greenhills Shopping Center, San Juan City' : 'Level 4 Robinsons MetroEast, Brgy. Dela Paz, Pasig City'
   const phone = isVerdana ? '+63 917 173 1368' : '+63 917 118 9289 | (02) 5310 4991'
-  const email = isVerdana ? 'verdanatrading@gmail.com' : 'east.sandboxclinic@gmail.com'
+  const email = isVerdana ? 'verdanatrading@gmail.com' : order.branch === 'SANDBOX_GREENHILLS' ? 'greenhills@sapphireclinicseast.org' : 'east@sapphireclinicseast.org'
+  const social = order.branch === 'SANDBOX_GREENHILLS' ? '@aurahealthrehabgh' : '@aurahealthrehabeast'
   const paymentLabel = order.payments.map(p => p.method.replace(/_/g, ' ')).join(', ')
   const html = `<div style="font-family:'Arial Black',Arial,Helvetica,sans-serif;font-weight:900;font-size:11px;width:280px;padding:8px;line-height:1.5;color:#000">
 <div style="text-align:center;font-weight:900;font-size:12px">Sapphire Clinics East Inc.</div>
@@ -538,7 +540,7 @@ ${Number(order.discountAmount) > 0 ? `<div style="display:flex;justify-content:s
 ${change > 0 ? `<div style="display:flex;justify-content:space-between;font-size:10px;font-weight:900"><span>Change:</span><span>${fmt(change)}</span></div>` : ''}
 ${order.revenueType === 'UNEARNED' ? '<div style="text-align:center;margin-top:4px;font-size:9px;font-weight:900;font-style:italic">** UNEARNED REVENUE **</div>' : ''}
 <div style="text-align:center;margin-top:10px;font-size:11px;font-weight:900">Thank you!</div>
-<div style="text-align:center;font-size:8px;font-weight:900;margin:4px 0">Follow us on Facebook, Instagram, and Tiktok @sandboxcliniceast</div>
+${isVerdana ? '' : `<div style="text-align:center;font-size:8px;font-weight:900;margin:4px 0">Follow us on Facebook and Instagram ${social} and TikTok @aurahealthrehab</div>`}
 <div style="text-align:center;font-size:8px;font-weight:900;font-style:italic;margin-bottom:8px">This is not an official sales invoice. Please request the sales invoice from the front desk.</div>
 <div style="display:flex;justify-content:center;align-items:center;gap:12px;margin:10px 0">
 <img src="/qr-feedback.png" style="width:70px;height:70px;filter:grayscale(100%) contrast(150%)" />
@@ -5717,7 +5719,7 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
     const providerName = showSOA.patientName
     const isHMO = showSOA.walletType === 'HMO'
     const branchLabel = soaBranch === 'SANDBOX_EAST' ? 'Aura Health Rehab Clinic — East' : soaBranch === 'SANDBOX_GREENHILLS' ? 'Aura Health Rehab Clinic — Greenhills' : soaBranch === 'VERDANA_STORE' ? 'Verdana Store' : soaBranch === 'AURA_INSTITUTE' ? 'Aura Health Institute' : 'All Branches'
-    const logoUrl = `${window.location.origin}/brand/sandbox-clinic-logo.png`
+    const logoUrl = `${window.location.origin}/aura-logo.png`
     const totalAmount = soaOrders.reduce((s, o) => {
       const hmoPayment = o.payments.find(p => p.method === showSOA.walletType && p.reference?.trim().toLowerCase() === providerName.toLowerCase())
       return s + (hmoPayment ? toNum(hmoPayment.amount) : 0)
@@ -7565,7 +7567,7 @@ function DiscountSettingsPanel() {
                   <p className="text-sm font-medium" style={{ color: 'var(--charcoal)' }}>{ds.name}</p>
                   <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>
                     {ds.type === 'PERCENTAGE' ? `${toNum(ds.value)}%` : formatCurrency(toNum(ds.value))} off
-                    {ds.branch ? ` · ${ds.branch}` : ''}
+                    {ds.branch ? ` · ${branchShort(ds.branch)}` : ''}
                   </p>
                   {ds.account && (
                     <p className="text-xs" style={{ color: 'var(--teal)' }}>{ds.account.accountNumber} {ds.account.accountTitle}</p>
@@ -8280,7 +8282,7 @@ function ProductsSection({
     const allFreeSamples = cart.every(c => c.isFreeSample)
     if (!allFreeSamples && !hasRewardPointsPayment && productPaymentShort) { setError('Payments do not cover the net amount'); return }
     if (hasReceivablePayment) {
-      if (!soldTo.trim()) { setError('Enter who this is sold to (e.g. SANDBOX CLARK) for the Receivable payment'); return }
+      if (!soldTo.trim()) { setError('Enter who this is sold to (the customer or company) for the Receivable payment'); return }
       if (isBusiness && !businessName.trim()) { setError('Enter the business name — a company sale is billed to the company'); return }
       if (isBusiness && prodIssuedInvoice && !businessTin.trim()) { setError('An official sales invoice to a business needs its TIN'); return }
       if (isBusiness && prodIssuedInvoice && !buyerAddress.trim()) { setError('An official sales invoice to a business needs the business address'); return }

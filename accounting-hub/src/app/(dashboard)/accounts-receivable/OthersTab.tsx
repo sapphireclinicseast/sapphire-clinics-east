@@ -92,7 +92,7 @@ export default function OthersTab({ branch, canWrite }: { branch: string; canWri
     <div className="space-y-4">
       <div className="flex items-center justify-between flex-wrap gap-3">
         <p className="text-sm" style={{ color: 'var(--mid-gray)' }}>
-          Receivables from other customers (bulk / credit sales, e.g. Sandbox Clark) — created by POS product orders paid via <strong>Receivable</strong>, or added here.
+          Receivables from other customers (bulk / credit sales to companies and partners) — created by POS product orders paid via <strong>Receivable</strong>, or added here.
           {' '}Outstanding: <strong style={{ color: 'var(--deep-teal)' }}>{formatCurrency(totalOutstanding)}</strong>
         </p>
         <div className="flex items-center gap-3">
@@ -384,7 +384,7 @@ function NewReceivableModal({ branch, onClose, onSaved }: { branch: string; onCl
       <div className="bg-white rounded-2xl p-6 w-full max-w-md" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-3"><h2 className="text-lg font-bold" style={{ color: 'var(--charcoal)' }}>New Other Receivable</h2><button onClick={onClose}><X size={18} style={{ color: 'var(--mid-gray)' }} /></button></div>
         <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--charcoal)' }}>Customer / Sold to</label>
-        <input value={customerName} onChange={e => setCustomerName(e.target.value)} placeholder="e.g. SANDBOX CLARK" className="w-full px-3 py-2 rounded-xl border text-sm mb-3" style={{ borderColor: 'var(--light-gray)' }} />
+        <input value={customerName} onChange={e => setCustomerName(e.target.value)} placeholder="Customer or company name" className="w-full px-3 py-2 rounded-xl border text-sm mb-3" style={{ borderColor: 'var(--light-gray)' }} />
         <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--charcoal)' }}>Branch</label>
         <select value={recBranch} onChange={e => setRecBranch(e.target.value)} className="w-full px-3 py-2 rounded-xl border text-sm mb-3" style={{ borderColor: 'var(--light-gray)' }}>
           <option value="SANDBOX_EAST">East</option><option value="SANDBOX_GREENHILLS">Greenhills</option><option value="VERDANA_STORE">Verdana</option><option value="AURA_INSTITUTE">Aura Health Institute</option>

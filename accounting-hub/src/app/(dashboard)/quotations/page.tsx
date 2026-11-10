@@ -11,6 +11,7 @@
  * and the ones saved to the document cannot disagree.
  */
 
+import { branchShort } from '@/lib/branch'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   FileText, Search, Plus, Trash2, Loader2, Download, Upload, Settings as SettingsIcon,
@@ -536,7 +537,7 @@ function MakerTab() {
                         className="w-full flex items-center justify-between gap-3 px-3 py-2.5 text-left hover:bg-[#f3f8ea] border-b last:border-0" style={LINE}>
                         <span className="min-w-0">
                           <span className="block text-[13px] font-semibold truncate" style={{ color: 'var(--charcoal)' }}>{s.name}</span>
-                          <span className="block text-[11.5px]" style={{ color: 'var(--mid-gray)' }}>{s.department} · {s.branch}</span>
+                          <span className="block text-[11.5px]" style={{ color: 'var(--mid-gray)' }}>{s.department} · {branchShort(s.branch)}</span>
                         </span>
                         <span className="flex items-center gap-2 shrink-0">
                           <span className="text-[13px] font-semibold tabular-nums" style={{ color: 'var(--charcoal)' }}>{formatPeso(effectiveServicePrice(s, serviceBranch))}</span>

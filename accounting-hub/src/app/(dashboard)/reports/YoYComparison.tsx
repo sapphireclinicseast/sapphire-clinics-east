@@ -18,6 +18,7 @@
  * drops to summary level and everything below EBITDA becomes one line.
  */
 
+import { branchFileTag } from '@/lib/branch'
 import { useState, useEffect, useMemo, useRef, Fragment } from 'react'
 import { Loader2, Download, Printer, CalendarRange, ChevronRight, ChevronDown } from 'lucide-react'
 import { downloadXlsx, downloadPdf } from '@/lib/export'
@@ -404,7 +405,7 @@ export default function YoYComparison({ lockedBranch }: { lockedBranch?: string 
   const headers = [byBranch ? 'Branch — Line' : 'Line', colB, colA, 'Change (₱)', 'Change (%)']
   const basisTag = `${auditedInUse ? 'audited-basis' : 'ledger'}${byBranch ? '-by-branch' : ''}`
   const fileRange = byDates ? `${fromA}_${toA}-vs-${fromB}_${toB}` : `${rangeLabel}-${yearA}-vs-${yearB}`
-  const exportXlsx = () => downloadXlsx(`yoy-${fileRange}-${branch}-${basisTag}`, [{ name: byBranch ? 'YoY by Branch' : 'YoY Comparison', headers, rows: exportRows() }])
+  const exportXlsx = () => downloadXlsx(`yoy-${fileRange}-${branchFileTag(branch)}-${basisTag}`, [{ name: byBranch ? 'YoY by Branch' : 'YoY Comparison', headers, rows: exportRows() }])
   const exportPdf = () => downloadPdf({
     title: `Year-over-Year Comparison — ${colA} vs ${colB}`,
     subtitle: `${byBranch ? 'By branch' : branchLabel}${auditedInUse ? ' · FY2024–FY2025 on the audited basis' : ''}`,

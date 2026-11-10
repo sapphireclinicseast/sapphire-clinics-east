@@ -1,5 +1,6 @@
 'use client'
 
+import { branchFileTag } from '@/lib/branch'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { HandCoins, Plus, Loader2, X, Trash2, Eye } from 'lucide-react'
 import { SortFilterHead, applySortFilter } from '@/components/SortFilterHead'
@@ -110,7 +111,7 @@ export default function CashAdvancesPage() {
     const rs = shown.filter(a => inDateRange(a.dateReleased, dlFrom, dlTo))
     const headers = ['Reference', 'Date', 'Accountable', 'Purpose', 'Released', 'Liquidated', 'Returned', 'Outstanding', 'Status']
     const body = rs.map(a => [a.refNumber, String(a.dateReleased).slice(0, 10), a.accountableName, a.purpose, a.amount.toFixed(2), a.liquidated.toFixed(2), a.returned.toFixed(2), a.outstanding.toFixed(2), a.status])
-    if (fmt === 'xlsx') downloadXlsx(`cash-advances-${branch}`, [{ name: 'Cash Advances', headers, rows: body }])
+    if (fmt === 'xlsx') downloadXlsx(`cash-advances-${branchFileTag(branch)}`, [{ name: 'Cash Advances', headers, rows: body }])
     else downloadPdf({ title: 'Cash Advances', subtitle: `${BRANCHES.find(b => b.value === branch)?.label} · ${dlFrom || 'start'} → ${dlTo || 'end'}`, headers, rows: body, landscape: true })
   }
 

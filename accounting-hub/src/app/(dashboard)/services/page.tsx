@@ -1,5 +1,6 @@
 'use client'
 
+import { branchShort } from '@/lib/branch'
 import { Fragment, useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { userBranchScope } from '@/lib/branch-scope'
 import { useSession } from 'next-auth/react'
@@ -1794,7 +1795,7 @@ export default function ServicesPage() {
                               {new Date(r.changedAt).toLocaleDateString('en-PH', { year: 'numeric', month: 'short', day: 'numeric' })}
                             </td>
                             <td className="py-2" style={{ color: 'var(--charcoal)' }}>
-                              {label}{r.branch ? ` · ${r.branch}` : ''}
+                              {label}{r.branch ? ` · ${branchShort(r.branch)}` : ''}
                               {r.source === 'BASELINE' && (
                                 <span className="ml-2 px-1.5 py-0.5 rounded text-xs font-semibold" style={{ background: '#f1f5f9', color: '#475569' }}>starting point</span>
                               )}

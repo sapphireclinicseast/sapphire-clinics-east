@@ -1,3 +1,4 @@
+import { branchShort } from '@/lib/branch'
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
@@ -163,7 +164,7 @@ export async function POST(req: Request) {
     if (!payables.length) return NextResponse.json({ error: 'No valid unremitted payable records found' }, { status: 404 })
 
     const totalAmount = payables.reduce((s, p) => s + Number(p.totalBenefitsPayable), 0)
-    const descriptions = payables.map(p => `${p.payrollType} ${p.cutoffPeriod} ${p.branch}`).join(', ')
+    const descriptions = payables.map(p => `${p.payrollType} ${p.cutoffPeriod} ${branchShort(p.branch)}`).join(', ')
 
     // Consultant contributions sit in their own payable (4045 — self-employed
     // contributions the company remits on the consultant's behalf), never in the

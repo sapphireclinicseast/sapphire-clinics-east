@@ -6,7 +6,7 @@ import RevisedSessionsTab from './RevisedSessionsTab'
 import ClinicianPaymentsPanel from './ClinicianPaymentsPanel'
 import { useSession } from 'next-auth/react'
 import { userBranchScope } from '@/lib/branch-scope'
-import { branchLabel } from '@/lib/branch'
+import { branchLabel, branchShort } from '@/lib/branch'
 import { SortFilterHead, applySortFilter, type SortCol } from '@/components/SortFilterHead'
 import { useSearchParams } from 'next/navigation'
 import {
@@ -3690,8 +3690,7 @@ export default function AccountsReceivablePage() {
             {/* Branch selector */}
             <div className="mb-4">
               <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Branch</label>
-              <input
-                list="invoice-branch-list"
+              <select
                 value={invSettingBranch}
                 onChange={e => {
                   const b = e.target.value
@@ -3705,16 +3704,16 @@ export default function AccountsReceivablePage() {
                     email: existing.email || '',
                   } : { companyName: '', tradeName: '', address: '', phone: '', email: '' })
                 }}
-                placeholder="Select or type branch…"
-                className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none"
+                className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none bg-white"
                 style={{ borderColor: 'var(--light-gray)' }}
-              />
-              <datalist id="invoice-branch-list">
+              >
+                <option value="" disabled>Select branch…</option>
                 {Array.from(new Set([
+                  'SANDBOX_EAST', 'SANDBOX_GREENHILLS',
                   ...Object.keys(invoiceSettings),
                   ...orders.map(o => o.branch).filter(Boolean),
-                ])).sort().map(b => <option key={b} value={b} />)}
-              </datalist>
+                ])).sort((a, b) => branchShort(a).localeCompare(branchShort(b))).map(b => <option key={b} value={b}>{branchShort(b)}</option>)}
+              </select>
             </div>
 
             {/* Form fields */}
@@ -3772,7 +3771,7 @@ export default function AccountsReceivablePage() {
                       }}
                       className="w-full text-left px-3 py-2 rounded-xl hover:bg-gray-50 border text-xs"
                       style={{ borderColor: 'var(--light-gray)' }}>
-                      <span className="font-semibold" style={{ color: 'var(--charcoal)' }}>{s.branch}</span>
+                      <span className="font-semibold" style={{ color: 'var(--charcoal)' }}>{branchShort(s.branch)}</span>
                       {s.companyName && <span className="ml-2" style={{ color: 'var(--mid-gray)' }}>{s.companyName}</span>}
                     </button>
                   ))}

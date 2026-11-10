@@ -304,7 +304,7 @@ function NewEntryModal({ coa, onClose, onDone }: { coa: Coa[]; onClose: () => vo
           </label>
           <label className="text-xs" style={{ color: 'var(--mid-gray)' }}>Branch<br />
             <select value={branch} onChange={e => setBranch(e.target.value)} className="px-2 py-2 rounded-lg border text-sm" style={{ borderColor: 'var(--light-gray)' }}>
-              {BRANCHES.map(b => <option key={b} value={b}>{b}</option>)}
+              {BRANCHES.map(b => <option key={b} value={b}>{BRANCH_LABEL[b] || b}</option>)}
             </select>
           </label>
           <label className="flex-1 min-w-[240px] text-xs" style={{ color: 'var(--mid-gray)' }}>Memo<br />

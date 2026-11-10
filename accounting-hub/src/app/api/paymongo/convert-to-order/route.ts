@@ -1,3 +1,4 @@
+import { branchShort } from '@/lib/branch'
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
@@ -82,7 +83,7 @@ export async function POST(req: Request) {
       fallbackUsed = !!mode
     }
     if (!mode) {
-      return NextResponse.json({ error: `No PayMongo payment mode is set up for ${co.branch}. Add one under Payment Modes first.` }, { status: 400 })
+      return NextResponse.json({ error: `No PayMongo payment mode is set up for ${branchShort(co.branch)}. Add one under Payment Modes first.` }, { status: 400 })
     }
 
     const qty = Math.max(1, co.quantity || 1)

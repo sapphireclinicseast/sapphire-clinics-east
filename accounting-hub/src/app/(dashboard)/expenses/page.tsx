@@ -1,5 +1,6 @@
 'use client'
 
+import { branchFileTag } from '@/lib/branch'
 import { Suspense, useState, useEffect, useCallback, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { toChequeInput } from '@/lib/cheque-number'
@@ -968,7 +969,7 @@ function ExpensesInner() {
       ? [e.reimbursement?.refNumber || e.pcvNumber, e.requestor || '', e.department || '', e.description || '', e.accountTitle || '', e.recurFrequency || '', vatLabel(e), num(e.grossAmount).toFixed(2)]
       : [refOf(e), e.requestor || '', e.department || '', e.date ? String(e.date).slice(0, 10) : '', e.description || '', e.accountTitle || '', vatLabel(e), e.validity || '', e.audited ? 'Yes' : 'No', num(e.grossAmount).toFixed(2), e.paidAt ? `Paid ${String(e.paidAt).slice(0, 10)}` : (e.reimbursementId ? 'In RFP' : e.soaId ? 'In SOA' : '')])
     const title = `${isRecurring ? 'Recurring' : 'One-time'} Expenses — ${brLabel}`
-    const fname = `${isRecurring ? 'recurring-expenses' : 'one-time-expenses'}-${branch}`
+    const fname = `${isRecurring ? 'recurring-expenses' : 'one-time-expenses'}-${branchFileTag(branch)}`
     if (fmt === 'xlsx') downloadXlsx(fname, [{ name: isRecurring ? 'Recurring' : 'One-time', headers, rows: body }])
     else downloadPdf({ title, subtitle: `Range: ${rangeNote} · ${body.length} entr${body.length === 1 ? 'y' : 'ies'}`, headers, rows: body, landscape: true })
   }
@@ -981,7 +982,7 @@ function ExpensesInner() {
       r.payableTo || '', r.module && r.module.startsWith('PAYROLL') ? (r.meta?.ids?.length || 0) : r._count.entries,
       num(r.grossTotal).toFixed(2), num(r.payableTotal).toFixed(2), r.status === 'PAID' ? 'Paid' : 'For Payment',
     ])
-    if (fmt === 'xlsx') downloadXlsx(`rfp-${branch}`, [{ name: 'RFP', headers, rows: body }])
+    if (fmt === 'xlsx') downloadXlsx(`rfp-${branchFileTag(branch)}`, [{ name: 'RFP', headers, rows: body }])
     else downloadPdf({ title: `Request for Payment (RFP) — ${brLabel}`, subtitle: `Range: ${rangeNote} · ${body.length} RFP(s)`, headers, rows: body, landscape: true })
   }
 
@@ -3260,7 +3261,7 @@ function CcReportTab({ branch, canWrite }: { branch: string; canWrite: boolean }
       r.periodYear && r.periodMonth ? `${r.periodYear}-${String(r.periodMonth).padStart(2, '0')}` : '',
       r.paidAt ? String(r.paidAt).slice(0, 10) : '',
       r.paymentRoute === 'PETTY_CASH' ? 'Paid through Petty Cash' : (r.rfpRefNumber || 'RFP'), r.total.toFixed(2), r.filingStatus === 'FILED' ? 'Filed' : 'For Filing'])
-    if (fmt === 'xlsx') downloadXlsx(`credit-card-report-${branch}`, [{ name: 'Credit Card Report', headers, rows: body }])
+    if (fmt === 'xlsx') downloadXlsx(`credit-card-report-${branchFileTag(branch)}`, [{ name: 'Credit Card Report', headers, rows: body }])
     else downloadPdf({ title: 'Credit Card Report', subtitle: `Range: ${dlFrom || 'start'} → ${dlTo || 'end'} · ${body.length} paid SOA(s)`, headers, rows: body, landscape: true })
   }
 
