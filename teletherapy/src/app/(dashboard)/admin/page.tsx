@@ -71,6 +71,14 @@ const KIND_LABEL: Record<string, string> = { CLINICIAN: 'Clinician', INTERN: 'In
 type TypeFilter = 'ALL' | 'CLINICIAN' | 'INTERN' | 'OFFICE' | 'ADMIN'
 type StatusFilter = 'ALL' | 'ACTIVE' | 'INACTIVE' | 'NEVER'
 
+/** A password the API just handed back — shown once, then forgotten. */
+interface IssuedPassword {
+  name: string
+  email: string
+  password: string
+  isNew: boolean
+}
+
 interface TherapistAccountItem {
   id: string
   email: string
@@ -78,7 +86,6 @@ interface TherapistAccountItem {
   accountType?: string
   isActive: boolean
   lastLoginAt: string | null
-  lastPlainPassword: string | null
   createdAt: string
   staffId: string
   staff: {
@@ -115,9 +122,11 @@ export default function AdminPage() {
   const [accountSearch, setAccountSearch] = useState('')
   const [typeFilter, setTypeFilter] = useState<TypeFilter>('ALL')
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('ALL')
-  const [revealed, setRevealed] = useState<Set<string>>(new Set())
-  const [copiedId, setCopiedId] = useState<string | null>(null)
   const [showCreate, setShowCreate] = useState(false)
+  // Passwords are never stored readable; the create/set-password response
+  // returns it once and it lives here only until the admin clicks Done.
+  const [issued, setIssued] = useState<IssuedPassword | null>(null)
+  const [copied, setCopied] = useState(false)
 
   // Branch CC emails (for IE email tracking)
   const [ccEmails, setCcEmails] = useState<{ branch: string; email: string; notes?: string | null }[]>([])
@@ -139,8 +148,7 @@ export default function AdminPage() {
 
   async function fetchData() {
     setLoading(true)
-    // cache: 'no-store' on the accounts fetch so a stale browser/CDN
-    // cache can't keep showing pre-change passwords after Save.
+    // cache: 'no-store' so a stale browser/CDN cache never shows an old list.
     const [staffRes, accountsRes, ccRes] = await Promise.all([
       fetch('/api/staff'),
       fetch('/api/therapist-accounts', { cache: 'no-store' }),
@@ -237,6 +245,14 @@ export default function AdminPage() {
         body: JSON.stringify({ staffId: selectedStaffId, email, password, accountType }),
       })
       if (res.ok) {
+        const data = await res.json()
+        const staff = staffList.find((s) => s.id === selectedStaffId)
+        showIssued({
+          name: data.account?.staff ? `${niceName(data.account.staff.firstName)} ${niceName(data.account.staff.lastName)}` : staff ? `${niceName(staff.firstName)} ${niceName(staff.lastName)}` : '',
+          email: data.account?.email ?? email,
+          password: data.password ?? password,
+          isNew: true,
+        })
         showToast('Account created successfully')
         setSelectedStaffId(''); setEmail(''); setPassword(''); setAccountType('CLINICIAN')
         setShowCreate(false)
@@ -259,6 +275,39 @@ export default function AdminPage() {
     } catch { showToast('Failed to update') }
   }
 
+  function showIssued(p: IssuedPassword) {
+    setCopied(false)
+    setIssued(p)
+  }
+
+  async function copyIssued() {
+    if (!issued) return
+    const text = `Login email: ${issued.email}\nPassword: ${issued.password}`
+    try {
+      await navigator.clipboard.writeText(text)
+      setCopied(true)
+      return
+    } catch { /* clipboard API blocked — try the legacy copy below */ }
+    try {
+      const ta = document.createElement('textarea')
+      ta.value = text
+      ta.setAttribute('readonly', '')
+      ta.style.position = 'fixed'
+      ta.style.opacity = '0'
+      document.body.appendChild(ta)
+      ta.select()
+      const ok = document.execCommand('copy')
+      ta.remove()
+      if (ok) { setCopied(true); return }
+    } catch { /* fall through */ }
+    showToast('Could not copy — select the password and copy it by hand')
+  }
+
+  function dismissIssued() {
+    setIssued(null)
+    setCopied(false)
+  }
+
   async function handleChangePassword(accountId: string) {
     if (!newPassword || newPassword.length < 8) { showToast('Password must be at least 8 characters'); return }
     setSavingPassword(true)
@@ -269,14 +318,18 @@ export default function AdminPage() {
         body: JSON.stringify({ id: accountId, newPassword }),
       })
       if (res.ok) {
+        const data = await res.json()
+        const acct = accounts.find((a) => a.id === accountId)
+        showIssued({
+          name: acct ? `${niceName(acct.staff.firstName)} ${niceName(acct.staff.lastName)}` : '',
+          email: data.account?.email ?? acct?.email ?? '',
+          password: data.password ?? newPassword,
+          isNew: false,
+        })
         showToast('Password changed successfully')
         setChangingPasswordId(null)
         setNewPassword('')
-        // Refresh the list so the new lastPlainPassword shows up
-        // immediately under this row. Without this the UI keeps
-        // displaying pre-change state (or nothing, for accounts
-        // that previously had no recorded password) and the admin
-        // thinks the change didn't take.
+        setShowNewPassword(false)
         fetchData()
       } else {
         showToast((await res.json()).error ?? 'Failed')
@@ -339,14 +392,6 @@ export default function AdminPage() {
     return k === 'FRONT_DESK' || k === 'ADMIN_STAFF' ? 'OFFICE' : k
   }
   const typeCounts = accounts.reduce((m, a) => { m[typeOf(a)] = (m[typeOf(a)] ?? 0) + 1; return m }, {} as Record<string, number>)
-  const toggleReveal = (id: string) => setRevealed((r) => { const n = new Set(r); if (n.has(id)) n.delete(id); else n.add(id); return n })
-  async function copyPassword(id: string, value: string) {
-    try {
-      await navigator.clipboard.writeText(value)
-      setCopiedId(id)
-      setTimeout(() => setCopiedId((c) => (c === id ? null : c)), 1500)
-    } catch { showToast('Could not copy — reveal it and copy by hand') }
-  }
 
   if (loading) {
     return (
@@ -362,6 +407,47 @@ export default function AdminPage() {
   return (
     <div className={PAGE}>
       {toast && <div className="toast" role="status">{toast}</div>}
+
+      {issued && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(20, 30, 35, 0.45)' }}>
+          <div role="dialog" aria-modal="true" aria-labelledby="issued-title" className="w-full max-w-md rounded-xl p-5 space-y-4" style={{ ...CARD_STYLE, background: '#fff' }}>
+            <div className="flex items-start gap-3">
+              <span className="w-9 h-9 shrink-0 rounded-lg inline-flex items-center justify-center" style={{ background: 'var(--pale-teal)', color: 'var(--deep-teal)' }}>
+                <KeyRound size={17} />
+              </span>
+              <div className="min-w-0">
+                <h2 id="issued-title" className="font-semibold text-[15px]" style={{ color: 'var(--charcoal)' }}>
+                  {issued.isNew ? 'Account created' : 'New password set'}{issued.name ? ` for ${issued.name}` : ''}
+                </h2>
+                <p className="text-[12px] leading-snug mt-1" style={{ color: 'var(--mid-gray)' }}>
+                  Copy it now and share it with them. <strong style={{ color: 'var(--charcoal)' }}>It won&rsquo;t be shown again</strong> — if it&rsquo;s lost, set a new one with the key icon.
+                </p>
+              </div>
+            </div>
+
+            <div className="rounded-lg p-3 space-y-2" style={{ background: SUBTLE_BG, border: '1px solid var(--light-gray)' }}>
+              <div>
+                <p className={LABEL} style={LABEL_STYLE}>Login email</p>
+                <p className="text-[13px] break-all select-all" style={{ color: 'var(--charcoal)' }}>{issued.email}</p>
+              </div>
+              <div>
+                <p className={LABEL} style={LABEL_STYLE}>Password</p>
+                <p className="font-mono text-[14px] break-all select-all" style={{ color: 'var(--charcoal)' }}>{issued.password}</p>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap justify-end gap-2">
+              <button type="button" onClick={copyIssued} className={BTN_SECONDARY} style={{ ...SECONDARY_STYLE, color: 'var(--deep-teal)' }}>
+                {copied ? <Check size={14} /> : <Copy size={14} />}
+                {copied ? 'Copied' : 'Copy email & password'}
+              </button>
+              <button type="button" onClick={dismissIssued} className={BTN_PRIMARY} style={PRIMARY_STYLE} autoFocus>
+                Done
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <PageHeader eyebrow="Admin" title="Admin Panel" description="Manage therapist accounts and access" />
 
@@ -426,7 +512,7 @@ export default function AdminPage() {
               </label>
               <div className="relative">
                 <input id="admin-password" type={showPassword ? 'text' : 'password'} value={password} onChange={(e) => setPassword(e.target.value)}
-                  required minLength={6} className={`${CONTROL} w-full pr-10`} style={CONTROL_STYLE} placeholder="Min 6 characters" />
+                  required minLength={8} className={`${CONTROL} w-full pr-10`} style={CONTROL_STYLE} placeholder="Min 8 characters" autoComplete="new-password" />
                 <button type="button" onClick={() => setShowPassword(!showPassword)}
                   aria-label={showPassword ? 'Hide password' : 'Show password'}
                   className={`absolute right-2 top-1/2 -translate-y-1/2 w-7 h-7 inline-flex items-center justify-center rounded-md hover:bg-[color:var(--paper)] ${FOCUS}`}
@@ -563,37 +649,18 @@ export default function AdminPage() {
                       })()}
                     </div>
                     <p className="text-[12px] break-all" style={{ color: 'var(--mid-gray)' }}>{acct.email}</p>
-                    {acct.lastPlainPassword ? (
-                      <p className="text-[11px] flex flex-wrap items-center gap-1 mt-0.5" style={{ color: 'var(--mid-gray)' }}>
-                        <KeyRound size={10} />
-                        Password:{' '}
-                        {/* Hidden by default so it isn't readable over a shoulder; reveal or copy per row. */}
-                        <span className="font-mono px-1.5 py-0.5 rounded text-[10px] break-all" style={{ background: SUBTLE_BG, border: '1px solid var(--light-gray)', color: 'var(--charcoal)', userSelect: revealed.has(acct.id) ? 'all' : 'none' }}>
-                          {revealed.has(acct.id) ? acct.lastPlainPassword : '••••••••'}
-                        </span>
-                        <button type="button" onClick={() => toggleReveal(acct.id)}
-                          className={`w-6 h-6 inline-flex items-center justify-center rounded-md hover:bg-[color:var(--paper)] ${FOCUS}`}
-                          aria-label={revealed.has(acct.id) ? 'Hide password' : 'Show password'} title={revealed.has(acct.id) ? 'Hide password' : 'Show password'}>
-                          {revealed.has(acct.id) ? <EyeOff size={12} /> : <Eye size={12} />}
-                        </button>
-                        <button type="button" onClick={() => copyPassword(acct.id, acct.lastPlainPassword ?? '')}
-                          className={`w-6 h-6 inline-flex items-center justify-center rounded-md hover:bg-[color:var(--paper)] ${FOCUS}`}
-                          aria-label="Copy password" title={copiedId === acct.id ? 'Copied' : 'Copy password'}>
-                          {copiedId === acct.id ? <Check size={12} style={{ color: 'var(--teal)' }} /> : <Copy size={12} />}
-                        </button>
-                      </p>
-                    ) : (
-                      // Legacy accounts created before lastPlainPassword
-                      // was tracked: bcrypt is one-way so we can't
-                      // recover the original. Make this state explicit
-                      // so the admin understands they need to issue a
-                      // new password (the Change-password button on the
-                      // right of this row) to make the value visible.
-                      <p className="text-[11px] flex items-center gap-1 mt-0.5 italic" style={{ color: '#7A4E21' }}>
-                        <KeyRound size={10} className="shrink-0" />
-                        Password not recorded — click the key icon to set a new one.
-                      </p>
-                    )}
+                    {/* Passwords are never stored readable, so there is
+                        nothing to look up — a forgotten one is replaced. */}
+                    <p className="text-[11px] flex flex-wrap items-center gap-1 mt-0.5" style={{ color: 'var(--mid-gray)' }}>
+                      <KeyRound size={10} className="shrink-0" />
+                      Forgot their password?
+                      <button type="button"
+                        onClick={() => { setChangingPasswordId(acct.id); setNewPassword(''); setEditingEmailId(null) }}
+                        className={`underline underline-offset-2 rounded ${FOCUS}`}
+                        style={{ color: 'var(--deep-teal)' }}>
+                        Set a new password
+                      </button>
+                    </p>
                     <p className="text-[11px] flex items-center gap-1 mt-0.5" style={{ color: 'var(--mid-gray)' }}>
                       <Clock size={10} />
                       {acct.lastLoginAt ? `Last login ${fmtDay(acct.lastLoginAt)}` : 'Never logged in'}
@@ -614,8 +681,8 @@ export default function AdminPage() {
                     className={`${BTN_SM} w-8 !px-0`}
                     style={changingPasswordId === acct.id ? { ...SECONDARY_STYLE, background: 'var(--pale-teal)', color: 'var(--deep-teal)' } : { ...SECONDARY_STYLE, color: 'var(--mid-gray)' }}
                     aria-pressed={changingPasswordId === acct.id}
-                    aria-label="Change password"
-                    title="Change password">
+                    aria-label="Set a new password"
+                    title="Set a new password">
                     <KeyRound size={14} />
                   </button>
                   <button type="button" onClick={() => toggleActive(acct.id, acct.isActive)}

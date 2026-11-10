@@ -653,7 +653,6 @@ jobs:
           docker exec sapphire_db psql -U sapphire -d sapphire_marketing -c "
             ALTER TABLE \"TherapistAccount\" ADD COLUMN IF NOT EXISTS \"resetToken\" TEXT;
             ALTER TABLE \"TherapistAccount\" ADD COLUMN IF NOT EXISTS \"resetTokenExpiry\" TIMESTAMP(3);
-            ALTER TABLE \"TherapistAccount\" ADD COLUMN IF NOT EXISTS \"lastPlainPassword\" TEXT;
 
             -- Add isInitialEvaluation flag to SessionNote
             ALTER TABLE \"SessionNote\" ADD COLUMN IF NOT EXISTS \"isInitialEvaluation\" BOOLEAN NOT NULL DEFAULT false;
@@ -713,16 +712,17 @@ jobs:
             UPDATE \"TherapistAccount\" SET \"staffId\" = 'system-admin-staff'
             WHERE id = 'clmainadmin01' AND \"staffId\" != 'system-admin-staff';
 
-            -- Create admin account if it doesn't exist (preserve password if already set)
-            INSERT INTO \"TherapistAccount\" (id, \"staffId\", email, \"passwordHash\", \"lastPlainPassword\", role, \"isActive\", \"createdAt\", \"updatedAt\")
+            -- Create the main admin account if it doesn't exist. The password is
+            -- NEVER set or reset here: this repo is public, so any password
+            -- written in this file is a published password. A fresh row gets an
+            -- unusable hash (bcrypt.compare is always false) — set the real
+            -- password with \"Forgot password\" on the Staff Portal sign-in page
+            -- (emails main@). An existing row keeps whatever password it has.
+            INSERT INTO \"TherapistAccount\" (id, \"staffId\", email, \"passwordHash\", role, \"isActive\", \"createdAt\", \"updatedAt\")
             VALUES ('clmainadmin01', 'system-admin-staff', 'main@sapphireclinicseast.org',
-                   '\$2b\$12\$fwLq6pRpTGyAYKxAVijFx.6xlKsvqdWDPAoWwQFMLWUCvcpOlUewW',
-                   'teletherapy2026',
-                   'ADMIN', true, NOW(), NOW())
+                   '!unset', 'ADMIN', true, NOW(), NOW())
             ON CONFLICT (id) DO UPDATE SET
               email = EXCLUDED.email,
-              \"passwordHash\" = EXCLUDED.\"passwordHash\",
-              \"lastPlainPassword\" = EXCLUDED.\"lastPlainPassword\",
               role = 'ADMIN',
               \"isActive\" = true;
           " && echo "✅ Main admin seeded." || echo "⚠ Admin seed failed."
