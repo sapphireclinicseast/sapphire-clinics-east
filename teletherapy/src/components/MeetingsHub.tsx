@@ -6,7 +6,7 @@
 
 import { useState } from 'react'
 import { Calendar, Video, Clock } from 'lucide-react'
-import { Banner, PillTabs } from '@/components/hub/ui'
+import { Banner } from '@/components/hub/ui'
 import MeetingsPanel from './MeetingsPanel'
 import SetMeeting from './SetMeeting'
 import AvailabilityEditor from './AvailabilityEditor'
@@ -31,21 +31,38 @@ export default function MeetingsHub({
 
   return (
     <div className="space-y-4">
-      {context === 'MENTORSHIP' && (
+      {/* Sub-navigation as an underline bar (not a second pill row), so it
+          reads as part of the Meetings tab instead of another stacked tab set. */}
+      <div role="tablist" aria-label="Meetings" className="flex gap-1 overflow-x-auto" style={{ borderBottom: '1px solid var(--light-gray)', fontFamily: 'var(--font-display)' }}>
+        {tabs.map((t) => {
+          const active = sub === t.k
+          return (
+            <button
+              key={t.k}
+              type="button"
+              role="tab"
+              aria-selected={active}
+              onClick={() => setSub(t.k)}
+              className={`-mb-px inline-flex items-center gap-1.5 px-3 py-2 text-[13px] font-semibold whitespace-nowrap border-b-2 transition-colors focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[color:var(--teal)] ${active ? '' : 'hover:text-[color:var(--charcoal)]'}`}
+              style={active
+                ? { borderColor: 'var(--teal)', color: 'var(--deep-teal)' }
+                : { borderColor: 'transparent', color: 'var(--mid-gray)' }}
+            >
+              <t.icon size={14} aria-hidden /> {t.label}
+            </button>
+          )
+        })}
+      </div>
+
+      {/* The fee note matters when booking, so it lives on Set a Meeting
+          rather than above every schedule view. */}
+      {sub === 'book' && context === 'MENTORSHIP' && (
         <Banner tone="info">
           Each mentorship meeting is compensated to the mentor at the prevailing mentorship fee, deducted from the mentee&apos;s payroll.
         </Banner>
       )}
 
-      <PillTabs
-        label="Meetings"
-        size="sm"
-        value={sub}
-        onChange={(id) => setSub(id as Sub)}
-        tabs={tabs.map((t) => ({ id: t.k, label: <><t.icon size={13} aria-hidden /> {t.label}</> }))}
-      />
-
-      {sub === 'schedule' && <MeetingsPanel key={refreshKey} context={context} title="Meeting Schedule" />}
+      {sub === 'schedule' && <MeetingsPanel key={refreshKey} context={context} />}
       {sub === 'book' && <SetMeeting context={context} canCreateLink={canSetAvailability} onBooked={() => { setRefreshKey((k) => k + 1); setSub('schedule') }} />}
       {sub === 'availability' && canSetAvailability && <AvailabilityEditor />}
     </div>
