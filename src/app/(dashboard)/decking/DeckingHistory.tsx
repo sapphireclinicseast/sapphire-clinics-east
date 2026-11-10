@@ -189,6 +189,9 @@ export default function DeckingHistory({ branch }: { branch: string }) {
             </div>
           )}
 
+          {/* First, because it is the one people came for: the charts show
+              the shape, this says whether it went up or down and by how much. */}
+          <WeeklyTable branch={branch} />
           <StackedChart points={points} firstRecorded={firstRecorded} />
           {points.some(pt => pt.fillRate !== null) && <FillRateChart points={points} />}
         </>
@@ -410,5 +413,188 @@ function HistorySkeleton() {
         <div className="p-5"><Skeleton className="h-[300px]" /></div>
       </div>
     </div>
+  )
+}
+
+// ── Week on week ────────────────────────────────────────────────────────────
+//
+// The charts show the shape of the board over time, which is the wrong tool
+// for the question actually asked: is it up or down on last week, and by how
+// much. An area chart makes a change of six slots and a change of sixty look
+// much the same, and reading one department out of a stacked band is guesswork.
+//
+// So: a reading per week per department, the way front desk already keep it on
+// paper, with the change from the week before printed next to it.
+
+type Reading = { total: number; booked: number; blocked: number; open: number }
+interface WeeklyData {
+  weekday: number
+  columns: { date: string; label: string }[]
+  departments: string[]
+  cells: { department: string; readings: (Reading | null)[]; live: Reading | null }[]
+  totals: { readings: (Reading | null)[]; live: Reading | null }
+}
+
+const WEEKDAYS = [
+  { id: '0', label: 'Sun' }, { id: '1', label: 'Mon' }, { id: '2', label: 'Tue' },
+  { id: '3', label: 'Wed' }, { id: '4', label: 'Thu' }, { id: '5', label: 'Fri' }, { id: '6', label: 'Sat' },
+]
+const WEEK_COUNTS = [{ id: '8', label: '8 weeks' }, { id: '12', label: '12 weeks' }, { id: '26', label: '26 weeks' }]
+
+type Metric = 'open' | 'booked' | 'fill'
+const METRICS: { id: Metric; label: string }[] = [
+  { id: 'open', label: 'Open slots' },
+  { id: 'booked', label: 'Booked' },
+  { id: 'fill', label: 'Fill rate' },
+]
+
+/** The number this table is showing, out of one reading. */
+function valueOf(r: Reading | null, metric: Metric): number | null {
+  if (!r) return null
+  if (metric === 'open') return r.open
+  if (metric === 'booked') return r.booked
+  const bookable = r.booked + r.open
+  return bookable > 0 ? Math.round((r.booked / bookable) * 100) : null
+}
+
+/**
+ * Which direction is the good one.
+ *
+ * Fewer OPEN hours means a busier clinic; fewer BOOKED hours does not. Colour
+ * that says "down is bad" on both would be worse than no colour, so the table
+ * asks the metric rather than assuming.
+ */
+const goodWhenRising = (metric: Metric) => metric !== 'open'
+
+function DeltaChip({ delta, metric }: { delta: number | null; metric: Metric }) {
+  if (delta === null) return null
+  if (delta === 0) {
+    return <span className="block text-[10px] leading-none mt-0.5" style={{ color: '#9AA0A6' }}>no change</span>
+  }
+  const good = delta > 0 === goodWhenRising(metric)
+  const Icon = delta > 0 ? ArrowUpRight : ArrowDownRight
+  return (
+    <span className="flex items-center justify-end gap-0.5 text-[10px] font-bold leading-none mt-0.5"
+      style={{ color: good ? '#166534' : '#B0453A' }}>
+      <Icon size={9} aria-hidden />
+      {delta > 0 ? '+' : ''}{delta}{metric === 'fill' ? 'pt' : ''}
+    </span>
+  )
+}
+
+function WeeklyTable({ branch }: { branch: string }) {
+  const [weekday, setWeekday] = useState('1')
+  const [weeks, setWeeks] = useState('12')
+  const [metric, setMetric] = useState<Metric>('open')
+  const [data, setData] = useState<WeeklyData | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+
+  useEffect(() => {
+    const ctl = new AbortController()
+    setLoading(true); setError('')
+    const p = new URLSearchParams({ branch, weekday, weeks })
+    fetch(`/api/decking/history/weekly?${p}`, { signal: ctl.signal })
+      .then(r => { if (!r.ok) throw new Error(`Couldn't load the weekly table (${r.status})`); return r.json() })
+      .then(setData)
+      .catch(err => { if (err.name !== 'AbortError') setError(err.message) })
+      .finally(() => setLoading(false))
+    return () => ctl.abort()
+  }, [branch, weekday, weeks])
+
+  const unit = metric === 'fill' ? '%' : ''
+  const rows = data
+    ? [...data.cells, { department: 'ALL', readings: data.totals.readings, live: data.totals.live }]
+    : []
+
+  return (
+    <DashCard title="Week on week" icon={<Layers size={15} />}
+      description={`One reading per week, taken each ${WEEKDAYS[Number(weekday)].label}. The figure under each number is the change from the week before.`}>
+      <div className="flex flex-wrap items-end gap-x-5 gap-y-3 mb-3">
+        <div>
+          <span className={LABEL} style={{ color: 'var(--mid-gray)' }}>Showing</span>
+          <PillTabs label="Metric" size="sm" tabs={METRICS} value={metric} onChange={v => setMetric(v as Metric)} />
+        </div>
+        <div>
+          <span className={LABEL} style={{ color: 'var(--mid-gray)' }}>Counted every</span>
+          <PillTabs label="Weekday counted" size="sm" tabs={WEEKDAYS} value={weekday} onChange={setWeekday} />
+        </div>
+        <div>
+          <span className={LABEL} style={{ color: 'var(--mid-gray)' }}>Going back</span>
+          <PillTabs label="Weeks shown" size="sm" tabs={WEEK_COUNTS} value={weeks} onChange={setWeeks} />
+        </div>
+        <span className="flex items-center gap-1.5 h-9 ml-auto text-[11px]" style={{ color: 'var(--mid-gray)' }} aria-live="polite">
+          {loading && data && <><Loader2 size={12} className="animate-spin" /> Updating…</>}
+        </span>
+      </div>
+
+      {error ? (
+        <EmptyState title="Couldn't load the weekly table" hint={error} />
+      ) : loading && !data ? (
+        <Skeleton className="h-48 w-full" />
+      ) : !data || data.departments.length === 0 ? (
+        <EmptyState title="No weekly readings yet"
+          hint="A reading is taken once a day. Once a few have landed on the weekday you picked, the columns fill in from the left." />
+      ) : (
+        <div className="overflow-x-auto -mx-1 px-1">
+          <table className="w-full border-collapse text-[12px]">
+            <caption className="sr-only">
+              {METRICS.find(m => m.id === metric)?.label} per department, one reading each week
+            </caption>
+            <thead>
+              <tr>
+                <th scope="col" className="text-left font-bold px-2 py-1.5 sticky left-0 z-10"
+                  style={{ background: 'var(--card, #fff)', color: '#1F3A5F' }}>Department</th>
+                <th scope="col" className="text-right font-bold px-2 py-1.5"
+                  style={{ color: '#1F3A5F', background: '#EEF4FA' }}>Live</th>
+                {data.columns.map(c => (
+                  <th key={c.date} scope="col" className="text-right font-semibold px-2 py-1.5 whitespace-nowrap"
+                    style={{ color: 'var(--mid-gray)' }}>{c.label}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map(row => {
+                const isTotal = row.department === 'ALL'
+                const liveValue = valueOf(row.live, metric)
+                const lastRecorded = [...row.readings].reverse().find(r => r !== null) ?? null
+                return (
+                  <tr key={row.department} style={isTotal ? { borderTop: '2px solid #D5DEE8' } : undefined}>
+                    <th scope="row" className="text-left px-2 py-1.5 sticky left-0 z-10 whitespace-nowrap"
+                      style={{ background: 'var(--card, #fff)', fontWeight: isTotal ? 800 : 600, color: isTotal ? '#1F3A5F' : '#334E68' }}>
+                      {isTotal ? 'All departments' : row.department}
+                    </th>
+                    <td className="text-right px-2 py-1.5 align-top" style={{ background: '#EEF4FA' }}>
+                      <span className="font-bold tabular-nums" style={{ color: '#1F3A5F' }}>
+                        {liveValue === null ? '—' : `${liveValue}${unit}`}
+                      </span>
+                      <DeltaChip metric={metric}
+                        delta={liveValue === null || valueOf(lastRecorded, metric) === null
+                          ? null : liveValue - (valueOf(lastRecorded, metric) as number)} />
+                    </td>
+                    {row.readings.map((r, i) => {
+                      const v = valueOf(r, metric)
+                      const prev = valueOf(row.readings[i - 1] ?? null, metric)
+                      return (
+                        <td key={data.columns[i].date} className="text-right px-2 py-1.5 align-top tabular-nums">
+                          {/* Blank, not zero: "nobody recorded it" and "there
+                              were none" are different facts. */}
+                          {v === null ? <span style={{ color: '#C8CDD3' }}>·</span> : (
+                            <>
+                              <span className="font-semibold" style={{ color: '#334E68' }}>{v}{unit}</span>
+                              <DeltaChip metric={metric} delta={prev === null ? null : v - prev} />
+                            </>
+                          )}
+                        </td>
+                      )
+                    })}
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </DashCard>
   )
 }
