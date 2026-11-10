@@ -60,7 +60,9 @@ export const ACK_VIEW_ROLES = [...ACK_WRITE_ROLES, 'VIEWER']
 // Who may delete a signed delivery (a signed record is evidence, so not the med rep / front desk).
 export const ACK_DELETE_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN']
 
-export interface AckPadRange { formType: string; fromControl: string; toControl: string; quantity: number }
+export interface AckPadRange { formType: string; formName?: string | null; fromControl: string; toControl: string; quantity: number }
+/** How a form reads on the page and the PDF: "ADMIN23 — Patient/Client Referral Form" (code alone when unnamed). */
+export const ackFormLabel = (code: string, name?: string | null) => (name ? `${code} — ${name}` : code)
 
 /** Everything the PDF needs (also what the API stores). */
 export interface AckPdfData {

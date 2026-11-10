@@ -5,6 +5,7 @@ import { readFile, writeFile, mkdir, unlink } from 'fs/promises'
 import { join, basename } from 'path'
 import { prisma } from '@/lib/prisma'
 import { buildAckPdf } from '@/lib/form-ack-pdf'
+import { formTemplateNames } from '@/lib/form-templates'
 import { resolveAckBranch, type AckPdfData } from '@/lib/form-ack'
 
 export const uploadsDir = () => process.env.UPLOADS_DIR || join(process.cwd(), 'uploads')
@@ -17,6 +18,9 @@ export async function ackPdfData(ack: AckRow): Promise<AckPdfData> {
     orderBy: [{ formType: 'asc' }, { fromControl: 'asc' }],
     select: { formType: true, fromControl: true, toControl: true, quantity: true },
   })
+  // Form names come from the templates catalog; if it can't be reached the PDF
+  // still prints the codes.
+  const names = pads.length ? await formTemplateNames() : {}
   return {
     id: ack.id,
     branchName: resolveAckBranch(ack.branch)?.name || ack.branch,
@@ -27,7 +31,7 @@ export async function ackPdfData(ack: AckRow): Promise<AckPdfData> {
     receivedBy: ack.receivedBy || '',
     receivedByDesignation: ack.receivedByDesignation || '',
     items: ack.items,
-    pads,
+    pads: pads.map((p) => ({ ...p, formName: names[p.formType] || null })),
     remarks: ack.remarks || '',
     deliveredByName: ack.deliveredByName,
     deliveredByTitle: ack.deliveredByTitle || '',

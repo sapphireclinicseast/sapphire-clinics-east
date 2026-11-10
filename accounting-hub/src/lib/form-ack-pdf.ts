@@ -6,7 +6,7 @@
 import { readFile } from 'fs/promises'
 import { join } from 'path'
 import { jsPDF } from 'jspdf'
-import { ACK_ITEMS, type AckPdfData } from '@/lib/form-ack'
+import { ACK_ITEMS, ackFormLabel, type AckPdfData } from '@/lib/form-ack'
 
 let fontCache: { regular: string; bold: string } | null = null
 async function loadFonts() {
@@ -134,12 +134,14 @@ export async function buildAckPdf(d: AckPdfData): Promise<Buffer> {
   if (d.pads.length) {
     label('Referral Pads Handed Out', y)
     y += 8
+    // FORM is wide enough for "ADMIN23 — Patient/Client Referral Form".
     const cols = [
       { t: 'FORM', x: M + 9 },
-      { t: 'CONTROL NO. FROM', x: M + CW * 0.34 },
-      { t: 'TO', x: M + CW * 0.6 },
+      { t: 'CONTROL NO. FROM', x: M + CW * 0.6 },
+      { t: 'TO', x: M + CW * 0.8 },
       { t: 'PCS', x: M + CW - 9, right: true },
     ]
+    const formMax = cols[1].x - cols[0].x - 10
     doc.setFillColor(...FIELD)
     doc.rect(M, y, CW, 18 + d.pads.length * 18, 'F')
     doc.setFont('Roboto', 'bold'); doc.setFontSize(8); doc.setTextColor(...MUTED)
@@ -147,7 +149,9 @@ export async function buildAckPdf(d: AckPdfData): Promise<Buffer> {
     doc.setFont('Roboto', 'normal'); doc.setFontSize(10.5); doc.setTextColor(...NAVY)
     d.pads.forEach((p, i) => {
       const yy = y + 30 + i * 18
-      doc.text(sanitize(p.formType), cols[0].x, yy)
+      let form = sanitize(ackFormLabel(p.formType, p.formName))
+      while (form.length > 8 && doc.getTextWidth(form) > formMax) form = `${form.slice(0, -2).trimEnd()}…`
+      doc.text(form, cols[0].x, yy)
       doc.text(sanitize(p.fromControl), cols[1].x, yy)
       doc.text(sanitize(p.toControl), cols[2].x, yy)
       doc.text(String(p.quantity), cols[3].x, yy, { align: 'right' })

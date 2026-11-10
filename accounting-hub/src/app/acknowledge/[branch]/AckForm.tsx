@@ -15,7 +15,7 @@ import { SignaturePad } from '@/components/SignaturePad'
 import { HR_VARS } from '@/components/ui/hr-tokens'
 import { coveredByUnion, controlToInt, rangeQuantity } from '@/lib/form-ranges'
 import {
-  ACK_FIELD_BRANCHES, ACK_ITEMS, ACK_ITEM_LABELS, ACK_STAFF_BRANCH_LABEL, DEFAULT_DELIVERED_BY_TITLE, resolveAckBranch, type AckBranch, type AckStaff,
+  ACK_FIELD_BRANCHES, ACK_ITEMS, ACK_ITEM_LABELS, ACK_STAFF_BRANCH_LABEL, DEFAULT_DELIVERED_BY_TITLE, ackFormLabel, resolveAckBranch, type AckBranch, type AckStaff,
 } from '@/lib/form-ack'
 
 interface Partner { id: string; name: string; kind?: string; detail?: string; affiliation?: string }
@@ -187,16 +187,21 @@ export function AckForm({ initialBranch, userName, allowed }: { initialBranch: A
     const inStock = stock.map((s) => s.formType)
     return [...inStock, ...Object.keys(templates).filter((t) => !inStock.includes(t)).sort()]
   }, [stock, templates])
+  // The box and its list show "ADMIN23 — Patient/Client Referral Form"; the pad row keeps the code,
+  // which is what Inventory → Forms counts on hand by.
+  const formLabel = useMemo(() => Object.fromEntries(formOptions.map((c) => [c, ackFormLabel(c, templates[c])])) as Record<string, string>, [formOptions, templates])
+  const formLabels = useMemo(() => formOptions.map((c) => formLabel[c]), [formOptions, formLabel])
   const formHints = useMemo(() => {
     const h: Record<string, string> = {}
     for (const t of formOptions) {
       const s = stockBy.get(t)
-      h[t] = s ? `${pcs(s.onHand)} on hand${templates[t] ? ` · ${templates[t]}` : ''}` : (templates[t] ? `${templates[t]} · none received here` : 'none received here')
+      h[formLabel[t]] = s ? `${pcs(s.onHand)} on hand` : 'none received here'
     }
     return h
-  }, [formOptions, stockBy, templates])
-  // The catalog code for what was typed ("md06" → "MD06"); null when it is not a listed form.
-  const canonForm = (v: string) => formOptions.find((o) => same(o, v)) || null
+  }, [formOptions, formLabel, stockBy])
+  // The form code for a code or label ("md06" or "MD06 — …" → "MD06"); null when it is not a listed form.
+  const canonForm = (v: string) => formOptions.find((o) => same(o, v) || same(formLabel[o], v)) || null
+  const formNameOf = (v: string) => { const c = canonForm(v); return c && templates[c] ? `${templates[c]} (${c})` : c || v }
 
   // Prefill the form type when this branch stocks exactly one form with pads on hand.
   useEffect(() => {
@@ -229,7 +234,7 @@ export function AckForm({ initialBranch, userName, allowed }: { initialBranch: A
 
   const itemSummary = d.items.map((k) => {
     if (k !== 'REFERRAL_PAD' || !totalPcs) return ACK_ITEM_LABELS[k]
-    const ranges = d.pads.filter((_, i) => padInfo[i].qty).map((r) => `${r.formType} ${r.from}–${r.to}`).join(', ')
+    const ranges = d.pads.filter((_, i) => padInfo[i].qty).map((r) => `${formNameOf(r.formType)} ${r.from}–${r.to}`).join(', ')
     return `Referral Pad (${ranges}; ${pcs(totalPcs)} pcs)`
   })
 
@@ -440,13 +445,13 @@ export function AckForm({ initialBranch, userName, allowed }: { initialBranch: A
                         <div className="flex items-end gap-2">
                           <div className="flex-1 min-w-0">
                             <Label>Form</Label>
-                            <NameCombobox value={r.formType} onChange={(v) => setPad(i, { formType: v })} options={formOptions} maxOptions={Math.max(60, formOptions.length)} hints={formHints}
-                              matchHints browseOnFocus
-                              onCommit={(v) => { const c = canonForm(v); if (c && c !== v) setPad(i, { formType: c }) }}
+                            <NameCombobox value={canonForm(r.formType) ? formLabel[canonForm(r.formType)!] : r.formType}
+                              onChange={(v) => setPad(i, { formType: canonForm(v) || v })}
+                              options={formLabels} maxOptions={Math.max(60, formLabels.length)} hints={formHints} browseOnFocus
                               placeholder="Type the code or name, e.g. referral" className={inputCls} style={inputStyle} />
-                            {r.formType.trim() && (canonForm(r.formType)
-                              ? templates[canonForm(r.formType)!] && <p className="text-xs mt-1" style={{ color: 'var(--mid-gray)' }}>{templates[canonForm(r.formType)!]}</p>
-                              : <p className="text-xs mt-1" style={{ color: '#b45309' }}>Pick a form from the list. Typing &quot;referral&quot; lists the referral forms.</p>)}
+                            {r.formType.trim() && !canonForm(r.formType) && (
+                              <p className="text-xs mt-1" style={{ color: '#b45309' }}>Pick a form from the list. Typing &quot;referral&quot; lists the referral forms.</p>
+                            )}
                           </div>
                           {d.pads.length > 1 && (
                             <button type="button" onClick={() => set('pads', d.pads.filter((_, j) => j !== i))} aria-label="Remove range"

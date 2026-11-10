@@ -6171,7 +6171,7 @@ setTimeout(()=>window.print(),500);
                         <tr key={d.id} className="border-t hover:bg-gray-50/50 transition-colors" style={{ borderColor: 'var(--light-gray)' }}>
                           <td className="px-3 py-3 text-xs" style={{ color: 'var(--mid-gray)' }}>{formatDate(d.dateGiven)}</td>
                           <td className="px-3 py-3 font-medium" style={{ color: 'var(--charcoal)' }}>{d.partnerName}<span className="text-xs ml-1.5" style={{ color: 'var(--mid-gray)' }}>{BRANCH_LABELS[d.branch] || d.branch}</span></td>
-                          <td className="px-3 py-3"><span className="font-mono text-xs px-1.5 py-0.5 rounded" style={{ background: '#f0fdfa', color: 'var(--teal)' }}>{d.formType}</span></td>
+                          <td className="px-3 py-3"><span className="font-mono text-xs px-1.5 py-0.5 rounded" style={{ background: '#f0fdfa', color: 'var(--teal)' }}>{d.formType}</span>{tmplNameByNo.get(d.formType) && <span className="text-xs ml-2" style={{ color: 'var(--mid-gray)' }}>{tmplNameByNo.get(d.formType)}</span>}</td>
                           <td className="px-3 py-3 text-xs font-mono" style={{ color: 'var(--charcoal)' }}>{d.fromControl}</td>
                           <td className="px-3 py-3 text-xs font-mono" style={{ color: 'var(--charcoal)' }}>{d.toControl}</td>
                           <td className="px-3 py-3 text-right font-semibold" style={{ color: 'var(--charcoal)' }}>{d.quantity.toLocaleString('en-PH')}</td>
