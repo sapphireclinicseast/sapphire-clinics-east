@@ -832,6 +832,39 @@ const same = (a: Triple, b: Triple) =>
   a.name2 === b.name2 && a.pay2 === b.pay2 &&
   a.notes === b.notes && a.extras.join('|') === b.extras.join('|')
 
+type Field = 'patient' | 'second patient' | 'payment' | 'second payment' | 'note' | 'others in the hour'
+const fieldOf = (t: Triple, f: Field): string =>
+  f === 'patient' ? t.name : f === 'second patient' ? t.name2
+    : f === 'payment' ? t.pay : f === 'second payment' ? t.pay2
+      : f === 'note' ? t.notes : t.extras.join(' + ')
+
+/**
+ * Which field, if any, the HUB has moved on since the snapshot — the test for
+ * "changed in both places, a person must look".
+ *
+ * A BLANK snapshot field is not evidence of anything. The map stores what the
+ * last push wrote, and it writes '' both for a cell it deliberately emptied
+ * and for a cell it never had a value for, so a blank cannot be read as "the
+ * hub had nothing here". Treating it as one made every cell whose snapshot had
+ * lost a payment permanently unresolvable: front desk changed CASH to GL, the
+ * hub still said CASH, the snapshot said nothing, and the sync called it a
+ * conflict on every run for as long as it stood.
+ *
+ * So a blank snapshot is ignored — but only for the payment and the note. WHO
+ * is booked stays strict in both directions: an empty snapshot name next to a
+ * hub booking is a genuine disagreement, and letting the sheet win it would
+ * overwrite a booking made in the hub.
+ */
+function hubMoved(hub: Triple, snap: Triple): Field | null {
+  if (hub.name !== snap.name) return 'patient'
+  if (hub.name2 !== snap.name2) return 'second patient'
+  if (hub.extras.join('|') !== snap.extras.join('|')) return 'others in the hour'
+  if (snap.pay && hub.pay !== snap.pay) return 'payment'
+  if (snap.pay2 && hub.pay2 !== snap.pay2) return 'second payment'
+  if (snap.notes && hub.notes !== snap.notes) return 'note'
+  return null
+}
+
 /**
  * Read the sheet back and apply what front desk changed.
  *
@@ -960,23 +993,45 @@ async function pullTabs(
       patientId: e.patientId, dp: null,
     }))
     const occ = asSlots.filter(x => x.patient).sort((a, b) => String(a.patient).localeCompare(String(b.patient)))
+    // The hub read BY NAME ORDER, the same order the board draws.
+    //
+    // `occupants` is whatever Postgres returned; `occ` is sorted, and the sheet
+    // shows the sorted one. Taking the name from `occ` and the payment and the
+    // note from `occupants` described a two-child hour as GA's name with
+    // MACADAEG's payment — a hub that matched nothing the sheet could hold, so
+    // the cell was declared a conflict on every run and front desk's edits to
+    // it were refused for ever.
     const hub: Triple = {
       name: nameFor(occ, asSlots.find(x => x.disabled)),
-      pay: blockedRow || !occupants[0] ? '' : payLabel(occupants[0].paymentType, occupants[0].hmoProvider),
+      pay: blockedRow || !occ[0] ? '' : payLabel(occ[0].paymentType, occ[0].hmoProvider),
       // With a second patient LINE, the second occupant belongs there rather
       // than on the notes line — otherwise the same child would be compared
       // against two different places and read as a change every sync.
       name2: paired && occ[1] ? String(occ[1].patient).toUpperCase() : '',
-      pay2: paired && occupants[1] ? payLabel(occupants[1].paymentType, occupants[1].hmoProvider) : '',
-      notes: splitRemark(String((blockedRow ?? occupants[0])?.notes ?? '')).notes,
+      pay2: paired && occ[1] ? payLabel(occ[1].paymentType, occ[1].hmoProvider) : '',
+      // BREAK is a STATE, carried in notes because there is nowhere else to put
+      // it, and the board prints it on the patient line and nothing on the note
+      // line. Reading it back as a note made every BREAK hour disagree with the
+      // snapshot of itself, which is a conflict that can never be resolved.
+      notes: splitRemark(String((blockedRow ?? occ[0])?.notes ?? '')).notes
+        .replace(new RegExp(`^${BREAK}$`), ''),
       extras: occ.slice(paired ? 2 : 1).map(x => String(x.patient).toUpperCase()),
     }
 
     // Changed in BOTH places since the last sync. Neither wins — a person has
     // to look, because either value could be the right one and picking the
     // wrong one loses a booking nobody knows about.
-    if (!same(hub, slot.snap)) {
-      report.conflicts.push({ tab: slot.tab, cell: `${slot.day} ${slot.time}`, sheet: slot.sheet.name || '(empty)', hub: hub.name || '(empty)' })
+    const differs = hubMoved(hub, slot.snap)
+    if (differs) {
+      // Named, because a conflict that prints the same name on both sides —
+      // which is what every one of these looked like — tells nobody anything.
+      // The names agreeing is the common case; the disagreement is in the
+      // payment or the note.
+      report.conflicts.push({
+        tab: slot.tab, cell: `${slot.day} ${slot.time}`,
+        sheet: `${differs}: ${fieldOf(slot.sheet, differs) || '(empty)'}`,
+        hub: `${differs}: ${fieldOf(hub, differs) || '(empty)'}`,
+      })
       continue
     }
 
@@ -1011,11 +1066,16 @@ async function pullTabs(
       // notes line. Front desk run group hours this way — one therapist, two or
       // three children — and the extras used to be display-only, stripped on
       // the way in, so typing one did nothing and said nothing.
-      const wantNames = [slot.sheet.name, slot.sheet.name2, ...slot.sheet.extras]
+      // The patient LINES are the booking; the "+ names" on the note line are
+      // companions in the same hour. They are resolved differently on purpose
+      // — see below.
+      const lineNames = [slot.sheet.name, slot.sheet.name2]
         .map(n => n.trim().toUpperCase()).filter(Boolean)
       const seen = new Set<string>()
       const want: string[] = []
-      for (const n of wantNames) { if (!seen.has(n)) { seen.add(n); want.push(n) } }
+      for (const n of lineNames) { if (!seen.has(n)) { seen.add(n); want.push(n) } }
+      const extraNames = slot.sheet.extras
+        .map(n => n.trim().toUpperCase()).filter(n => n && !seen.has(n))
 
       const resolved: string[] = []
       let bad = false
@@ -1028,10 +1088,37 @@ async function pullTabs(
         }
         resolved.push(ids[0])
       }
-      // All or nothing. Applying the ones that resolved would leave the cell
-      // half-written, and the next sync would read that as front desk having
-      // deliberately removed whoever was missing.
+      // The patient on the line must resolve or nothing happens: that name came
+      // from a dropdown, so a value that matches no patient means the cell is
+      // not in a state worth writing to the hub.
       if (bad) continue
+
+      // A companion that does not resolve is NOT a reason to refuse the hour.
+      //
+      // It was. Six real bookings on the East OT board had never reached the
+      // hub because of what front desk had typed next to them — "+ ANDALUZ,
+      // MARCO LORENZO CBT", "+ CABAL, RUNE EVERY OTHER WEEK", two names run
+      // together with a slash. None of those match a patient, so the whole
+      // cell was thrown away and Razon, Zapata, Moneda, Lee, Castillo and
+      // Robinson sat on the sheet, booked as far as anyone could see, and in
+      // no system at all.
+      //
+      // The note line is free text and always was. So a name that resolves is
+      // booked, and one that does not stays on the note line as the text it
+      // is — it loses its "+", which is the sheet saying "not read as a
+      // patient" — and is reported as unknown. Nothing is silently dropped and
+      // nothing holds up the booking beside it.
+      const unresolved: string[] = []
+      for (const n of extraNames) {
+        const ids = byName.get(n) ?? []
+        if (ids.length === 1) { resolved.push(ids[0]); continue }
+        if (ids.length > 1) {
+          report.conflicts.push({ tab: slot.tab, cell: `${slot.day} ${slot.time}`, sheet: n, hub: `${ids.length} patients share that name` })
+        } else {
+          report.unknownPatients.push(n)
+        }
+        unresolved.push(n)
+      }
       if (resolved.length > MAX_PER_CELL) {
         report.conflicts.push({ tab: slot.tab, cell: `${slot.day} ${slot.time}`, sheet: `${resolved.length} patients`, hub: `at most ${MAX_PER_CELL} fit in one hour` })
         continue
@@ -1039,6 +1126,11 @@ async function pullTabs(
 
       const { paymentType: pay, hmoProvider } = parsePay(slot.sheet.pay)
       if (blockedRow) await prisma.deckingSlot.delete({ where: { id: blockedRow.id } })
+
+      // Whatever did not resolve is kept, as the note it turned out to be.
+      // Stored without its "+" so the next pull reads it back as free text
+      // rather than trying to book it again and reporting it unknown for ever.
+      const keptNote = [slot.sheet.notes, ...unresolved].filter(Boolean).join(' · ') || null
 
       // Reuse the rows already there before creating more, so a slot keeps its
       // id — and anything pointing at it, a booking's deckingSlotId included.
@@ -1050,7 +1142,7 @@ async function pullTabs(
         // child's would misbill an HMO case as cash.
         const own = i === 1 && slot.sheet.pay2 ? parsePay(slot.sheet.pay2) : { paymentType: pay, hmoProvider }
         const data = i === 0
-          ? { patientId, paymentType: pay, hmoProvider, notes }
+          ? { patientId, paymentType: pay, hmoProvider, notes: keptNote }
           : { patientId, paymentType: own.paymentType, hmoProvider: own.hmoProvider }
         if (row) await prisma.deckingSlot.update({ where: { id: row.id }, data })
         else await prisma.deckingSlot.create({ data: {
