@@ -858,16 +858,16 @@ export default function FrontDeskWelcome({
               : 'Nobody at or near the limit'}
           />
           <AttentionTile
-            href="#progress-reports"
-            icon={<FileText size={17} />}
-            label="Progress reports awaiting payment + email"
-            count={prSummary.count}
-            state={prSummary.loading ? 'loading' : prSummary.error ? 'error' : 'ready'}
-            tone={prSummary.staleUnsent > 0 ? 'danger' : prSummary.count > 0 ? 'warn' : 'clear'}
-            sub={prSummary.error ? prSummary.error
-              : prSummary.count > 0
-                ? (prSummary.paidUnsent > 0 ? `${prSummary.paidUnsent} paid, not emailed yet` : 'Awaiting payment')
-                : 'All caught up'}
+            href="#plush-toy"
+            icon={<Gift size={17} />}
+            label="Plush toys to hand over"
+            count={plushSummary.pending}
+            state={plushSummary.loading ? 'loading' : plushSummary.error ? 'error' : 'ready'}
+            tone={plushSummary.unplaceable > 0 ? 'warn' : plushSummary.pending > 0 ? 'brand' : 'clear'}
+            sub={plushSummary.error ? plushSummary.error
+              : plushSummary.unplaceable > 0 ? `${plural(plushSummary.unplaceable, 'VIP wallet')} not matched to a patient`
+              : plushSummary.pending > 0 ? 'VIP card or 100th session'
+              : 'All caught up'}
           />
           <AttentionTile
             href="#birthdays"
@@ -881,16 +881,16 @@ export default function FrontDeskWelcome({
               : `${bdayGreeted} of ${birthdayPatients.length} greeted`}
           />
           <AttentionTile
-            href="#plush-toy"
-            icon={<Gift size={17} />}
-            label="Plush toys to hand over"
-            count={plushSummary.pending}
-            state={plushSummary.loading ? 'loading' : plushSummary.error ? 'error' : 'ready'}
-            tone={plushSummary.unplaceable > 0 ? 'warn' : plushSummary.pending > 0 ? 'brand' : 'clear'}
-            sub={plushSummary.error ? plushSummary.error
-              : plushSummary.unplaceable > 0 ? `${plural(plushSummary.unplaceable, 'VIP wallet')} not matched to a patient`
-              : plushSummary.pending > 0 ? 'VIP card or 100th session'
-              : 'All caught up'}
+            href="#progress-reports"
+            icon={<FileText size={17} />}
+            label="Progress reports awaiting payment + email"
+            count={prSummary.count}
+            state={prSummary.loading ? 'loading' : prSummary.error ? 'error' : 'ready'}
+            tone={prSummary.staleUnsent > 0 ? 'danger' : prSummary.count > 0 ? 'warn' : 'clear'}
+            sub={prSummary.error ? prSummary.error
+              : prSummary.count > 0
+                ? (prSummary.paidUnsent > 0 ? `${prSummary.paidUnsent} paid, not emailed yet` : 'Awaiting payment')
+                : 'All caught up'}
           />
         </div>
       </section>
@@ -1156,14 +1156,17 @@ export default function FrontDeskWelcome({
             </DashCard>
           </div>
 
+          {/* Perk actions first: handing a plush toy over is a thing done AT
+              the desk while the family is standing there, and it stops being
+              possible the moment they leave. A progress report waiting on
+              payment is still waiting tomorrow. */}
+          <div id="plush-toy" className="min-w-0 scroll-mt-4">
+            <PlushToyEligible branch={branch} seesAllBranches={seesAllBranches} onSummary={setPlushSummary} />
+          </div>
+
           {/* Progress Reports — pending PRs awaiting Paid + Email */}
           <div id="progress-reports" className="min-w-0 scroll-mt-4">
             <PendingProgressReports onSummary={setPrSummary} />
-          </div>
-
-          {/* Perk actions — real work, so it sits with the work. */}
-          <div id="plush-toy" className="min-w-0 scroll-mt-4">
-            <PlushToyEligible branch={branch} seesAllBranches={seesAllBranches} onSummary={setPlushSummary} />
           </div>
 
           {/* Past Progress Reports — searchable history */}
