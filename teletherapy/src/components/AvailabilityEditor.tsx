@@ -67,10 +67,7 @@ export default function AvailabilityEditor() {
   return (
     <div className="space-y-4">
       <div>
-        <h3 className="text-[15px] font-bold flex items-center gap-2" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>
-          <Clock size={17} style={{ color: 'var(--teal)' }} aria-hidden /> My Availability
-        </h3>
-        <p className="text-xs mt-0.5" style={{ color: 'var(--mid-gray)' }}>Publish the days &amp; times you&apos;re generally free so others can book a 1-on-1 with you.</p>
+        <p className="text-[13px]" style={{ color: 'var(--mid-gray)' }}>Publish the days &amp; times you&apos;re generally free so others can book a 1-on-1 with you.</p>
       </div>
 
       <div className="rounded-xl p-4 flex flex-wrap items-end gap-3" style={CARD_STYLE}>

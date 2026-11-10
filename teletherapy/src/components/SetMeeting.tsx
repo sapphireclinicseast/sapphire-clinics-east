@@ -143,10 +143,7 @@ export default function SetMeeting({
   return (
     <div className="space-y-4">
       <div>
-        <h3 className="text-[15px] font-bold flex items-center gap-2" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>
-          <Video size={17} style={{ color: 'var(--teal)' }} aria-hidden /> Set a Meeting
-        </h3>
-        <p className="text-xs mt-0.5" style={{ color: 'var(--mid-gray)' }}>
+        <p className="text-[13px]" style={{ color: 'var(--mid-gray)' }}>
           {canCreateLink
             ? 'Book someone with published availability, or just create a link with the people you tick.'
             : 'Book a 1-on-1 with someone who has published their availability.'}

@@ -27,10 +27,8 @@ interface Meeting {
 
 export default function MeetingsPanel({
   context,
-  title = 'Meetings',
 }: {
   context: 'INTERNSHIP' | 'MENTORSHIP'
-  title?: string
 }) {
   const [meetings, setMeetings] = useState<Meeting[] | null>(null)
   const [currentAccountId, setCurrentAccountId] = useState('')
@@ -71,38 +69,32 @@ export default function MeetingsPanel({
   const shown = view === 'upcoming' ? upcoming : past
 
   return (
-    <div className="space-y-4">
-      <div>
-        <h2 className="text-[15px] font-bold flex items-center gap-2" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>
-          <Video size={17} style={{ color: 'var(--teal)' }} aria-hidden /> {title}
-        </h2>
-        <p className="text-xs mt-0.5" style={{ color: 'var(--mid-gray)' }}>Everyone invited can join and record. Use <strong>Set a Meeting</strong> to schedule one.</p>
+    <section className="rounded-xl overflow-hidden" style={CARD_STYLE}>
+      {/* One card: Upcoming / Past switch in the header, the list below. */}
+      <div className="px-4 py-3 flex flex-wrap items-center justify-between gap-x-4 gap-y-2" style={{ borderBottom: '1px solid var(--light-gray)' }}>
+        <PillTabs
+          label="Meeting schedule"
+          size="sm"
+          value={view}
+          onChange={(id) => setView(id as 'upcoming' | 'past')}
+          tabs={[
+            { id: 'upcoming', label: 'Upcoming', count: meetings === null ? undefined : upcoming.length },
+            { id: 'past', label: 'Past', count: meetings === null ? undefined : past.length },
+          ]}
+        />
+        <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>Everyone invited can join and record.</p>
       </div>
 
       {meetings === null ? (
-        <div className="rounded-xl" style={CARD_STYLE}><RowsSkeleton rows={3} label="Loading meetings" /></div>
+        <RowsSkeleton rows={3} label="Loading meetings" />
+      ) : shown.length === 0 ? (
+        <EmptyState
+          icon="calendar"
+          title={view === 'upcoming' ? 'No upcoming meetings' : 'No past meetings yet'}
+          hint={view === 'upcoming' ? 'Use “Set a Meeting” to schedule one.' : undefined}
+        />
       ) : (
-        <>
-          <PillTabs
-            label="Meeting schedule"
-            size="sm"
-            value={view}
-            onChange={(id) => setView(id as 'upcoming' | 'past')}
-            tabs={[
-              { id: 'upcoming', label: 'Upcoming', count: upcoming.length },
-              { id: 'past', label: 'Past', count: past.length },
-            ]}
-          />
-          {shown.length === 0 ? (
-            <section className="rounded-xl" style={CARD_STYLE}>
-              <EmptyState
-                icon="calendar"
-                title={view === 'upcoming' ? 'No upcoming meetings' : 'No past meetings yet'}
-                hint={view === 'upcoming' ? 'Use “Set a Meeting” to schedule one.' : undefined}
-              />
-            </section>
-          ) : (
-            <ul className="rounded-xl overflow-hidden" style={CARD_STYLE}>
+            <ul>
               {shown.map((m, i) => (
             <li key={m.id} className="px-4 py-3.5 flex flex-wrap items-center gap-x-4 gap-y-2.5" style={i ? { borderTop: '1px solid var(--light-gray)' } : undefined}>
               <div className="flex-1 min-w-[200px]">
@@ -131,9 +123,7 @@ export default function MeetingsPanel({
             </li>
               ))}
             </ul>
-          )}
-        </>
       )}
-    </div>
+    </section>
   )
 }
