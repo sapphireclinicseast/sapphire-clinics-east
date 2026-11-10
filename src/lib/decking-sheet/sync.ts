@@ -32,7 +32,7 @@ import {
   payLabel,
   buildGrid, nameFor, hhmm, parsePay, spanLabel, DAYS,
   SAFE_COL, FREE_TEXT_HINT, FREE_TEXT_HINTS, BLOCKED, BREAK, INK,
-  type SheetSlot, type SheetStaff, type SheetClass, type Grid, type CellRef,
+  type SheetSlot, type SheetStaff, type SheetClass, type SheetCase, type Grid, type CellRef,
 } from './grid'
 import { daySlots } from '@/lib/decking-slots'
 import type { sheets_v4 } from 'googleapis'
@@ -202,7 +202,7 @@ export function mergeSchedules<T extends ScheduleRow>(
 }
 
 async function loadDepartment(branch: string, department: string) {
-  const [configs, slots, classRows, capacityRows] = await Promise.all([
+  const [configs, slots, classRows, capacityRows, caseRows] = await Promise.all([
     prisma.deckingTherapistConfig.findMany({
       // EVERY config, not just the general one.
       //
@@ -277,6 +277,12 @@ async function loadDepartment(branch: string, department: string) {
       where: { branch, department },
       select: { staffId: true, dayOfWeek: true, startTime: true, date: true, capacity: true },
     }),
+    // Patients carried with no day and no hour — annulment cases and the
+    // like. Listed below the grid, never drawn as an hour.
+    prisma.deckingCaseload.findMany({
+      where: { branch, department },
+      select: { staffId: true, reason: true, patient: { select: { firstName: true, lastName: true } } },
+    }),
   ])
 
   // Days somebody is actually booked on, so a schedule that has moved on
@@ -311,6 +317,8 @@ async function loadDepartment(branch: string, department: string) {
   const named = new Set(staff.map(x => x.id))
   const extraIds = [...new Set([
     ...slots.filter(sl => sl.date && !named.has(sl.staffId)).map(sl => sl.staffId),
+    // And whoever carries a case: the list below is headed by their name.
+    ...caseRows.filter(c => !named.has(c.staffId)).map(c => c.staffId),
     // Same for whoever runs a class: the list below is headed by their name,
     // and a block headed by nothing is a block nobody can read.
     ...classRows.filter(c => !named.has(c.staffId)).map(c => c.staffId),
@@ -373,6 +381,11 @@ async function loadDepartment(branch: string, department: string) {
     slots: sheetSlots.filter(x => !x.date),
     dated: sheetSlots.filter(x => !!x.date),
     classes: [...grouped.values()],
+    cases: caseRows.map((c): SheetCase => ({
+      staffId: c.staffId,
+      patient: `${c.patient.lastName}, ${c.patient.firstName}`.toUpperCase(),
+      reason: c.reason ?? '',
+    })),
     capacity,
     raw: slots,
   }
@@ -1590,8 +1603,8 @@ export async function syncBranch(branch: string, spreadsheetId: string): Promise
   let bookableHours = 0
   for (const dept of DEPARTMENTS) {
     try {
-      const { staff, slots, dated, classes, capacity } = await loadDepartment(branch, dept)
-      const grid = buildGrid({ staff, slots, dated, classes, capacity })
+      const { staff, slots, dated, classes, cases, capacity } = await loadDepartment(branch, dept)
+      const grid = buildGrid({ staff, slots, dated, classes, cases, capacity })
       if (!grid) continue
       const free = openSlotsFor(dept, staff, slots, capacity)
       openRows.push(...free)

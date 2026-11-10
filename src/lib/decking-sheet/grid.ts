@@ -167,6 +167,22 @@ export interface SheetClass {
   payment: string
 }
 
+/**
+ * A patient a clinician carries with no day and no hour.
+ *
+ * An annulment evaluation runs over whatever sittings it needs. The clinic has
+ * to know whose case it is; the board has no hour to put it in. Listed below
+ * the grid, read-only — the entries are kept in the hub, where adding one
+ * checks the patient exists.
+ */
+export interface SheetCase {
+  staffId: string
+  /** "SURNAME, Firstname", already uppercased upstream. */
+  patient: string
+  /** Why they are on the list, if anybody said. */
+  reason: string
+}
+
 /** What one editable cell stands for, and what the sheet was last set to. */
 export interface CellRef {
   row: number
@@ -221,6 +237,11 @@ export const CLOSED_BG = '#E8EAED'
 const CLASS_BG = '#0F766E'
 const CLASS_HEAD_BG = '#115E59'
 const CLASS_SUB_BG = '#CCFBF1'
+// The no-fixed-date list. Distinct again from the classes teal and the one-off
+// pink, so the three lists below a grid never read as one.
+const CASE_BG = '#5B21B6'
+const CASE_HEAD_BG = '#4C1D95'
+const CASE_SUB_BG = '#EDE9FE'
 
 const BORDER = {
   top: { style: 'SOLID', color: rgb('#D0D7DE') },
@@ -327,9 +348,10 @@ export function remarkFor(occupants: SheetSlot[], blocked: SheetSlot | undefined
 }
 
 export function buildGrid(
-  { staff, slots, dated = [], classes = [], capacity = new Map() }:
+  { staff, slots, dated = [], classes = [], cases = [], capacity = new Map() }:
     {
       staff: SheetStaff[]; slots: SheetSlot[]; dated?: SheetSlot[]; classes?: SheetClass[]
+      cases?: SheetCase[]
       /** `staffId|DAY|HH:MM` → patients that cell holds, where it is not one. */
       capacity?: Map<string, number>
     },
@@ -838,6 +860,77 @@ export function buildGrid(
           }
           // Shorter than the tallest block in the band: nothing to show.
           for (let c = 0; c <= k; c++) put(c, cell('', { backgroundColor: rgb(OFF_BG) }))
+        })
+        rows.push({ values })
+      }
+      rows.push({ values: Array.from({ length: totalCols }, () => blank()) })
+      rows.push({ values: Array.from({ length: totalCols }, () => blank()) })
+    }
+  }
+
+  // ── No fixed date ─────────────────────────────────────────────────────────
+  //
+  // Patients a clinician carries with no hour held for them. Read-only, like
+  // the classes above: these are kept in the hub, and a name typed over here
+  // would be a way to lose a case rather than to add one.
+  const casesOf = new Map<string, SheetCase[]>()
+  for (const c of cases) {
+    if (!c.patient) continue
+    casesOf.set(c.staffId, [...(casesOf.get(c.staffId) ?? []), c])
+  }
+  if (casesOf.size > 0) {
+    for (const list of casesOf.values()) list.sort((a, b) => a.patient.localeCompare(b.patient))
+
+    rows.push({ values: Array.from({ length: totalCols }, () => blank()) })
+    const head = Array.from({ length: totalCols }, () => blank())
+    head[0] = cell('NO FIXED DATE  ·  read-only — patients carried without an hour on the board', {
+      backgroundColor: rgb(CASE_BG),
+      textFormat: { bold: true, fontSize: 10, foregroundColor: rgb('#FFFFFF') },
+      horizontalAlignment: 'LEFT',
+    })
+    for (let c = 1; c < totalCols; c++) head[c] = cell('', { backgroundColor: rgb(CASE_BG) })
+    merges.push({ startRowIndex: rows.length, endRowIndex: rows.length + 1, startColumnIndex: 0, endColumnIndex: totalCols })
+    rows.push({ values: head })
+
+    const keys = [...casesOf.keys()].sort((a, b) =>
+      String(nameOf.get(a) ?? '').localeCompare(String(nameOf.get(b) ?? '')))
+
+    for (let i = 0; i < keys.length; i += perBand) {
+      const band = keys.slice(i, i + perBand)
+      const tallest = Math.max(...band.map(id => (casesOf.get(id) ?? []).length))
+      const top = rows.length
+      for (let r = 0; r < 2 + tallest; r++) {
+        const values: Cell[] = Array.from({ length: totalCols }, () => blank())
+        band.forEach((staffId, bi) => {
+          const base = bi * stride
+          const put = (off: number, c: Cell) => { values[base + off] = c }
+          const mine = casesOf.get(staffId) ?? []
+
+          if (r === 0) {
+            put(0, cell(nameOf.get(staffId) ?? '', {
+              backgroundColor: rgb(CASE_HEAD_BG),
+              textFormat: { bold: true, fontSize: 10, foregroundColor: rgb('#FFFFFF') },
+            }))
+            for (let c = 1; c <= k; c++) put(c, cell('', { backgroundColor: rgb(CASE_HEAD_BG) }))
+            merges.push({ startRowIndex: top, endRowIndex: top + 1, startColumnIndex: base, endColumnIndex: base + k + 1 })
+            return
+          }
+          if (r === 1) {
+            put(0, cell('PATIENT', { backgroundColor: rgb(CASE_SUB_BG), textFormat: { bold: true, fontSize: 9 } }))
+            put(1, cell('WHY', { backgroundColor: rgb(CASE_SUB_BG), textFormat: { bold: true, fontSize: 9 } }))
+            for (let c = 2; c <= k; c++) put(c, cell('', { backgroundColor: rgb(CASE_SUB_BG) }))
+            if (k > 1) merges.push({ startRowIndex: top + 1, endRowIndex: top + 2, startColumnIndex: base + 1, endColumnIndex: base + k + 1 })
+            return
+          }
+
+          const one = mine[r - 2]
+          if (!one) {
+            for (let c = 0; c <= k; c++) put(c, cell('', { backgroundColor: rgb(OFF_BG) }))
+            return
+          }
+          put(0, cell(one.patient, { textFormat: { bold: true, fontSize: 9 } }))
+          put(1, cell(one.reason, { textFormat: { fontSize: 8, italic: true, foregroundColor: rgb('#6B7280') } }))
+          for (let c = 2; c <= k; c++) put(c, cell('', { backgroundColor: rgb(OFF_BG) }))
         })
         rows.push({ values })
       }
