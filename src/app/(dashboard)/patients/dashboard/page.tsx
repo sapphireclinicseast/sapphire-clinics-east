@@ -11,6 +11,7 @@ import {
 } from 'lucide-react'
 import { branchLabel } from '@/lib/branch-label'
 
+import PatientBubbleCharts, { type DiagnosisDeptData } from '@/components/patients/PatientBubbleCharts'
 import DeptBreakdownSection from './DeptBreakdownSection'
 import LifetimeSection from './LifetimeSection'
 import MdSubspecialtySection from './MdSubspecialtySection'
@@ -201,6 +202,7 @@ function DiagnosisBars({ rows }: { rows: Stats['diagnoses'] }) {
 export default function PatientDashboardPage() {
   const [stats, setStats] = useState<Stats | null>(null)
   const [interdeptStats, setInterdeptStats] = useState<InterdeptStats | null>(null)
+  const [diagDeptStats, setDiagDeptStats] = useState<DiagnosisDeptData | null>(null)
   const [loading, setLoading] = useState(true)
   const [updatedAt, setUpdatedAt] = useState<Date | null>(null)
   const [selectedBranches, setSelectedBranches] = useState<Branch[]>([...ALL_BRANCHES])
@@ -215,10 +217,15 @@ export default function PatientDashboardPage() {
     Promise.all([
       fetch(`/api/patients/stats?${qs}`, { cache: 'no-store' }).then((r) => r.json()),
       fetch(`/api/patients/interdept-stats?${qs}`, { cache: 'no-store' }).then((r) => r.json()),
+      // Optional: a failure here must not blank the rest of the dashboard.
+      fetch(`/api/patients/diagnosis-dept-stats?${qs}`, { cache: 'no-store' })
+        .then((r) => (r.ok ? r.json() : null))
+        .catch(() => null),
     ])
-      .then(([d, id]: [Stats, InterdeptStats]) => {
+      .then(([d, id, dd]: [Stats, InterdeptStats, DiagnosisDeptData | null]) => {
         setStats(d)
         setInterdeptStats(id)
+        setDiagDeptStats(dd)
         setUpdatedAt(new Date())
         setLoading(false)
       })
@@ -485,6 +492,9 @@ export default function PatientDashboardPage() {
           </DashCard>
         </div>
       )}
+
+      {/* ── Diagnosis × department × sex ── */}
+      {!failed && stats && <PatientBubbleCharts data={diagDeptStats} />}
 
       {/* ── Branch distribution + Patients by Service ── */}
       {!failed && (
