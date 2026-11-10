@@ -719,12 +719,48 @@ model FormDistribution {
   remarks       String?
   createdById   String?
   createdByName String?
+  acknowledgmentId String? // FormAcknowledgment this pad went out with (signed via the med rep link)
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
   @@index([branch])
   @@index([formType])
   @@index([partnerName])
+  @@index([acknowledgmentId])
+}
+
+// Signed acknowledgment of what a med rep handed out during coverage — the
+// paper "For brochures, referral pads, giveaways and documents received during
+// coverage" form, signed by the doctor / secretary on the med rep's phone or
+// tablet (/acknowledge/<branch>). Referral pads it lists are FormDistribution
+// rows with acknowledgmentId = this id (they draw down on-hand like manual
+// rows). signaturePng is kept here (small data URL) so the PDF can always be
+// rebuilt; pdfFile is the PDF stored in uploads at signing time.
+model FormAcknowledgment {
+  id                    String   @id @default(cuid())
+  branch                String
+  recipientKind         String // DOCTOR | SCHOOL
+  partnerId             String? // Referrer id (doctor) or HR partner-institution id (school)
+  partnerName           String // name the pad rows are logged under
+  institution           String?
+  recipientName         String?
+  recipientDesignation  String?
+  receivedBy            String?
+  receivedByDesignation String?
+  items                 String[] @default([]) // BROCHURE | REFERRAL_PAD | GIVEAWAY | DOCUMENTS | PROPOSAL
+  remarks               String?
+  signaturePng          String
+  signedAt              DateTime @default(now())
+  deliveredById         String
+  deliveredByName       String
+  deliveredByTitle      String?
+  pdfFile               String?
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  @@index([branch])
+  @@index([partnerName])
+  @@index([signedAt])
 }
 
 model InventoryAdjustmentBatch {

@@ -33,8 +33,10 @@ import {
   TrendingUp,
   TrendingDown,
   Gift,
-  RotateCcw, Archive, ArchiveRestore,
+  RotateCcw, Archive, ArchiveRestore, QrCode, PenLine, Copy, ExternalLink,
 } from 'lucide-react'
+import { QRCodeSVG } from 'qrcode.react'
+import { ACK_BRANCHES, ACK_DELETE_ROLES, ACK_ITEM_LABELS, ackPath, resolveAckBranch } from '@/lib/form-ack'
 import { WEBSITE_CLASSIFICATIONS } from '@/lib/website-classification'
 import JsBarcode from 'jsbarcode'
 import { formatCurrency, formatDate } from '@/lib/utils'
@@ -555,6 +557,21 @@ interface FormDistribution {
   createdByName?: string | null
   createdAt: string
   onHandRecorded?: boolean
+  acknowledgmentId?: string | null
+}
+
+// Signed acknowledgment from the med rep link (/acknowledge/<branch>).
+interface FormAck {
+  id: string
+  branch: string
+  partnerName: string
+  institution: string | null
+  recipientName: string | null
+  receivedBy: string | null
+  items: string[]
+  signedAt: string
+  deliveredByName: string
+  deliveredByTitle: string | null
 }
 
 interface PartnerInstitution { id: string; name: string; kind?: string; detail?: string }
@@ -1160,6 +1177,13 @@ function InventoryInner() {
   const [ndTo, setNdTo] = useState('')
   const [ndSaving, setNdSaving] = useState(false)
   const [deleteDistConfirm, setDeleteDistConfirm] = useState<string | null>(null)
+  // Signed acknowledgments (med rep signing link) + the link/QR modal
+  const [acks, setAcks] = useState<FormAck[]>([])
+  const [ackLinkOpen, setAckLinkOpen] = useState(false)
+  const [ackLinkBranch, setAckLinkBranch] = useState('SANDBOX_EAST')
+  const [ackCopied, setAckCopied] = useState(false)
+  const [deleteAckConfirm, setDeleteAckConfirm] = useState<{ id: string; padRows: number } | null>(null)
+  const [deletingAck, setDeletingAck] = useState(false)
 
   // PDF modal state
   const [pdfModalOpen, setPdfModalOpen] = useState(false)
@@ -1406,6 +1430,17 @@ function InventoryInner() {
     if (data) setDistributions(data.data || [])
   }, [fetchJson, formsBranchFilter])
 
+  // Plain fetch (not fetchJson): a failure here only hides the signed badges.
+  const fetchAcks = useCallback(async () => {
+    try {
+      const qs = formsBranchFilter ? `?branch=${encodeURIComponent(formsBranchFilter)}` : ''
+      const res = await fetch(`/api/inventory/form-acknowledgments${qs}`)
+      if (!res.ok) return
+      const data = await res.json()
+      setAcks(Array.isArray(data.data) ? data.data : [])
+    } catch { /* ignore */ }
+  }, [formsBranchFilter])
+
   const fetchPartnerInstitutions = useCallback(async () => {
     try {
       const res = await fetch('/api/inventory/partner-institutions')
@@ -1424,7 +1459,7 @@ function InventoryInner() {
     }
     initialLoaded.current = true
     setLoading(true)
-    Promise.all([fetchItems(), fetchAllItems(), fetchAllSuppliers(), fetchAdjustments(), fetchConsignments(), fetchForms(), fetchFormTemplates(), fetchSupplierRequests(), fetchDistributions(), fetchPartnerInstitutions()])
+    Promise.all([fetchItems(), fetchAllItems(), fetchAllSuppliers(), fetchAdjustments(), fetchConsignments(), fetchForms(), fetchFormTemplates(), fetchSupplierRequests(), fetchDistributions(), fetchAcks(), fetchPartnerInstitutions()])
       .finally(() => setLoading(false))
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionUserId])
@@ -1434,7 +1469,8 @@ function InventoryInner() {
     if (!initialLoaded.current) return
     fetchForms()
     fetchDistributions()
-  }, [fetchForms, fetchDistributions])
+    fetchAcks()
+  }, [fetchForms, fetchDistributions, fetchAcks])
 
   const openFormCreate = () => {
     setFormEditId(null)
@@ -1501,6 +1537,16 @@ function InventoryInner() {
       if (receiptAdded) fetchForms()
     } catch { setError('Network error') }
     finally { setNdSaving(false) }
+  }
+
+  const handleAckDelete = async (id: string) => {
+    setDeletingAck(true)
+    try {
+      const res = await fetch(`/api/inventory/form-acknowledgments?id=${encodeURIComponent(id)}`, { method: 'DELETE' })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) { setError(data.error || 'Could not delete the signed delivery'); return }
+      setDeleteAckConfirm(null); fetchDistributions(); fetchAcks()
+    } catch { setError('Network error') } finally { setDeletingAck(false) }
   }
 
   const handleDistDelete = async (id: string) => {
@@ -5926,6 +5972,13 @@ setTimeout(()=>window.print(),500);
                   <Plus size={18} /> Add Receipt
                 </button>
               )}
+              {formsView === 'distribution' && (canWrite || formsOnly) && (
+                <button onClick={() => { setAckLinkBranch(resolveAckBranch(formsBranchFilter)?.branch || 'SANDBOX_EAST'); setAckCopied(false); setAckLinkOpen(true) }}
+                  className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-white text-sm font-semibold transition-opacity hover:opacity-90"
+                  style={{ background: 'var(--teal)' }} title="Link + QR for med reps to log a delivery with the doctor's signature">
+                  <QrCode size={18} /> Signing link
+                </button>
+              )}
             </div>
           </div>
 
@@ -6023,10 +6076,29 @@ setTimeout(()=>window.print(),500);
             const ndQty = Number.isFinite(ndFromN) && Number.isFinite(ndToN) && ndToN >= ndFromN ? ndToN - ndFromN + 1 : null
             const canDistWrite = canWrite || formsOnly
             const canEntry = canDistWrite && !!formsBranchFilter
+            const canDeleteSigned = ACK_DELETE_ROLES.includes((session?.user?.role as string) || '')
+            // Signed deliveries: pad rows carry acknowledgmentId; a delivery with no
+            // pads (brochures, giveaways…) shows as its own row.
+            const ackById = new Map(acks.map((a) => [a.id, a]))
+            const padRowsByAck = distributions.reduce((m, d) => { if (d.acknowledgmentId) m.set(d.acknowledgmentId, (m.get(d.acknowledgmentId) || 0) + 1); return m }, new Map<string, number>())
+            const distRows: Array<{ d?: FormDistribution; a?: FormAck; at: number }> = [
+              ...distributions.map((d) => ({ d, at: new Date(d.dateGiven).getTime() })),
+              ...acks.filter((a) => !padRowsByAck.has(a.id)).map((a) => ({ a, at: new Date(a.signedAt).getTime() })),
+            ].sort((x, y) => y.at - x.at)
+            const signedPill = (ackId: string) => {
+              const a = ackById.get(ackId)
+              return (
+                <a href={`/api/inventory/form-acknowledgments/${ackId}?format=pdf`} target="_blank" rel="noopener"
+                  title={a ? `Signed by ${a.receivedBy || a.recipientName || a.partnerName} · delivered by ${a.deliveredByName} — open the signed PDF` : 'Open the signed PDF'}
+                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold hover:opacity-80" style={{ background: '#eff6ff', color: '#1d4ed8' }}>
+                  <PenLine size={11} /> Signed PDF
+                </a>
+              )
+            }
             return (
             <>
               <p className="text-xs mb-3" style={{ color: 'var(--mid-gray)' }}>
-                Log which pre-numbered forms were handed to each partner school or referring doctor. Schools sync live from HR → Partnerships; doctors from the referrers list. Each row draws the pcs down from on-hand. A row flagged <span className="font-semibold" style={{ color: '#b45309' }}>Not on hand</span> was given out but never recorded as received in the clinic — record the receipt to clear it.
+                Log which pre-numbered forms were handed to each partner school or referring doctor. Schools sync live from HR → Partnerships; doctors from the referrers list. Each row draws the pcs down from on-hand. A row flagged <span className="font-semibold" style={{ color: '#b45309' }}>Not on hand</span> was given out but never recorded as received in the clinic — record the receipt to clear it. Med reps in the field use the <span className="font-semibold">Signing link</span>: the doctor or secretary signs on their phone, the row appears here with its <span className="font-semibold" style={{ color: '#1d4ed8' }}>Signed PDF</span>.
               </p>
               {!formsBranchFilter && (
                 <p className="text-xs mb-3 px-3 py-2 rounded-lg" style={{ background: '#fffbeb', color: '#92400e' }}>Pick a specific branch above to log a distribution (so the pads draw down the right branch&apos;s on-hand).</p>
@@ -6080,9 +6152,22 @@ setTimeout(()=>window.print(),500);
                           </td>
                         </tr>
                       )}
-                      {distributions.length === 0 && !canEntry ? (
+                      {distRows.length === 0 && !canEntry ? (
                         <tr><td colSpan={canDistWrite ? 8 : 7} className="px-4 py-12 text-center" style={{ color: 'var(--mid-gray)' }}><Gift size={30} className="mx-auto mb-2 opacity-40" /><p>No form distributions logged yet</p></td></tr>
-                      ) : distributions.map((d) => (
+                      ) : distRows.map(({ d, a }) => a ? (
+                        <tr key={`ack-${a.id}`} className="border-t hover:bg-gray-50/50 transition-colors" style={{ borderColor: 'var(--light-gray)' }}>
+                          <td className="px-3 py-3 text-xs" style={{ color: 'var(--mid-gray)' }}>{formatDate(a.signedAt)}</td>
+                          <td className="px-3 py-3 font-medium" style={{ color: 'var(--charcoal)' }}>{a.partnerName}<span className="text-xs ml-1.5" style={{ color: 'var(--mid-gray)' }}>{BRANCH_LABELS[a.branch] || a.branch}</span></td>
+                          <td className="px-3 py-3 text-xs" colSpan={3} style={{ color: 'var(--mid-gray)' }}>{a.items.map((k) => ACK_ITEM_LABELS[k] || k).join(' · ')} <span style={{ color: 'var(--hr-faint, #8A9AA0)' }}>· no pads</span></td>
+                          <td className="px-3 py-3 text-right" style={{ color: 'var(--mid-gray)' }}>—</td>
+                          <td className="px-3 py-3">{signedPill(a.id)}</td>
+                          {canDistWrite && (
+                            <td className="px-3 py-3 text-right">
+                              {canDeleteSigned && <button onClick={() => setDeleteAckConfirm({ id: a.id, padRows: 0 })} className="p-2 rounded-lg hover:bg-red-50 transition-colors" title="Delete signed delivery"><Trash2 size={15} className="text-red-500" /></button>}
+                            </td>
+                          )}
+                        </tr>
+                      ) : d ? (
                         <tr key={d.id} className="border-t hover:bg-gray-50/50 transition-colors" style={{ borderColor: 'var(--light-gray)' }}>
                           <td className="px-3 py-3 text-xs" style={{ color: 'var(--mid-gray)' }}>{formatDate(d.dateGiven)}</td>
                           <td className="px-3 py-3 font-medium" style={{ color: 'var(--charcoal)' }}>{d.partnerName}<span className="text-xs ml-1.5" style={{ color: 'var(--mid-gray)' }}>{BRANCH_LABELS[d.branch] || d.branch}</span></td>
@@ -6096,14 +6181,19 @@ setTimeout(()=>window.print(),500);
                             ) : (
                               <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold" style={{ background: '#ecfdf5', color: '#047857' }}>Recorded</span>
                             )}
+                            {d.acknowledgmentId && <span className="ml-1">{signedPill(d.acknowledgmentId)}</span>}
                           </td>
                           {canDistWrite && (
                             <td className="px-3 py-3 text-right">
-                              <button onClick={() => setDeleteDistConfirm(d.id)} className="p-2 rounded-lg hover:bg-red-50 transition-colors" title="Delete distribution"><Trash2 size={15} className="text-red-500" /></button>
+                              {d.acknowledgmentId ? (
+                                canDeleteSigned && <button onClick={() => setDeleteAckConfirm({ id: d.acknowledgmentId!, padRows: padRowsByAck.get(d.acknowledgmentId!) || 1 })} className="p-2 rounded-lg hover:bg-red-50 transition-colors" title="Delete signed delivery"><Trash2 size={15} className="text-red-500" /></button>
+                              ) : (
+                                <button onClick={() => setDeleteDistConfirm(d.id)} className="p-2 rounded-lg hover:bg-red-50 transition-colors" title="Delete distribution"><Trash2 size={15} className="text-red-500" /></button>
+                              )}
                             </td>
                           )}
                         </tr>
-                      ))}
+                      ) : null)}
                     </tbody>
                   </table>
                 </div>
@@ -6163,6 +6253,65 @@ setTimeout(()=>window.print(),500);
               </div>
             </div>
           )}
+
+          {/* Delete Signed Delivery Confirm */}
+          {deleteAckConfirm && (
+            <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+              <div className="bg-white rounded-2xl p-6 max-w-sm w-full shadow-xl">
+                <h3 className="text-lg font-bold mb-2" style={{ color: 'var(--charcoal)' }}>Delete Signed Delivery</h3>
+                <p className="text-sm mb-6" style={{ color: 'var(--mid-gray)' }}>
+                  Remove this signed acknowledgment and its PDF{deleteAckConfirm.padRows > 0 ? <> together with its {deleteAckConfirm.padRows} pad row{deleteAckConfirm.padRows === 1 ? '' : 's'}? Their pcs go back to on-hand.</> : '?'} This cannot be undone.
+                </p>
+                <div className="flex gap-3 justify-end">
+                  <button onClick={() => setDeleteAckConfirm(null)} className="px-4 py-2 rounded-lg text-sm border" style={{ borderColor: 'var(--light-gray)' }} disabled={deletingAck}>Cancel</button>
+                  <button onClick={() => handleAckDelete(deleteAckConfirm.id)} className="px-4 py-2 rounded-lg text-sm text-white bg-red-500 hover:bg-red-600 flex items-center gap-2" disabled={deletingAck}>
+                    {deletingAck && <Loader2 size={14} className="animate-spin" />} Delete
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Med rep signing link — per-branch URL + QR */}
+          {ackLinkOpen && (() => {
+            const path = ackPath(ackLinkBranch) || '/acknowledge/east'
+            const url = `${window.location.origin}${path}`
+            const br = resolveAckBranch(ackLinkBranch)
+            return (
+            <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={() => setAckLinkOpen(false)}>
+              <div className="bg-white rounded-2xl p-6 max-w-md w-full shadow-xl max-h-[92vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+                <div className="flex items-start justify-between gap-3 mb-1">
+                  <h3 className="text-lg font-bold" style={{ color: 'var(--charcoal)' }}>Med rep signing link</h3>
+                  <button onClick={() => setAckLinkOpen(false)} className="p-1 rounded-lg hover:bg-gray-100" aria-label="Close"><X size={18} /></button>
+                </div>
+                <p className="text-xs mb-4" style={{ color: 'var(--mid-gray)' }}>Open on a phone or tablet at the doctor&apos;s clinic. The doctor or secretary signs on screen; referral pads are logged here and drawn from the branch&apos;s on-hand, and the signed PDF is kept on the row.</p>
+                <div className="flex flex-wrap gap-1.5 mb-4">
+                  {ACK_BRANCHES.map((b) => (
+                    <button key={b.branch} onClick={() => { setAckLinkBranch(b.branch); setAckCopied(false) }}
+                      className="px-3 py-1.5 rounded-full text-xs font-semibold border transition-colors"
+                      style={ackLinkBranch === b.branch ? { background: 'var(--teal)', color: 'white', borderColor: 'var(--teal)' } : { borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>
+                      {b.shortName}
+                    </button>
+                  ))}
+                </div>
+                <div className="flex justify-center mb-4 p-4 rounded-xl border bg-white" style={{ borderColor: 'var(--light-gray)' }}>
+                  <QRCodeSVG value={url} size={184} marginSize={1} />
+                </div>
+                <div className="flex items-center gap-2 mb-3">
+                  <input readOnly value={url} onFocus={(e) => e.target.select()} className="flex-1 min-w-0 px-3 py-2 rounded-lg border text-xs" style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }} />
+                  <button onClick={async () => { try { await navigator.clipboard.writeText(url); setAckCopied(true) } catch { /* clipboard blocked: the field selects on focus */ } }}
+                    className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-white text-xs font-semibold shrink-0" style={{ background: 'var(--teal)' }}>
+                    {ackCopied ? <CheckCircle2 size={14} /> : <Copy size={14} />} {ackCopied ? 'Copied' : 'Copy'}
+                  </button>
+                </div>
+                <a href={path} target="_blank" rel="noopener" className="flex items-center justify-center gap-1.5 w-full py-2.5 rounded-lg border text-sm font-semibold" style={{ borderColor: 'var(--teal)', color: 'var(--teal)' }}>
+                  <ExternalLink size={15} /> Open signing form · {br?.shortName}
+                </a>
+                <p className="text-[11px] mt-3" style={{ color: 'var(--mid-gray)' }}>Med reps sign in once with their own hub account (it stays signed in on that phone). The link carries the branch, so pads always come out of {br?.shortName}&apos;s on-hand.</p>
+              </div>
+            </div>
+            )
+          })()}
 
           {/* Delete Form Receipt Confirm */}
           {deleteFormConfirm && (

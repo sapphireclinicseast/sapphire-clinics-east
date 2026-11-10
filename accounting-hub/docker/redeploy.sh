@@ -131,6 +131,34 @@ CREATE TABLE IF NOT EXISTS "FormDistribution" (
 CREATE INDEX IF NOT EXISTS "FormDistribution_branch_idx" ON "FormDistribution"("branch");
 CREATE INDEX IF NOT EXISTS "FormDistribution_formType_idx" ON "FormDistribution"("formType");
 CREATE INDEX IF NOT EXISTS "FormDistribution_partnerName_idx" ON "FormDistribution"("partnerName");
+ALTER TABLE "FormDistribution" ADD COLUMN IF NOT EXISTS "acknowledgmentId" TEXT;
+CREATE INDEX IF NOT EXISTS "FormDistribution_acknowledgmentId_idx" ON "FormDistribution"("acknowledgmentId");
+CREATE TABLE IF NOT EXISTS "FormAcknowledgment" (
+    "id"                    TEXT NOT NULL,
+    "branch"                TEXT NOT NULL,
+    "recipientKind"         TEXT NOT NULL,
+    "partnerId"             TEXT,
+    "partnerName"           TEXT NOT NULL,
+    "institution"           TEXT,
+    "recipientName"         TEXT,
+    "recipientDesignation"  TEXT,
+    "receivedBy"            TEXT,
+    "receivedByDesignation" TEXT,
+    "items"                 TEXT[] NOT NULL DEFAULT '{}',
+    "remarks"               TEXT,
+    "signaturePng"          TEXT NOT NULL,
+    "signedAt"              TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "deliveredById"         TEXT NOT NULL,
+    "deliveredByName"       TEXT NOT NULL,
+    "deliveredByTitle"      TEXT,
+    "pdfFile"               TEXT,
+    "createdAt"             TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt"             TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT "FormAcknowledgment_pkey" PRIMARY KEY ("id")
+);
+CREATE INDEX IF NOT EXISTS "FormAcknowledgment_branch_idx" ON "FormAcknowledgment"("branch");
+CREATE INDEX IF NOT EXISTS "FormAcknowledgment_partnerName_idx" ON "FormAcknowledgment"("partnerName");
+CREATE INDEX IF NOT EXISTS "FormAcknowledgment_signedAt_idx" ON "FormAcknowledgment"("signedAt");
 CREATE TABLE IF NOT EXISTS "PsychTest" (
     "id"            TEXT NOT NULL,
     "branch"        TEXT NOT NULL,

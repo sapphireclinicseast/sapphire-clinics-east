@@ -19,7 +19,7 @@ export async function GET() {
     fetchHrPartnerInstitutions(),
     prisma.referrer.findMany({
       where: { type: 'DOCTOR', isActive: true },
-      select: { id: true, name: true, specialization: true },
+      select: { id: true, name: true, specialization: true, affiliation: true },
       orderBy: { name: 'asc' },
     }),
   ])
@@ -29,8 +29,9 @@ export async function GET() {
     .map((i) => ({ id: i.id, name: i.name, kind: 'School' as const, detail: undefined as string | undefined }))
     .sort((a, b) => a.name.localeCompare(b.name))
 
+  // affiliation (hospital / clinic) prefills Institution on the med rep signing page.
   const docs = doctors.map((d) => ({
-    id: d.id, name: d.name, kind: 'Doctor' as const, detail: d.specialization || undefined,
+    id: d.id, name: d.name, kind: 'Doctor' as const, detail: d.specialization || undefined, affiliation: d.affiliation || undefined,
   }))
 
   return NextResponse.json({ data: [...schools, ...docs] })

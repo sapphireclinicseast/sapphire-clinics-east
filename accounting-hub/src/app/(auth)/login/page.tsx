@@ -85,7 +85,15 @@ export default function LoginPage() {
       setError('Invalid email or password')
       setLoading(false)
     } else {
-      router.push('/dashboard')
+      // Return to the page that sent the user here (e.g. the med rep signing
+      // link). Same-site paths only, never another host.
+      let cb = new URLSearchParams(window.location.search).get('callbackUrl') || ''
+      try {
+        const u = new URL(cb, window.location.origin)
+        cb = u.origin === window.location.origin ? u.pathname + u.search : ''
+      } catch { cb = '' }
+      const safe = cb.startsWith('/') && !cb.startsWith('//') && !cb.startsWith('/\\') && !cb.startsWith('/login')
+      router.push(safe ? cb : '/dashboard')
     }
   }
 

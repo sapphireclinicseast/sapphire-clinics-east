@@ -1,39 +1,13 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { controlToInt, rangeQuantity, coveredByUnion } from '@/lib/form-ranges'
+import { ACK_DELETE_ROLES } from '@/lib/form-ack'
+import { deleteAcknowledgment } from '@/lib/form-ack-store'
 
 // Front desk and the MedRep hand pads to partners themselves, so they can log
 // distributions here (the page shows them a Forms-only slice of Inventory).
 const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN', 'MEDREP', 'AHEA_FRONTDESK', 'AHGH_FRONTDESK']
-
-// Numeric value of a control number (ignores prefix / zero-padding).
-function controlToInt(s: string): number | null {
-  const digits = String(s ?? '').replace(/[^0-9]/g, '')
-  if (!digits) return null
-  const n = parseInt(digits, 10)
-  return Number.isFinite(n) ? n : null
-}
-
-function rangeQuantity(fromControl: string, toControl: string): number | null {
-  const a = controlToInt(fromControl)
-  const b = controlToInt(toControl)
-  if (a == null || b == null) return null
-  const qty = b - a + 1
-  return qty >= 1 ? qty : null
-}
-
-// Merge intervals and test whether [a,b] is fully covered by their union.
-function coveredByUnion(intervals: Array<[number, number]>, a: number, b: number): boolean {
-  if (a > b) return false
-  const sorted = [...intervals].sort((x, y) => x[0] - y[0])
-  let cursor = a
-  for (const [lo, hi] of sorted) {
-    if (lo > cursor) break // gap before the next interval → not covered
-    if (hi >= cursor) cursor = Math.max(cursor, hi + 1)
-    if (cursor > b) return true
-  }
-  return cursor > b
-}
 
 export async function GET(req: Request) {
   const session = await auth()
@@ -158,6 +132,11 @@ export async function PUT(req: Request) {
   try {
     const { id, branch, formType, partnerId, partnerName, dateGiven, fromControl, toControl, remarks } = await req.json()
     if (!id) return NextResponse.json({ error: 'id is required' }, { status: 400 })
+    // A signed row must keep matching its signed PDF.
+    const existing = await prisma.formDistribution.findUnique({ where: { id }, select: { acknowledgmentId: true } })
+    if (existing?.acknowledgmentId) {
+      return NextResponse.json({ error: 'This row is part of a signed acknowledgment and cannot be edited — delete the delivery and have it signed again' }, { status: 409 })
+    }
     const quantity = rangeQuantity(fromControl, toControl)
     if (quantity == null) {
       return NextResponse.json({ error: 'Invalid control-number range' }, { status: 400 })
@@ -191,6 +170,18 @@ export async function DELETE(req: Request) {
   try {
     const id = new URL(req.url).searchParams.get('id')
     if (!id) return NextResponse.json({ error: 'id is required' }, { status: 400 })
+    // A pad row that came in with a signed acknowledgment is part of that signed
+    // delivery: removing it removes the whole delivery (acknowledgment + PDF +
+    // every pad row it added), and only the roles that may delete signed records can.
+    const row = await prisma.formDistribution.findUnique({ where: { id }, select: { acknowledgmentId: true } })
+    if (!row) return NextResponse.json({ error: 'Distribution not found' }, { status: 404 })
+    if (row.acknowledgmentId) {
+      if (!ACK_DELETE_ROLES.includes(session.user.role as string)) {
+        return NextResponse.json({ error: 'This row is part of a signed acknowledgment — ask an admin or accountant to remove it' }, { status: 403 })
+      }
+      const removed = await deleteAcknowledgment(row.acknowledgmentId)
+      return NextResponse.json({ message: 'Signed delivery deleted', ...removed })
+    }
     await prisma.formDistribution.delete({ where: { id } })
     return NextResponse.json({ message: 'Distribution deleted' })
   } catch (err) {
