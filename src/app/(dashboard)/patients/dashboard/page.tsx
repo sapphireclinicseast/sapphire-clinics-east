@@ -7,6 +7,8 @@ import {
 } from 'recharts'
 import { Users, Baby, UserCheck, CalendarDays } from 'lucide-react'
 
+import PatientBubbleCharts, { type DiagnosisDeptData } from '@/components/patients/PatientBubbleCharts'
+
 const PatientMap = dynamic(() => import('@/components/patients/PatientMap'), { ssr: false })
 
 interface Stats {
@@ -153,6 +155,7 @@ function liftLabel(l: number) {
 export default function PatientDashboardPage() {
   const [stats, setStats] = useState<Stats | null>(null)
   const [interdeptStats, setInterdeptStats] = useState<InterdeptStats | null>(null)
+  const [diagDeptStats, setDiagDeptStats] = useState<DiagnosisDeptData | null>(null)
   const [loading, setLoading] = useState(true)
   const [selectedBranches, setSelectedBranches] = useState<Branch[]>([...ALL_BRANCHES])
 
@@ -166,10 +169,15 @@ export default function PatientDashboardPage() {
     Promise.all([
       fetch(`/api/patients/stats?${qs}`, { cache: 'no-store' }).then((r) => r.json()),
       fetch(`/api/patients/interdept-stats?${qs}`, { cache: 'no-store' }).then((r) => r.json()),
+      // Bubble chart data is optional — a failure here must not blank the whole dashboard
+      fetch(`/api/patients/diagnosis-dept-stats?${qs}`, { cache: 'no-store' })
+        .then((r) => (r.ok ? r.json() : null))
+        .catch(() => null),
     ])
-      .then(([d, id]: [Stats, InterdeptStats]) => {
+      .then(([d, id, dd]: [Stats, InterdeptStats, DiagnosisDeptData | null]) => {
         setStats(d)
         setInterdeptStats(id)
+        setDiagDeptStats(dd)
         setLoading(false)
       })
       .catch(() => setLoading(false))
@@ -426,6 +434,9 @@ export default function PatientDashboardPage() {
           )}
         </div>
       </div>
+
+      {/* ── Bubble charts ── */}
+      {stats && <PatientBubbleCharts data={diagDeptStats} />}
 
       {/* ── Branch distribution ── */}
       {stats && Object.keys(stats.branchDist).length > 0 && (
