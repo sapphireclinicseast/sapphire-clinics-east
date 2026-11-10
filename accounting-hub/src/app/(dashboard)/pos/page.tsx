@@ -127,7 +127,7 @@ interface Order {
   returnedByBuyer?: boolean
   paymentStatus?: string
   paymentDate?: string | null
-  items: { id: string; name: string; quantity: number; unitPrice: string | number; lineTotal: string | number; serviceId?: string; inventoryItemId?: string; service?: { department?: string; revenueType?: string } | null }[]
+  items: { id: string; name: string; quantity: number; unitPrice: string | number; lineTotal: string | number; serviceId?: string; inventoryItemId?: string; service?: { department?: string; revenueType?: string; unitPayId?: string | null; unitPayEnabled?: boolean | null; unitPay?: { name: string } | null } | null }[]
   payments: { id: string; method: string; amount: string | number; paymentModeId?: string | null; walletId?: string; reference?: string; loaNumber?: string | null }[]
   arPaymentItems?: { paymentId: string }[]
   hmoSettlements?: HmoSettlementNote[]
@@ -1360,6 +1360,9 @@ function OrderFormModal({
   }
 
   const addItem = (svc: ServiceItem) => {
+    const lookup = (id?: string) => (id ? services.find(x => x.id === id) ?? serviceDropResults.find(x => x.id === id) : undefined)
+    const others = items.map(it => { const u = svcUnitPay(lookup(it.serviceId)); return { name: it.name, unitPayId: u.id, unitPayEnabled: u.enabled } })
+    if (!confirmDoublePf(svc.name, svcUnitPay(svc), others)) return
     setItems(prev => [...prev, itemFor(svc)])
     setServiceSearch('')
     setShowServiceDrop(false)
@@ -3346,6 +3349,28 @@ function OrderFormModal({
    ORDERS PANEL
    ══════════════════════════════════════════════════════════════ */
 
+// A second line that carries the same PF unit pay as one already on the order —
+// e.g. a ₱0 BASIC SESSION on top of PEDIA BASIC SESSION, which already pays BASIC
+// SESSION — means the therapist is paid twice for one session (Hannah 2026-11-10:
+// Ayhessa Ico, 10 orders from Oct 31). The front desk confirms it is really a
+// second session before the line goes on.
+interface PfLineRef { name: string; unitPayId?: string | null; unitPayEnabled?: boolean | null }
+function confirmDoublePf(newName: string, unitPay: { id?: string | null; name?: string | null; enabled?: boolean | null }, others: PfLineRef[]): boolean {
+  if (!unitPay.id || unitPay.enabled === false) return true
+  const clash = others.find(o => o.unitPayId === unitPay.id && o.unitPayEnabled !== false)
+  if (!clash) return true
+  return window.confirm(
+    `"${clash.name}" already pays the therapist's ${unitPay.name || 'same'} PF on this order.\n\n` +
+    `Adding "${newName}" means the therapist will be paid TWICE for one session. ` +
+    `Add it only if this is really a second, separate session.\n\nAdd it anyway?`,
+  )
+}
+const svcUnitPay = (s: ServiceItem | undefined) => ({
+  id: (s?.unitPayId as string | null | undefined) ?? null,
+  name: (s?.unitPay as { name?: string } | null | undefined)?.name ?? null,
+  enabled: (s?.unitPayEnabled as boolean | null | undefined) ?? null,
+})
+
 const orderBranchLabel = (b: string) =>
   b === 'SANDBOX_EAST' ? 'AHEA' : b === 'SANDBOX_GREENHILLS' ? 'AHGH' : b === 'VERDANA_STORE' ? 'Verdana' : b === 'AURA_INSTITUTE' ? 'AHI' : b
 
@@ -3393,7 +3418,7 @@ function OrdersPanel({ branch, canSelectBranch, focusOrderId, onFocusHandled }: 
   const [ordSortDir, setOrdSortDir] = useState<'asc' | 'desc'>('desc')
   const [viewOrder, setViewOrder] = useState<Order | null>(null)
   const [editOrder, setEditOrder] = useState<Order | null>(null)
-  const [editItems, setEditItems] = useState<{ name: string; quantity: number; unitPrice: number; lineTotal: number; serviceId?: string; inventoryItemId?: string }[]>([])
+  const [editItems, setEditItems] = useState<{ name: string; quantity: number; unitPrice: number; lineTotal: number; serviceId?: string; inventoryItemId?: string; unitPayId?: string | null; unitPayEnabled?: boolean | null }[]>([])
   const [editPayments, setEditPayments] = useState<{ id?: string; method: string; amount: number; paymentModeId?: string; walletId?: string; reference?: string }[]>([])
   const [editPatient, setEditPatient] = useState('')
   const [editClinician, setEditClinician] = useState('')
@@ -3421,7 +3446,7 @@ function OrdersPanel({ branch, canSelectBranch, focusOrderId, onFocusHandled }: 
   // A search result the item editor can offer is either a Service or an Inventory
   // product — searched together so re-linking a PRODUCT order (previously impossible;
   // this box only ever queried /api/services) works the same way as a service order.
-  const [editItemResults, setEditItemResults] = useState<({ kind: 'service' | 'product'; id: string; name: string; price: number; sub?: string })[][]>([])
+  const [editItemResults, setEditItemResults] = useState<({ kind: 'service' | 'product'; id: string; name: string; price: number; sub?: string; unitPayId?: string | null; unitPayName?: string | null; unitPayEnabled?: boolean | null })[][]>([])
   const editItemTimers = useRef<(ReturnType<typeof setTimeout> | null)[]>([])
   const [editConfiguredModes, setEditConfiguredModes] = useState<PaymentModeType[]>([])
   const [editIssuedOfficialInvoice, setEditIssuedOfficialInvoice] = useState(false)
@@ -3805,6 +3830,8 @@ function OrdersPanel({ branch, canSelectBranch, focusOrderId, onFocusHandled }: 
       // every item's inventory link and rerouted its revenue to the 7000 fallback,
       // regardless of whether that item was ever edited.
       inventoryItemId: (it as { inventoryItemId?: string }).inventoryItemId,
+      unitPayId: it.service?.unitPayId ?? null,
+      unitPayEnabled: it.service?.unitPayEnabled ?? null,
     })))
     setEditItemResults(o.items.map(() => []))
     editItemTimers.current = o.items.map(() => null)
@@ -4527,7 +4554,7 @@ function OrdersPanel({ branch, canSelectBranch, focusOrderId, onFocusHandled }: 
                             // Retyping this line means the cashier is replacing it, not
                             // just re-saving the order — drop BOTH links so a stale one
                             // can't silently survive a rename.
-                            setEditItems(prev => prev.map((x, i) => i === idx ? { ...x, name: val, serviceId: undefined, inventoryItemId: undefined } : x))
+                            setEditItems(prev => prev.map((x, i) => i === idx ? { ...x, name: val, serviceId: undefined, inventoryItemId: undefined, unitPayId: null, unitPayEnabled: null } : x))
                             // Debounced search — services AND inventory products together,
                             // since this form edits both order types and used to only ever
                             // search services (the reason product links kept disappearing).
@@ -4542,7 +4569,7 @@ function OrdersPanel({ branch, canSelectBranch, focusOrderId, onFocusHandled }: 
                                   ])
                                   const [svcData, prodData] = await Promise.all([svcRes.json(), prodRes.json()])
                                   const services = ((Array.isArray(svcData) ? svcData : svcData.data || []) as ServiceItem[])
-                                    .map(s => ({ kind: 'service' as const, id: s.id, name: s.name, price: Number(s.price), sub: s.department }))
+                                    .map(s => { const u = svcUnitPay(s); return { kind: 'service' as const, id: s.id, name: s.name, price: Number(s.price), sub: s.department, unitPayId: u.id, unitPayName: u.name, unitPayEnabled: u.enabled } })
                                   const products = ((Array.isArray(prodData) ? prodData : prodData.data || []) as InventoryProduct[])
                                     .map(p => ({ kind: 'product' as const, id: p.id, name: p.name, price: Number(p.sellingPrice) || 0, sub: p.sku }))
                                   setEditItemResults(prev => {
@@ -4563,6 +4590,8 @@ function OrdersPanel({ branch, canSelectBranch, focusOrderId, onFocusHandled }: 
                           <div className="absolute top-full left-0 right-0 z-30 mt-1 bg-white border rounded-xl shadow-lg max-h-48 overflow-auto" style={{ borderColor: 'var(--light-gray)' }}>
                             {editItemResults[idx].map(hit => (
                               <button key={`${hit.kind}-${hit.id}`} onMouseDown={e => e.preventDefault()} onClick={() => {
+                                if (hit.kind === 'service' && !confirmDoublePf(hit.name, { id: hit.unitPayId, name: hit.unitPayName, enabled: hit.unitPayEnabled },
+                                  editItems.filter((_, i) => i !== idx))) return
                                 setEditItems(prev => prev.map((x, i) => i === idx ? {
                                   ...x,
                                   name: hit.name,
@@ -4570,6 +4599,8 @@ function OrdersPanel({ branch, canSelectBranch, focusOrderId, onFocusHandled }: 
                                   lineTotal: hit.price * x.quantity,
                                   serviceId: hit.kind === 'service' ? hit.id : undefined,
                                   inventoryItemId: hit.kind === 'product' ? hit.id : undefined,
+                                  unitPayId: hit.kind === 'service' ? hit.unitPayId ?? null : null,
+                                  unitPayEnabled: hit.kind === 'service' ? hit.unitPayEnabled ?? null : null,
                                 } : x))
                                 setEditItemResults(prev => { const next = [...prev]; next[idx] = []; return next })
                               }}

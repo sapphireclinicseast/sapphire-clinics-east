@@ -123,7 +123,8 @@ export async function GET(req: Request) {
         include: {
           items: {
             include: {
-              service: { select: { id: true, name: true, department: true, revenueType: true } },
+              // unitPay*: the order-edit form warns before a second line that pays the same PF.
+              service: { select: { id: true, name: true, department: true, revenueType: true, unitPayId: true, unitPayEnabled: true, unitPay: { select: { name: true } } } },
             },
           },
           payments: true,
