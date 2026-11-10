@@ -8,6 +8,7 @@ import { postOrderJournal, reverseOrderJournal } from '@/lib/accounting/post-ord
 import { linkReferredPatientFromOrder } from '@/lib/referral-link'
 import { normalizeSI } from '@/lib/sales-invoice'
 import { recordHmoSessionVoid, decreaseRowsOnly } from '@/lib/hmo-session-void'
+import { settledPaymentEdits, settledEditMessage, SettledPaymentEditError } from '@/lib/settled-payment-guard'
 
 const WRITE_ROLES = ['ADMIN', 'PAYROLL_OFFICER', 'ACCOUNTANT', 'BOOKKEEPER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN', 'AHEA_FRONTDESK', 'AHGH_FRONTDESK']
 
@@ -582,6 +583,16 @@ export async function PUT(
       }
     }
 
+    // A payment bank rec has matched to a deposit may not be removed or
+    // re-amounted here — that is what orphaned PosSettlementPayment links
+    // (lib/settled-payment-guard). Method/reference corrections still go through.
+    if (payments?.length) {
+      const blocked = await settledPaymentEdits(prisma, id, payments)
+      if (blocked.length) {
+        return NextResponse.json({ error: settledEditMessage(blocked), settledPayments: blocked }, { status: 409 })
+      }
+    }
+
     // Use a transaction to replace items/payments atomically
     const updated = await prisma.$transaction(async (tx) => {
       // Delete and recreate items if provided. The client often resends lines
@@ -628,6 +639,11 @@ export async function PUT(
       // on the order every time it was edited. Lines the client sends back with
       // their id are updated; lines it dropped are deleted; new lines are created.
       if (payments?.length) {
+        // Re-check inside the transaction: a deposit matched between the
+        // pre-check and here must still block the edit.
+        const raced = await settledPaymentEdits(tx, id, payments)
+        if (raced.length) throw new SettledPaymentEditError(raced)
+
         // Reverse old wallet changes before applying the new lines
         // HMO: was incremented → decrement to reverse
         // GL: was decremented → increment to reverse (restore GL balance)
@@ -758,7 +774,10 @@ export async function PUT(
     }
 
     return NextResponse.json(updated)
-  } catch {
+  } catch (e) {
+    if (e instanceof SettledPaymentEditError) {
+      return NextResponse.json({ error: e.message, settledPayments: e.edits }, { status: 409 })
+    }
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
