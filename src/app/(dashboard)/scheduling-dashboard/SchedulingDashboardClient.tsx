@@ -75,9 +75,22 @@ const NEG = '#B91C1C'
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 const todayStr = localTodayStr
+/**
+ * "YYYY-MM-DD" as the CALENDAR sees it, not as UTC does.
+ *
+ * toISOString() converts to UTC first, and Manila is eight hours ahead of it,
+ * so local midnight on 1 October is 30 September in UTC — every date built
+ * that way came out a day early. The day picker therefore LABELLED a row
+ * "Thursday, October 1" and carried the value "2026-09-30": the breakdown
+ * showed the previous day's sessions under every date, and nothing at all on
+ * the first day of the range, because the day before it was never fetched.
+ */
+function localIso(d: Date) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
 function monthAgoStr() {
   const d = new Date(); d.setMonth(d.getMonth() - 1)
-  return d.toISOString().split('T')[0]
+  return localIso(d)
 }
 
 /** "YYYY-MM" for the current month. */
@@ -446,7 +459,7 @@ function DashboardContent({ role }: { role: string }) {
     const s = new Date(startDate + 'T00:00:00')
     const e = new Date(endDate + 'T00:00:00')
     for (let d = new Date(s); d <= e; d.setDate(d.getDate() + 1)) {
-      const iso = d.toISOString().split('T')[0]
+      const iso = localIso(d)
       const label = `${DAYS[d.getDay()].label}, ${d.toLocaleDateString('en-US', { month: 'long', day: 'numeric' })}`
       options.push({ value: iso, label })
     }
@@ -494,7 +507,7 @@ function DashboardContent({ role }: { role: string }) {
     const s = new Date(startDate + 'T00:00:00')
     const e = new Date(endDate + 'T00:00:00')
     for (let d = new Date(s); d <= e; d.setDate(d.getDate() + 1)) {
-      dateMap[d.toISOString().split('T')[0]] = 0
+      dateMap[localIso(d)] = 0
     }
     schedules.forEach(sc => { if (dateMap[sc.date] !== undefined) dateMap[sc.date]++ })
 
@@ -733,8 +746,8 @@ function DashboardContent({ role }: { role: string }) {
                     value={totalSessions.toLocaleString()} sub={`${STATUS_LABELS[status] ?? status} · ${rangeLabel}`} />
                 </KpiLink>
                 <KpiLink target="top-therapists" title="Jump to the top therapists">
-                  <KpiCard label="Avg per Therapist" icon={<Users size={16} />} accent="var(--gold)"
-                    value={avgPerTherapist.toFixed(1)} sub="sessions per therapist" />
+                  <KpiCard label="Avg per clinician" icon={<Users size={16} />} accent="var(--gold)"
+                    value={avgPerTherapist.toFixed(1)} sub="sessions per clinician" />
                 </KpiLink>
                 <KpiLink target="sessions-trend" title="Jump to sessions over time">
                   <KpiCard label="Avg per Day" icon={<Activity size={16} />} accent="#8B5CF6"
@@ -791,7 +804,7 @@ function DashboardContent({ role }: { role: string }) {
                             {[
                               { label: 'Clinic Utilization', value: `${m.utilization.toFixed(1)}%`, delta: other ? m.utilization - other.utilization : null, unit: 'pp' },
                               { label: 'Total Sessions', value: m.sessions.toLocaleString(), delta: other ? m.sessions - other.sessions : null, unit: '' },
-                              { label: 'Avg per Therapist', value: m.perTherapist.toFixed(1), delta: other ? m.perTherapist - other.perTherapist : null, unit: '' },
+                              { label: 'Avg per clinician', value: m.perTherapist.toFixed(1), delta: other ? m.perTherapist - other.perTherapist : null, unit: '' },
                               { label: 'Avg per Day', value: m.perDay.toFixed(1), delta: other ? m.perDay - other.perDay : null, unit: '' },
                             ].map(k => (
                               <div key={k.label} className="bg-white px-4 py-3 min-w-0">
@@ -1187,11 +1200,11 @@ function DashboardContent({ role }: { role: string }) {
         )}
       </DashCard>
 
-      {/* Top Therapists */}
+      {/* Top clinicians */}
       {showMain && (
         <div id="top-therapists" className="scroll-mt-4">
         <DashCard
-          title="Top 5 Therapists by Completed Sessions"
+          title="Top 5 Clinicians by Completed Sessions"
           icon={<Star size={15} />}
           description={`Confirmed sessions in ${rangeLabel}.`}
           flush
