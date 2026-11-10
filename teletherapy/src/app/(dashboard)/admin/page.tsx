@@ -19,9 +19,11 @@ import {
   X,
   RefreshCw,
   Building2,
+  Copy,
+  Check,
 } from 'lucide-react'
 import {
-  Avatar, DashCard, EmptyState, PageHeader, RowsSkeleton, Skeleton, StatusPill, Tag,
+  Avatar, DashCard, EmptyState, PageHeader, PillTabs, RowsSkeleton, Skeleton, StatusPill, Tag,
   BTN_DANGER_GHOST, BTN_PRIMARY, BTN_SECONDARY, BTN_SM, CARD_STYLE, CONTROL, CONTROL_STYLE, DANGER, FOCUS,
   LABEL, LABEL_STYLE, PAGE, PRIMARY_STYLE, SECONDARY_STYLE, SUBTLE_BG, TR, TR_STYLE,
 } from '@/components/hub/ui'
@@ -51,6 +53,24 @@ function isInternStaff(s: Pick<StaffOption, 'employmentType' | 'jobTitle'>): boo
   return s.employmentType === 'intern' || /intern/i.test(s.jobTitle ?? '')
 }
 
+/* Staff names are stored ALL CAPS. Title-case for display; \p{L} with the
+   u flag keeps ñ / accented letters inside a word ("RIÑOZA" → "Riñoza"). */
+function niceName(name: string): string {
+  const n = (name || '').trim()
+  if (!n || n !== n.toUpperCase()) return n
+  return n.toLowerCase().replace(/(^|[\s\-'.(])(\p{L})/gu, (_m, sep: string, ch: string) => sep + ch.toUpperCase())
+}
+function fmtDay(iso: string | null): string {
+  if (!iso) return ''
+  const d = new Date(iso)
+  return Number.isNaN(d.getTime()) ? '' : d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+}
+
+type AccountKind = 'CLINICIAN' | 'INTERN' | 'FRONT_DESK' | 'ADMIN_STAFF' | 'ADMIN'
+const KIND_LABEL: Record<string, string> = { CLINICIAN: 'Clinician', INTERN: 'Intern', FRONT_DESK: 'Front Desk', ADMIN_STAFF: 'Admin Staff', ADMIN: 'Admin' }
+type TypeFilter = 'ALL' | 'CLINICIAN' | 'INTERN' | 'OFFICE' | 'ADMIN'
+type StatusFilter = 'ALL' | 'ACTIVE' | 'INACTIVE' | 'NEVER'
+
 interface TherapistAccountItem {
   id: string
   email: string
@@ -70,7 +90,7 @@ interface TherapistAccountItem {
 }
 
 export default function AdminPage() {
-  const { data: session } = useSession()
+  const { data: session, status } = useSession()
   const router = useRouter()
 
   const [staffList, setStaffList] = useState<StaffOption[]>([])
@@ -93,6 +113,11 @@ export default function AdminPage() {
   const [newEmail, setNewEmail] = useState('')
   const [savingEmail, setSavingEmail] = useState(false)
   const [accountSearch, setAccountSearch] = useState('')
+  const [typeFilter, setTypeFilter] = useState<TypeFilter>('ALL')
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('ALL')
+  const [revealed, setRevealed] = useState<Set<string>>(new Set())
+  const [copiedId, setCopiedId] = useState<string | null>(null)
+  const [showCreate, setShowCreate] = useState(false)
 
   // Branch CC emails (for IE email tracking)
   const [ccEmails, setCcEmails] = useState<{ branch: string; email: string; notes?: string | null }[]>([])
@@ -102,10 +127,15 @@ export default function AdminPage() {
   const [ccNotes, setCcNotes] = useState('')
   const [savingCc, setSavingCc] = useState(false)
 
+  // Wait for the session before checking the role: on a direct visit or a
+  // refresh the session is still loading, and treating that as "not an admin"
+  // used to bounce admins to the Dashboard.
   useEffect(() => {
+    if (status === 'loading') return
     if (session?.user?.role !== 'ADMIN') { router.push('/'); return }
     fetchData()
-  }, [session])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [status, session?.user?.role])
 
   async function fetchData() {
     setLoading(true)
@@ -209,6 +239,7 @@ export default function AdminPage() {
       if (res.ok) {
         showToast('Account created successfully')
         setSelectedStaffId(''); setEmail(''); setPassword(''); setAccountType('CLINICIAN')
+        setShowCreate(false)
         fetchData()
       } else {
         showToast((await res.json()).error ?? 'Failed')
@@ -301,6 +332,22 @@ export default function AdminPage() {
       !accountedNameDept.has(nameDeptKey(s.firstName, s.lastName, s.department)),
   )
 
+  const kindOf = (a: TherapistAccountItem): AccountKind =>
+    (a.accountType as AccountKind) ?? (a.role === 'ADMIN' ? 'ADMIN' : 'CLINICIAN')
+  const typeOf = (a: TherapistAccountItem): Exclude<TypeFilter, 'ALL'> => {
+    const k = kindOf(a)
+    return k === 'FRONT_DESK' || k === 'ADMIN_STAFF' ? 'OFFICE' : k
+  }
+  const typeCounts = accounts.reduce((m, a) => { m[typeOf(a)] = (m[typeOf(a)] ?? 0) + 1; return m }, {} as Record<string, number>)
+  const toggleReveal = (id: string) => setRevealed((r) => { const n = new Set(r); if (n.has(id)) n.delete(id); else n.add(id); return n })
+  async function copyPassword(id: string, value: string) {
+    try {
+      await navigator.clipboard.writeText(value)
+      setCopiedId(id)
+      setTimeout(() => setCopiedId((c) => (c === id ? null : c)), 1500)
+    } catch { showToast('Could not copy — reveal it and copy by hand') }
+  }
+
   if (loading) {
     return (
       <div className={PAGE}>
@@ -321,8 +368,22 @@ export default function AdminPage() {
       {/* Create Account Form */}
       <DashCard
         title="Create Account"
+        description={showCreate ? undefined : `${availableStaff.length} staff without an account yet.`}
         icon={<UserPlus size={16} />}
+        flush={!showCreate}
         action={
+          <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setShowCreate((v) => !v)}
+            aria-expanded={showCreate}
+            aria-controls="admin-create-form"
+            className={showCreate ? BTN_SECONDARY : BTN_PRIMARY}
+            style={showCreate ? SECONDARY_STYLE : PRIMARY_STYLE}
+          >
+            {showCreate ? <X size={14} /> : <UserPlus size={14} />}
+            {showCreate ? 'Close' : 'New account'}
+          </button>
           <button
             type="button"
             onClick={handleSyncFromHr}
@@ -334,9 +395,11 @@ export default function AdminPage() {
             <RefreshCw size={14} className={syncing ? 'animate-spin' : ''} />
             {syncing ? 'Syncing…' : 'Sync from HR'}
           </button>
+          </div>
         }
       >
-        <form onSubmit={handleCreate} className="space-y-5">
+        {showCreate && (
+        <form id="admin-create-form" onSubmit={handleCreate} className="space-y-5">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="min-w-0">
               <label htmlFor="admin-staff" className={LABEL} style={LABEL_STYLE}>
@@ -345,7 +408,7 @@ export default function AdminPage() {
               <select id="admin-staff" value={selectedStaffId} onChange={(e) => onStaffSelect(e.target.value)} required className={`${CONTROL} w-full`} style={CONTROL_STYLE}>
                 <option value="">Select staff member...</option>
                 {availableStaff.map((s) => (
-                  <option key={s.id} value={s.id}>{s.lastName}, {s.firstName} ({s.department} – {BRANCH_LABEL[s.branch] ?? s.branch}){isInternStaff(s) ? ' · INTERN' : ''}</option>
+                  <option key={s.id} value={s.id}>{niceName(s.lastName)}, {niceName(s.firstName)} ({s.department} – {BRANCH_LABEL[s.branch] ?? s.branch}){isInternStaff(s) ? ' · Intern' : ''}</option>
                 ))}
               </select>
             </div>
@@ -397,6 +460,7 @@ export default function AdminPage() {
             Create Account
           </button>
         </form>
+        )}
       </DashCard>
 
       {/* Accounts list */}
@@ -409,16 +473,44 @@ export default function AdminPage() {
           <EmptyState icon="users" title="No clinician accounts created yet." />
         ) : (() => {
           const q = accountSearch.trim().toLowerCase()
-          const filtered = q
-            ? accounts.filter((a) => {
-                const hay = `${a.staff.firstName} ${a.staff.lastName} ${a.email} ${a.staff.department} ${a.staff.branch} ${BRANCH_LABEL[a.staff.branch] ?? ''} ${a.role}`.toLowerCase()
-                return hay.includes(q)
-              })
-            : accounts
+          const filtered = accounts
+            .filter((a) => typeFilter === 'ALL' || typeOf(a) === typeFilter)
+            .filter((a) => statusFilter === 'ALL'
+              || (statusFilter === 'ACTIVE' && a.isActive)
+              || (statusFilter === 'INACTIVE' && !a.isActive)
+              || (statusFilter === 'NEVER' && !a.lastLoginAt))
+            .filter((a) => {
+              if (!q) return true
+              const hay = `${a.staff.firstName} ${a.staff.lastName} ${a.email} ${a.staff.department} ${a.staff.branch} ${BRANCH_LABEL[a.staff.branch] ?? ''} ${a.role} ${KIND_LABEL[kindOf(a)] ?? ''}`.toLowerCase()
+              return hay.includes(q)
+            })
+            // Active first, then by surname.
+            .sort((a, b) => Number(b.isActive) - Number(a.isActive)
+              || a.staff.lastName.localeCompare(b.staff.lastName)
+              || a.staff.firstName.localeCompare(b.staff.firstName))
           return (
           <>
-            <div className="px-4 sm:px-5 py-3" style={{ borderBottom: '1px solid var(--light-gray)' }}>
-              <div className="relative sm:max-w-sm">
+            <div className="px-4 sm:px-5 py-3 flex flex-wrap items-center gap-2.5" style={{ borderBottom: '1px solid var(--light-gray)' }}>
+              <PillTabs
+                label="Account type"
+                size="sm"
+                value={typeFilter}
+                onChange={(id) => setTypeFilter(id as TypeFilter)}
+                tabs={[
+                  { id: 'ALL', label: 'All', count: accounts.length },
+                  { id: 'CLINICIAN', label: 'Clinicians', count: typeCounts.CLINICIAN ?? 0 },
+                  { id: 'INTERN', label: 'Interns', count: typeCounts.INTERN ?? 0 },
+                  { id: 'OFFICE', label: 'Office staff', count: typeCounts.OFFICE ?? 0, title: 'Front Desk and Administration staff' },
+                  { id: 'ADMIN', label: 'Admins', count: typeCounts.ADMIN ?? 0 },
+                ]}
+              />
+              <select aria-label="Account status" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as StatusFilter)} className={CONTROL} style={CONTROL_STYLE}>
+                <option value="ALL">Any status</option>
+                <option value="ACTIVE">Active</option>
+                <option value="INACTIVE">Inactive</option>
+                <option value="NEVER">Never logged in</option>
+              </select>
+              <div className="relative flex-1 min-w-[200px] sm:max-w-xs ml-auto">
                 <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: 'var(--mid-gray)' }} />
                 <input
                   type="text"
@@ -444,7 +536,7 @@ export default function AdminPage() {
               </div>
             </div>
             {filtered.length === 0 ? (
-              <EmptyState icon="search" title={`No clinicians match "${accountSearch}".`} />
+              <EmptyState icon="search" title={accountSearch ? `No accounts match "${accountSearch}".` : 'No accounts match these filters.'} />
             ) : (
               <div className="max-h-[520px] overflow-y-auto">
                 {filtered.map((acct, i) => (
@@ -458,24 +550,37 @@ export default function AdminPage() {
                   </span>
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                      <p className="font-semibold text-[14px]" style={{ color: 'var(--charcoal)' }}>{acct.staff.lastName}, {acct.staff.firstName}</p>
+                      <p className="font-semibold text-[14px]" style={{ color: 'var(--charcoal)' }}>{niceName(acct.staff.lastName)}, {niceName(acct.staff.firstName)}</p>
                       <Tag tone="brand">{acct.staff.department}</Tag>
                       {(() => {
-                        const t = acct.accountType ?? (acct.role === 'ADMIN' ? 'ADMIN' : 'CLINICIAN')
-                        const label: Record<string, string> = { CLINICIAN: 'Clinician', FRONT_DESK: 'Front Desk', ADMIN_STAFF: 'Admin Staff', ADMIN: 'Admin' }
+                        const t = kindOf(acct)
                         const tone = t === 'ADMIN'
                           ? 'warn'
-                          : t === 'CLINICIAN'
+                          : t === 'CLINICIAN' || t === 'INTERN'
                             ? 'success'
                             : 'info'
-                        return <Tag tone={tone}>{label[t] ?? t}</Tag>
+                        return <Tag tone={tone}>{KIND_LABEL[t] ?? t}</Tag>
                       })()}
                     </div>
                     <p className="text-[12px] break-all" style={{ color: 'var(--mid-gray)' }}>{acct.email}</p>
                     {acct.lastPlainPassword ? (
                       <p className="text-[11px] flex flex-wrap items-center gap-1 mt-0.5" style={{ color: 'var(--mid-gray)' }}>
                         <KeyRound size={10} />
-                        Password: <span className="font-mono px-1.5 py-0.5 rounded text-[10px] select-all break-all" style={{ background: SUBTLE_BG, border: '1px solid var(--light-gray)', color: 'var(--charcoal)' }}>{acct.lastPlainPassword}</span>
+                        Password:{' '}
+                        {/* Hidden by default so it isn't readable over a shoulder; reveal or copy per row. */}
+                        <span className="font-mono px-1.5 py-0.5 rounded text-[10px] break-all" style={{ background: SUBTLE_BG, border: '1px solid var(--light-gray)', color: 'var(--charcoal)', userSelect: revealed.has(acct.id) ? 'all' : 'none' }}>
+                          {revealed.has(acct.id) ? acct.lastPlainPassword : '••••••••'}
+                        </span>
+                        <button type="button" onClick={() => toggleReveal(acct.id)}
+                          className={`w-6 h-6 inline-flex items-center justify-center rounded-md hover:bg-[color:var(--paper)] ${FOCUS}`}
+                          aria-label={revealed.has(acct.id) ? 'Hide password' : 'Show password'} title={revealed.has(acct.id) ? 'Hide password' : 'Show password'}>
+                          {revealed.has(acct.id) ? <EyeOff size={12} /> : <Eye size={12} />}
+                        </button>
+                        <button type="button" onClick={() => copyPassword(acct.id, acct.lastPlainPassword ?? '')}
+                          className={`w-6 h-6 inline-flex items-center justify-center rounded-md hover:bg-[color:var(--paper)] ${FOCUS}`}
+                          aria-label="Copy password" title={copiedId === acct.id ? 'Copied' : 'Copy password'}>
+                          {copiedId === acct.id ? <Check size={12} style={{ color: 'var(--teal)' }} /> : <Copy size={12} />}
+                        </button>
                       </p>
                     ) : (
                       // Legacy accounts created before lastPlainPassword
@@ -491,7 +596,7 @@ export default function AdminPage() {
                     )}
                     <p className="text-[11px] flex items-center gap-1 mt-0.5" style={{ color: 'var(--mid-gray)' }}>
                       <Clock size={10} />
-                      {acct.lastLoginAt ? `Last login: ${new Date(acct.lastLoginAt).toLocaleDateString()}` : 'Never logged in'}
+                      {acct.lastLoginAt ? `Last login ${fmtDay(acct.lastLoginAt)}` : 'Never logged in'}
                     </p>
                   </div>
                 </div>
