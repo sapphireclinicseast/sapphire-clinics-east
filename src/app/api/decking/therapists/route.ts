@@ -20,13 +20,27 @@ export async function POST(req: NextRequest) {
   const session = await auth()
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const { staffId, workDays: rawWorkDays, startTime, endTime, useDefault, branch, department, deliveryMode: rawMode, slotsPerDay: rawCount } = await req.json()
+  const { staffId, workDays: rawWorkDays, startTime, endTime, useDefault, branch, department, deliveryMode: rawMode, slotsPerDay: rawCount, slotMinutes: rawLen, breakStart: rawBreak, breakMinutes: rawBreakLen } = await req.json()
   // How many patients a day, when that is not one an hour. Null restores the
   // hourly board, so clearing the field is a real action and not a no-op.
   // Capped: a window divided more than 24 ways gives slots too short to be a
   // consult and a grid too tall to read.
   const n = Number(rawCount)
   const slotsPerDay = Number.isFinite(n) && n >= 1 ? Math.min(24, Math.round(n)) : null
+  // Minutes per patient, when the doctor is told a LENGTH rather than a count
+  // — "two hours each". Wins over the count when both are set. Floored at 5
+  // minutes and capped at a working day, so a typo cannot generate hundreds of
+  // rows or none at all.
+  const len = Number(rawLen)
+  const slotMinutes = Number.isFinite(len) && len >= 5 ? Math.min(720, Math.round(len)) : null
+  // One break, stepped over rather than booked around. Both halves or neither:
+  // a start with no length closes nothing, and a length with no start has
+  // nowhere to be.
+  const breakLen = Number(rawBreakLen)
+  const validBreakStart = typeof rawBreak === 'string' && /^\d{2}:\d{2}$/.test(rawBreak)
+  const breakMinutes = validBreakStart && Number.isFinite(breakLen) && breakLen >= 5
+    ? Math.min(480, Math.round(breakLen)) : null
+  const breakStart = breakMinutes ? rawBreak : null
   // Null = the consultant's general schedule (what every row was before this).
   // A named service overrides it, so on-site days and teletherapy days can
   // differ. Anything unrecognised falls back to the general row rather than
@@ -58,7 +72,7 @@ export async function POST(req: NextRequest) {
   const config = existing
     ? await prisma.deckingTherapistConfig.update({
         where: { id: existing.id },
-        data: { workDays, startTime, endTime, useDefault, branch, department, slotsPerDay },
+        data: { workDays, startTime, endTime, useDefault, branch, department, slotsPerDay, slotMinutes, breakStart, breakMinutes },
       })
     : await prisma.deckingTherapistConfig.create({
     data: {
@@ -71,6 +85,9 @@ export async function POST(req: NextRequest) {
       department: department ?? '',
       deliveryMode,
       slotsPerDay,
+      slotMinutes,
+      breakStart,
+      breakMinutes,
     } })
   return NextResponse.json(config)
 }

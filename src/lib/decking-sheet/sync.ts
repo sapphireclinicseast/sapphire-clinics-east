@@ -94,6 +94,9 @@ interface ScheduleRow {
   deliveryMode: string | null
   updatedAt: Date
   slotsPerDay: number | null
+  slotMinutes?: number | null
+  breakStart?: string | null
+  breakMinutes?: number | null
 }
 
 /**
@@ -232,7 +235,7 @@ async function loadDepartment(branch: string, department: string) {
       },
       select: {
         staffId: true, workDays: true, startTime: true, endTime: true, deliveryMode: true, updatedAt: true,
-      slotsPerDay: true,
+      slotsPerDay: true, slotMinutes: true, breakStart: true, breakMinutes: true,
         staff: { select: { id: true, firstName: true, lastName: true } },
       },
       orderBy: { staff: { lastName: 'asc' } },
@@ -302,6 +305,9 @@ async function loadDepartment(branch: string, department: string) {
     startTime: m.startTime,
     endTime: m.endTime,
     slotsPerDay: m.primary.slotsPerDay,
+    slotMinutes: m.primary.slotMinutes,
+    breakStart: m.primary.breakStart,
+    breakMinutes: m.primary.breakMinutes,
     dayHours: m.dayHours,
   })).sort((a, b) => a.lastName.localeCompare(b.lastName))
 
@@ -414,7 +420,7 @@ async function loadInterns(branch: string, department: string) {
     where: { branch, department, staff: { active: true, employmentType: 'intern' } },
     select: {
       staffId: true, workDays: true, startTime: true, endTime: true, deliveryMode: true, updatedAt: true,
-      slotsPerDay: true,
+      slotsPerDay: true, slotMinutes: true, breakStart: true, breakMinutes: true,
       staff: { select: { id: true, firstName: true, lastName: true, dateHired: true, contractExpiry: true } },
     },
   })
@@ -472,6 +478,9 @@ async function loadInterns(branch: string, department: string) {
       startTime: m.startTime,
       endTime: m.endTime,
       slotsPerDay: c.slotsPerDay,
+      slotMinutes: c.slotMinutes,
+      breakStart: c.breakStart,
+      breakMinutes: c.breakMinutes,
       dayHours: m.dayHours,
     }
   }).sort((a, b) => a.lastName.localeCompare(b.lastName))
@@ -594,7 +603,7 @@ function openSlotsFor(
       const dayIdx = DAYS.findIndex(d => d.key === day)
       if (dayIdx < 0) continue
       const hours = st.dayHours?.[day]
-      for (const sl of daySlots(hours?.startTime ?? st.startTime, hours?.endTime ?? st.endTime, st.slotsPerDay)) {
+      for (const sl of daySlots(hours?.startTime ?? st.startTime, hours?.endTime ?? st.endTime, { slotsPerDay: st.slotsPerDay, slotMinutes: st.slotMinutes, breakStart: st.breakStart, breakMinutes: st.breakMinutes })) {
         const k = `${st.id}|${day}|${sl.startTime}`
         const here = at.get(k) ?? []
         // A closed hour is not capacity anybody can sell.
@@ -1613,7 +1622,7 @@ export async function syncBranch(branch: string, spreadsheetId: string): Promise
       for (const st of staff) {
         for (const day of st.workDays ?? []) {
           const h = st.dayHours?.[day]
-          bookableHours += daySlots(h?.startTime ?? st.startTime, h?.endTime ?? st.endTime, st.slotsPerDay).length
+          bookableHours += daySlots(h?.startTime ?? st.startTime, h?.endTime ?? st.endTime, { slotsPerDay: st.slotsPerDay, slotMinutes: st.slotMinutes, breakStart: st.breakStart, breakMinutes: st.breakMinutes }).length
         }
       }
       const res = await pushTab(api, spreadsheetId, dept, grid, patientRows, payOptions, client.identity, lastWrote.get(dept), consumed, tabs)
