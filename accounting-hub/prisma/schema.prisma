@@ -3063,6 +3063,24 @@ model IEPRPayrollRecord {
 }
 
 // Per-branch invoice header settings (company name, address, phone shown on invoices)
+// HMO Collection Report (AR → For Follow Up PDF): per-branch TIN, the bank the
+// HMO remits to, and the finance officer who follows up. Company name/address
+// come from InvoiceSettings for the same branch.
+model CollectionReportSettings {
+  branch          String   @id // SANDBOX_EAST | SANDBOX_GREENHILLS
+  tin             String?
+  bankName        String?
+  bankBranch      String?
+  bankAccountName String?
+  bankAccountNo   String?
+  officerName     String?
+  officerPosition String?
+  officerEmail    String?
+  officerPhone    String?
+  updatedByName   String?
+  updatedAt       DateTime @updatedAt
+}
+
 model InvoiceSettings {
   branch      String   @id
   companyName String?

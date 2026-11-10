@@ -1137,6 +1137,21 @@ CREATE TABLE IF NOT EXISTS "EwtAdjustment" (
   CONSTRAINT "EwtAdjustment_pkey" PRIMARY KEY ("id")
 );
 CREATE INDEX IF NOT EXISTS "EwtAdjustment_payrollBranch_idx" ON "EwtAdjustment"("payrollBranch");
+CREATE TABLE IF NOT EXISTS "CollectionReportSettings" (
+  "branch"          TEXT NOT NULL,
+  "tin"             TEXT,
+  "bankName"        TEXT,
+  "bankBranch"      TEXT,
+  "bankAccountName" TEXT,
+  "bankAccountNo"   TEXT,
+  "officerName"     TEXT,
+  "officerPosition" TEXT,
+  "officerEmail"    TEXT,
+  "officerPhone"    TEXT,
+  "updatedByName"   TEXT,
+  "updatedAt"       TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT "CollectionReportSettings_pkey" PRIMARY KEY ("branch")
+);
 SQL
 
 echo "Redeploy complete."

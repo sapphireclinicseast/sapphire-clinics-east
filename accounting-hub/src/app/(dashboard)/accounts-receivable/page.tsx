@@ -24,6 +24,11 @@ import SubmittedForSoa from './SubmittedForSoa'
 import OthersTab from './OthersTab'
 import TuitionTab from './TuitionTab'
 import HmoDirectoryTab from './HmoDirectoryTab'
+import CollectionSettingsModal from './CollectionSettingsModal'
+import {
+  COLLECTION_SETTINGS_WRITE_ROLES, drawCollectionReport, mergeBranchSettings, missingCollectionSettings,
+  type CollectionBranchSettings, type CollectionGroup,
+} from '@/lib/collection-report'
 import BreakdownDonut, { type DonutItem } from './BreakdownDonut'
 import { DIRECTORY_WRITE_ROLES } from '@/lib/hmo-directory'
 import ExpandablePanel from './ExpandablePanel'
@@ -763,6 +768,8 @@ export default function AccountsReceivablePage() {
   // Invoice Settings state
   const [invoiceSettings, setInvoiceSettings] = useState<Record<string, InvoiceSetting>>({})
   const [showInvoiceSettings, setShowInvoiceSettings] = useState(false)
+  // HMO Collection Report settings (For Follow Up PDF); `notice` explains why it opened.
+  const [collectionSettings, setCollectionSettings] = useState<{ branch?: string; notice?: string } | null>(null)
   const [invSettingBranch, setInvSettingBranch] = useState('')
   const [invForm, setInvForm] = useState<Partial<InvoiceSetting>>({})
   const [invSettingSaving, setInvSettingSaving] = useState(false)
@@ -2764,12 +2771,84 @@ export default function AccountsReceivablePage() {
         // Variant-specific naming for the report downloads.
         const reportTitle = isMdConsults ? 'HMO Doctor Consults Report'
           : isSubUnpaid ? 'HMO Submitted-but-Unpaid Report'
-          : isFollowUp ? 'HMO For Follow Up Report'
+          : isFollowUp ? 'HMO Collection Report'
           : 'HMO AR Report'
         const reportSlug = isMdConsults ? 'hmo-doctor-consults'
           : isSubUnpaid ? 'hmo-submitted-unpaid'
-          : isFollowUp ? 'hmo-follow-up'
+          : isFollowUp ? 'hmo-collection-report'
           : 'hmo-ar-report'
+
+        // For Follow Up → PDF: the branded HMO Collection Report (lib/collection-report),
+        // one section per SOA branch × HMO, addressed to the HMO's directory contact.
+        const downloadCollectionPdf = async () => {
+          setShowDownloadMenu(false)
+          if (!perHmoOrders.length) { alert('There are no claims in this view to put on a collection report.'); return }
+          try {
+            const [{ jsPDF }, { default: autoTable }, logoMod, settingsRes, dirRes] = await Promise.all([
+              import('jspdf'), import('jspdf-autotable'), import('@/lib/scei-logo'),
+              fetch('/api/accounts-receivable/collection-settings'), fetch('/api/accounts-receivable/hmo-directory'),
+            ])
+            if (!settingsRes.ok) { alert('Could not load the collection report settings. Try again.'); return }
+            const { branches } = await settingsRes.json() as { branches: CollectionBranchSettings[] }
+            type DirEntry = { walletId: string } & Partial<Record<'collectionName' | 'collectionEmail' | 'collectionNumber' | 'accreditationName' | 'accreditationEmail' | 'accreditationNumber', string | null>>
+            const directory: DirEntry[] = dirRes.ok ? ((await dirRes.json()).entries || []) : []
+            const byBranch = new Map(branches.map(b => [b.branch, b]))
+            const groups = new Map<string, CollectionGroup>()
+            for (const o of perHmoOrders) {
+              const br = o.soaBranch || o.branch
+              const walletId = o.payments[0]?.walletId || ''
+              const key = `${br}|${walletId}`
+              let g = groups.get(key)
+              if (!g) {
+                const d = directory.find(e => e.walletId === walletId)
+                const useCollection = !!(d?.collectionName || d?.collectionEmail || d?.collectionNumber)
+                g = {
+                  settings: byBranch.get(br) ?? mergeBranchSettings(br, null, null),
+                  branchCode: soaBranchCode(br),
+                  hmoName: wallets.find(w => w.id === walletId)?.patientName || 'HMO',
+                  attention: d ? (useCollection
+                    ? { name: d.collectionName, email: d.collectionEmail, number: d.collectionNumber }
+                    : { name: d.accreditationName, email: d.accreditationEmail, number: d.accreditationNumber }) : null,
+                  claims: [],
+                }
+                groups.set(key, g)
+              }
+              const subs = [...(o.soaSubmissionItems || [])].sort((a, b) => a.submission.submittedDate.localeCompare(b.submission.submittedDate))
+              const latest = subs[subs.length - 1]?.submission
+              g.claims.push({
+                serviceDate: o.transactionDate,
+                patient: o.patientName || '',
+                service: o.items.map(i => i.name).join('\n'),
+                clinician: o.clinicianName || '',
+                soaRef: latest?.referenceNo || '',
+                soaDate: latest?.submittedDate || '',
+                arDays: arDaysOf(o),
+                amount: o.payments.reduce((s, p) => s + toNum(p.amount), 0),
+              })
+            }
+            const list = [...groups.values()].sort((a, b) => a.settings.branch.localeCompare(b.settings.branch) || a.hmoName.localeCompare(b.hmoName))
+            const gaps = [...new Set(list.map(g => g.settings.branch))]
+              .map(br => { const m = missingCollectionSettings(byBranch.get(br) ?? mergeBranchSettings(br, null, null)); return m.length ? `${branchLabel(br) || br}: ${m.join(' and ')}` : '' })
+              .filter(Boolean)
+            if (gaps.length && !window.confirm(`The collection report settings are incomplete (${gaps.join('; ')}).\n\nOK downloads it anyway, with those parts left blank. Cancel opens the settings.`)) {
+              setCollectionSettings({ branch: list[0].settings.branch, notice: `Incomplete: ${gaps.join('; ')}.` })
+              return
+            }
+            // compress: the logo is otherwise stored as ~900 KB of raw pixels.
+            const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4', compress: true })
+            drawCollectionReport(doc, autoTable, {
+              groups: list,
+              coverage: `${followUpYear || 'All years'} | over 180 days`,
+              generatedAt: new Date(),
+              logo: { dataUri: logoMod.SCEI_LOGO_DATA_URI, w: logoMod.SCEI_LOGO_W, h: logoMod.SCEI_LOGO_H },
+            })
+            const only = list.length === 1 ? `-${list[0].branchCode}-${list[0].hmoName.replace(/[^A-Za-z0-9]+/g, '-')}` : ''
+            doc.save(`hmo-collection-report${only}-${new Date().toISOString().slice(0, 10)}.pdf`)
+          } catch (e) {
+            console.error('Collection report failed:', e)
+            alert('Could not build the collection report. Try again.')
+          }
+        }
 
         const downloadPdf = () => {
           // Use jsPDF — dynamic import
@@ -2928,6 +3007,15 @@ export default function AccountsReceivablePage() {
                   style={{ borderColor: 'var(--mid-gray)', color: 'var(--mid-gray)' }}>
                   <Settings size={14} /> Invoice Settings
                 </button>
+                {isFollowUp && (
+                  <button
+                    onClick={() => setCollectionSettings({ branch: branch || undefined })}
+                    className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium border"
+                    style={{ borderColor: 'var(--mid-gray)', color: 'var(--mid-gray)' }}
+                    title="Company, bank and finance officer details printed on the HMO Collection Report">
+                    <Settings size={14} /> Collection Report Settings
+                  </button>
+                )}
                 <div className="relative">
                 <button
                   onClick={() => setShowDownloadMenu(v => !v)}
@@ -2937,8 +3025,8 @@ export default function AccountsReceivablePage() {
                 </button>
                 {showDownloadMenu && (
                   <div className="absolute right-0 top-full mt-1 z-20 rounded-xl border bg-white shadow-lg" style={{ borderColor: 'var(--light-gray)', minWidth: 150 }}>
-                    <button onClick={downloadPdf} className="w-full text-left px-4 py-2.5 text-sm hover:bg-gray-50 rounded-t-xl" style={{ color: 'var(--charcoal)' }}>
-                      Download as PDF
+                    <button onClick={isFollowUp ? downloadCollectionPdf : downloadPdf} className="w-full text-left px-4 py-2.5 text-sm hover:bg-gray-50 rounded-t-xl" style={{ color: 'var(--charcoal)' }}>
+                      {isFollowUp ? 'Collection Report (PDF)' : 'Download as PDF'}
                     </button>
                     <button onClick={downloadExcel} className="w-full text-left px-4 py-2.5 text-sm hover:bg-gray-50 rounded-b-xl" style={{ color: 'var(--charcoal)' }}>
                       Download as Excel
@@ -3621,6 +3709,15 @@ export default function AccountsReceivablePage() {
       })()}
 
       {/* Invoice Settings Modal */}
+      {collectionSettings && (
+        <CollectionSettingsModal
+          canEdit={COLLECTION_SETTINGS_WRITE_ROLES.includes(role)}
+          initialBranch={collectionSettings.branch}
+          notice={collectionSettings.notice}
+          onClose={() => setCollectionSettings(null)}
+        />
+      )}
+
       {showInvoiceSettings && (
         <div className="fixed inset-0 bg-black/40 z-50 flex items-start justify-center pt-8 overflow-y-auto">
           <div className="bg-white rounded-2xl p-6 shadow-xl w-full max-w-lg mb-8 relative">
