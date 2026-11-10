@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { listPayments, parsePayment, retrieveCheckout, paymongoConfigured, isPaymongoAccount, configuredAccounts, resolvePaymentMethodUsed } from '@/lib/paymongo'
-import { postPaymongoSale } from '@/lib/accounting/post-paymongo-sale'
+import { postPaymongoSale, PAYMONGO_SALE_BENIGN_REASONS } from '@/lib/accounting/post-paymongo-sale'
 import { PAYMONGO_READ_ROLES as READ_ROLES, canReadPaymongoAccount } from '@/lib/paymongo-access'
 
 // Friendly department names, matching the labels used in the reports drill-down.
@@ -123,7 +123,7 @@ export async function GET(req: Request) {
           // Revenue is recognised later, by the order raised from the clinic schedule.
           try {
             const posted = await postPaymongoSale(prisma, { checkoutId: rec.checkoutId, userId: session.user!.id as string })
-            if (!posted.posted && posted.reason && !['already posted', 'GL posting off', 'test mode', 'posted via POS order'].includes(posted.reason)) {
+            if (!posted.posted && posted.reason && !(PAYMONGO_SALE_BENIGN_REASONS as readonly string[]).includes(posted.reason)) {
               postWarnings.push(`${rec.referenceCode || rec.checkoutId}: ${posted.reason}`)
             }
           } catch (e) { console.error('[PayMongo] posting sale failed:', e) }
@@ -131,6 +131,34 @@ export async function GET(req: Request) {
       }
     } catch (e) { syncError = e instanceof Error ? e.message : 'Sync failed' }
 
+    // 2) Safety net: the webhook normally books a link the moment it is paid, so Sync
+    //    is no longer the only way money reaches the ledger. But a link the webhook
+    //    flipped while posting was off, or whose posting failed, is PAID with no
+    //    collection entry — sweep this account's recent PAID links and post any that
+    //    are missing one. postPaymongoSale is idempotent under a per-checkout lock, so
+    //    pressing Sync twice (or while a webhook is mid-flight) cannot post twice.
+    try {
+      const recentPaid = await prisma.paymongoCheckout.findMany({
+        where: { account, status: 'PAID', livemode: true, orderId: null },
+        orderBy: { paidAt: 'desc' }, take: 100,
+        select: { checkoutId: true, referenceCode: true },
+      })
+      if (recentPaid.length) {
+        const booked = new Set((await prisma.journalEntry.findMany({
+          where: { referenceType: 'PAYMONGO_SALE', referenceId: { in: recentPaid.map(r => r.checkoutId) } },
+          select: { referenceId: true },
+        })).map(j => j.referenceId))
+        for (const rec of recentPaid) {
+          if (booked.has(rec.checkoutId)) continue
+          try {
+            const posted = await postPaymongoSale(prisma, { checkoutId: rec.checkoutId, userId: session.user!.id as string })
+            if (!posted.posted && posted.reason && !(PAYMONGO_SALE_BENIGN_REASONS as readonly string[]).includes(posted.reason)) {
+              postWarnings.push(`${rec.referenceCode || rec.checkoutId}: ${posted.reason}`)
+            }
+          } catch (e) { console.error('[PayMongo] catch-up posting failed:', e) }
+        }
+      }
+    } catch (e) { console.error('[PayMongo] catch-up sweep failed:', e) }
   }
 
   if (wantLive && configured) {
