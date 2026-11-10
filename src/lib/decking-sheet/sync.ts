@@ -41,6 +41,21 @@ const MAP_TAB = '_map'
 // The hub's own cap, mirrored here so the sheet cannot write a cell the board
 // would refuse to draw.
 const MAX_PER_CELL = 3
+/**
+ * How many cells one tab may be seen to EMPTY in a single run.
+ *
+ * Both halves of the sync read "this cell is blank" as a decision somebody
+ * made: the push preserves the blank, the pull deletes the booking behind it.
+ * A misread sheet therefore does not degrade, it erases — on 2026-11-10 a
+ * short read of the Greenhills SLP tab blanked 161 cells and the next pull
+ * deleted 105 slots, 56 of them booked children.
+ *
+ * Nobody clears forty cells by hand between two five-minute syncs. Past this
+ * count the run stops believing its own reading and says so, leaving the hub
+ * as it is. Emptying a board in bulk is a hub action, where it is visible and
+ * reversible.
+ */
+const MAX_BLANKED_PER_TAB = 40
 const PATIENTS_TAB = '_patients'
 
 export interface SyncReport {
@@ -494,13 +509,31 @@ async function pushTab(
       spreadsheetId, range: `'${tab}'!A1:Z${span}`, valueRenderOption: 'UNFORMATTED_VALUE',
     }).catch(() => null)
     const rows = (live?.data.values ?? []) as string[][]
+    // ── How far this read can be TRUSTED ───────────────────────────────────
+    //
+    // values.get trims trailing blanks, and a failed read comes back as no
+    // rows at all — so "the API hiccupped" and "front desk emptied the tab"
+    // are the same thing from here. Believing the second one blanks every
+    // cell at once, and the next pull reads that as an instruction and
+    // deletes the bookings behind them. That is exactly what happened to the
+    // Greenhills SLP tab on 2026-11-10: a short read, 161 cells preserved as
+    // empty, 105 slots and 56 bookings gone on the following run.
+    //
+    // So a row the read did not reach is not evidence of anything. Those
+    // cells are written from the hub as usual, which at worst loses an edit
+    // made in the last few seconds — the race this whole mechanism exists to
+    // close — instead of emptying a board.
+    const reached = rows.length
     // Every prompt the free-text line has ever shown counts as empty, or
     // replacing the prompt text would look like an edit on every single cell.
     const norm = (v: unknown) => {
       const t = String(v ?? '').trim()
       return FREE_TEXT_HINTS.includes(t) ? '' : t
     }
+    // Decided first, applied second, so the set can be sanity-checked whole.
+    const keep: { c: CellRef; now: string; mine: string }[] = []
     for (const c of grid.cells) {
+      if (c.row >= reached) continue                // the read never got this far
       const mine = lastWrote.get(`${c.row}|${c.col}`)
       if (mine === undefined) continue              // a cell this sync has not written before
       const now = norm(rows[c.row]?.[c.col])
@@ -511,13 +544,28 @@ async function pushTab(
       // the next pull read a settled cell as a fresh change, then refuse it as
       // a conflict because the hub had moved to match.
       if (now === norm(c.wrote)) continue
-      // Somebody typed here between the pull and now. Leave their text exactly
-      // as it stands, and keep the OLD snapshot in the map so the next pull
-      // still sees sheet ≠ snapshot and carries it into the hub.
-      const cell = grid.rows[c.row]?.values?.[c.col] as { userEnteredValue?: unknown } | undefined
-      if (cell) cell.userEnteredValue = now ? { stringValue: now } : {}
-      c.wrote = mine
-      preserved++
+      keep.push({ c, now, mine })
+    }
+
+    // A second line of defence, for the shapes the row count cannot catch —
+    // a garbled read, a tab reflowed under a map that no longer lines up.
+    // Front desk do not empty fifty cells between two five-minute syncs; a
+    // run that thinks they did has misread the sheet, and acting on it blanks
+    // a board and then deletes the bookings behind it on the next pull.
+    // Clearing that many is a hub job, where it can be seen and undone.
+    const emptied = keep.filter(k => k.now === '').length
+    if (emptied > MAX_BLANKED_PER_TAB) {
+      console.warn(`[decking-sheet] ${tab}: read says ${emptied} cells were emptied — refusing to believe it, pushing the hub's values instead`)
+    } else {
+      for (const { c, now, mine } of keep) {
+        // Somebody typed here between the pull and now. Leave their text
+        // exactly as it stands, and keep the OLD snapshot in the map so the
+        // next pull still sees sheet ≠ snapshot and carries it into the hub.
+        const cell = grid.rows[c.row]?.values?.[c.col] as { userEnteredValue?: unknown } | undefined
+        if (cell) cell.userEnteredValue = now ? { stringValue: now } : {}
+        c.wrote = mine
+        preserved++
+      }
     }
   }
 
@@ -857,8 +905,33 @@ async function pullTabs(
   const byName = new Map<string, string[]>()
   for (const p of patients) byName.set(p.n, [...(byName.get(p.n) ?? []), p.id])
 
+  // Tabs that read as mass-emptied are not applied at all.
+  //
+  // The same reasoning as the push side, at the other end of the round trip:
+  // a cell that reads blank where the snapshot had a name is taken as "unbook
+  // this", and a tab-wide misreading therefore deletes a tab's worth of
+  // bookings. Counted per tab before anything is written, so one bad tab does
+  // not stop the other five.
+  const clearing = new Map<string, number>()
+  for (const slot of bySlot.values()) {
+    if (same(slot.sheet, slot.snap)) continue
+    if (slot.sheet.name || !slot.snap.name) continue
+    clearing.set(slot.tab, (clearing.get(slot.tab) ?? 0) + 1)
+  }
+  const refusing = new Set<string>()
+  for (const [tab, n] of clearing) {
+    if (n <= MAX_BLANKED_PER_TAB) continue
+    refusing.add(tab)
+    report.errors.push(
+      `${tab}: the sheet reads as ${n} slots emptied at once, which is not something anyone types — nothing was unbooked. `
+      + `If the tab really is meant to be cleared, do it in the Hub.`,
+    )
+  }
+
   for (const slot of bySlot.values()) {
     if (same(slot.sheet, slot.snap)) continue          // front desk left it alone
+    // This tab's clears are being refused; its other edits still apply.
+    if (refusing.has(slot.tab) && !slot.sheet.name && slot.snap.name) continue
 
     // The intern tabs are named "<DEPT> INTERNS", but an intern's hours are
     // stored under the plain department — the tab is a presentation split, not
