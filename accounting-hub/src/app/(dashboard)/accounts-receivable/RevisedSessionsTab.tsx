@@ -117,7 +117,7 @@ export default function RevisedSessionsTab({ branch }: { branch: string }) {
         <strong> Accounts Receivable &rsaquo; Payment History &rsaquo; Record Payment</strong>), or the HMO order is
         <strong> voided</strong> in POS &mdash; for example a confirmed duplicate flagged in Per HMO. Either way the sale and the
         ledger are corrected, and any PF already paid out on the session shows as overpaid in
-        <strong> Payroll &rsaquo; HMO PF Adjustments</strong> so it is deducted from the next payslip &mdash; unless the voided session was
+        <strong> Payroll &rsaquo; HMO PF Adjustments</strong>, where the payroll officer picks the cutoff to deduct it in &mdash; unless the voided session was
         <strong> re-entered</strong> as a corrected order (same patient, day and clinician), which keeps the PF already paid. This list is read-only.
       </div>
 

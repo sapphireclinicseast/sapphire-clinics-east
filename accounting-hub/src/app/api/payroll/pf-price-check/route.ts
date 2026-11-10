@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { consultantServices, hubPayrollStart, payslipDeductions, rateIssues, ratesForService, sessionIssues } from '@/lib/payroll/pf-price-server'
+import { BY_HAND, closedPayslipMessage, closedPayslipStatus } from '@/lib/payroll/pf-recovery'
 
 const READ_ROLES = ['ADMIN', 'PAYROLL_OFFICER', 'ACCOUNTANT', 'BOOKKEEPER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN', 'VIEWER']
 const WRITE_ROLES = ['ADMIN', 'PAYROLL_OFFICER', 'ACCOUNTANT', 'BOOKKEEPER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN']
@@ -60,8 +61,11 @@ export async function GET(req: Request) {
 
 /**
  * PATCH /api/payroll/pf-price-check
- * { orderId, consultantId, unitPayId, cutoff, amount?, note? } — record a session's
- * overpaid PF as deducted in `cutoff`; add { undo: true } to reopen it.
+ * { orderId, consultantId, unitPayId, cutoff, branch?, amount?, note? } — deduct a
+ * session's overpaid PF in `cutoff`: that cutoff's payslip (same consultant, the
+ * branch that paid the PF) carries the PF recovery line. 409 { closed } when that
+ * payslip is already final/locked; resend with byHand: true if it was deducted
+ * there by hand. Add { undo: true } to reopen it.
  */
 export async function PATCH(req: Request) {
   const session = await auth()
@@ -69,7 +73,7 @@ export async function PATCH(req: Request) {
     return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 })
   }
   const body = await req.json().catch(() => ({}))
-  const { orderId, consultantId, unitPayId, cutoff, note, amount, undo } = body as Record<string, unknown>
+  const { orderId, consultantId, unitPayId, cutoff, note, amount, undo, byHand, branch } = body as Record<string, unknown>
   if (typeof orderId !== 'string' || typeof consultantId !== 'string' || typeof unitPayId !== 'string' || !orderId || !consultantId) {
     return NextResponse.json({ error: 'orderId, consultantId and unitPayId are required' }, { status: 400 })
   }
@@ -79,12 +83,17 @@ export async function PATCH(req: Request) {
     return NextResponse.json({ ok: true })
   }
   if (typeof cutoff !== 'string' || !CUTOFF_RE.test(cutoff)) {
-    return NextResponse.json({ error: 'Choose the cutoff the PF was deducted in' }, { status: 400 })
+    return NextResponse.json({ error: 'Choose the cutoff to deduct the PF in' }, { status: 400 })
   }
+  if (!byHand) {
+    const closed = await closedPayslipStatus([{ consultantId, branch: typeof branch === 'string' ? branch : null }], cutoff)
+    if (closed) return NextResponse.json({ error: closedPayslipMessage(closed), closed }, { status: 409 })
+  }
+  const typed = typeof note === 'string' && note.trim() ? note.trim() : ''
   const data = {
     cutoffPeriod: cutoff,
     amount: Number.isFinite(Number(amount)) ? Number(amount) : null,
-    note: typeof note === 'string' && note.trim() ? note.trim() : null,
+    note: [byHand ? BY_HAND : '', typed].filter(Boolean).join(' — ') || null,
     recordedById: (session.user as { id?: string }).id || null,
     recordedAt: new Date(),
   }

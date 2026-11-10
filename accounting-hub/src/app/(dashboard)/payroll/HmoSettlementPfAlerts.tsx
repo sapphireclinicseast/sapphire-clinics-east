@@ -49,8 +49,10 @@ function cutoffOptions(today = new Date()): string[] {
 /**
  * Payroll → HMO PF Adjustments: PF already released at a session's billed amount
  * when the sale was later decreased to what the HMO paid ("Decrease due to HMO
- * Payment"). The payroll officer tags the cutoff the overpaid PF was deducted in;
- * tagged rows drop out of the list (and the bell) unless "Show settled" is ticked.
+ * Payment"). Nothing is deducted until the payroll officer picks the cutoff to
+ * deduct it in and presses Record — that cutoff's payslip then carries the PF
+ * recovery line. Recorded rows drop out of the list (and the bell) unless "Show
+ * settled" is ticked; Undo takes the line off the payslip again.
  */
 export default function HmoSettlementPfAlerts({ canWrite, variant = 'full', onOpen, onCount }: {
   canWrite: boolean
@@ -78,13 +80,19 @@ export default function HmoSettlementPfAlerts({ canWrite, variant = 'full', onOp
   const open = useMemo(() => (alerts || []).filter(a => !a.settled), [alerts])
   useEffect(() => { if (alerts) onCount?.(open.length) }, [alerts, open.length, onCount])
 
-  const patch = async (body: Record<string, unknown>) => {
+  const patch = async (body: Record<string, unknown>): Promise<void> => {
     setBusyId(String(body.settlementId)); setError('')
     try {
       const r = await fetch('/api/payroll/hmo-settlement-alerts', {
         method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
       })
-      if (!r.ok) setError((await r.json().catch(() => ({}))).error || 'Could not save')
+      if (r.status === 409 && !body.byHand) {
+        // That cutoff's payslip is already final/locked — nothing can be added to it.
+        const d = await r.json().catch(() => ({}))
+        if (confirm(`${d.error || 'That payslip is already final.'}\n\nOK = it was already deducted on that payslip by hand. Cancel = pick another cutoff.`)) {
+          return await patch({ ...body, byHand: true })
+        }
+      } else if (!r.ok) setError((await r.json().catch(() => ({}))).error || 'Could not save')
       load()
     } finally {
       setBusyId('')
@@ -92,11 +100,11 @@ export default function HmoSettlementPfAlerts({ canWrite, variant = 'full', onOp
   }
   const record = (settlementId: string) => {
     const cutoff = cutoffFor[settlementId]
-    if (!cutoff) { setError('Choose the cutoff the PF was deducted in first.'); return }
+    if (!cutoff) { setError('Choose the cutoff to deduct it in first.'); return }
     patch({ settlementId, cutoff })
   }
   const undo = (settlementId: string) => {
-    if (!confirm('Reopen this PF adjustment? It goes back on the to-recover list.')) return
+    if (!confirm('Reopen this PF adjustment? It comes off that cutoff\'s payslip and goes back on the to-recover list.')) return
     patch({ settlementId, undo: true })
   }
 
@@ -137,10 +145,11 @@ export default function HmoSettlementPfAlerts({ canWrite, variant = 'full', onOp
       <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>
         These sessions were decreased to what the HMO paid, or voided (e.g. a confirmed duplicate), after their PF was released at the
         billed amount — a voided session earns no PF, so all of it is overpaid (unless it was re-entered as a corrected order for the
-        same patient, day and clinician, which keeps the PF). The overpaid PF is
-        deducted automatically on the consultant&apos;s next payslip at the same branch (a highlighted <strong>Auto PF recovery</strong>
-        line); saving that payslip records the cutoff and the row hides (tick <strong>Show settled</strong> to see it again). If it was
-        deducted some other way, pick the cutoff and press <strong>Record</strong>. <strong>Outside hub</strong> = the session&apos;s payroll was run
+        same patient, day and clinician, which keeps the PF). Nothing is deducted until you pick the cutoff to deduct it in and
+        press <strong>Record</strong>: that cutoff&apos;s payslip for the consultant, at the branch that paid the PF, then carries a
+        highlighted <strong>PF recovery</strong> line (generate or re-save it to pick the line up). The row hides (tick
+        <strong> Show settled</strong> to see it again); <strong>Undo</strong> takes the line off that payslip. If that cutoff&apos;s payslip is
+        already final or locked you&apos;ll be asked whether it was deducted there by hand. <strong>Outside hub</strong> = the session&apos;s payroll was run
         before the hub (Jan–Mar 2026): PF paid is the rule at the billed amount, so confirm it against the payslip.
       </p>
       {error && <p className="text-xs font-medium text-red-700">{error}</p>}
@@ -154,7 +163,7 @@ export default function HmoSettlementPfAlerts({ canWrite, variant = 'full', onOp
           <table className="w-full text-xs" style={{ color: 'var(--charcoal)' }}>
             <thead>
               <tr style={{ background: '#fef3c7', color: '#92400e' }}>
-                {['Consultant', 'PF paid in', 'Order', 'Session', 'Patient', 'Billed → HMO paid', 'PF paid', 'PF per rule', 'Overpaid', 'Deducted in cutoff'].map(h => (
+                {['Consultant', 'PF paid in', 'Order', 'Session', 'Patient', 'Billed → HMO paid', 'PF paid', 'PF per rule', 'Overpaid', 'Deduct in cutoff'].map(h => (
                   <th key={h} className="text-left px-2 py-1.5 font-semibold whitespace-nowrap">{h}</th>
                 ))}
               </tr>
@@ -185,7 +194,8 @@ export default function HmoSettlementPfAlerts({ canWrite, variant = 'full', onOp
                       <span className="flex items-center gap-2">
                         <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold" style={{ background: '#dcfce7', color: '#166534' }}
                           title={[a.resolvedBy && `Recorded by ${a.resolvedBy}`, a.resolvedAt && formatDate(a.resolvedAt),
-                            a.resolvedNote?.startsWith('auto:') ? 'Deducted automatically on the payslip' : a.resolvedNote].filter(Boolean).join(' · ')}>
+                            a.resolvedNote?.toLowerCase().startsWith('by hand') ? `Deducted by hand${a.resolvedNote.length > 7 ? ` ${a.resolvedNote.slice(7)}` : ''}` : 'On that cutoff\'s payslip as a PF recovery line',
+                            a.resolvedNote && !a.resolvedNote.toLowerCase().startsWith('by hand') ? a.resolvedNote : null].filter(Boolean).join(' · ')}>
                           {a.deductedCutoff ? cutoffLabel(a.deductedCutoff) : 'Settled'}
                         </span>
                         {canWrite && (
@@ -198,7 +208,7 @@ export default function HmoSettlementPfAlerts({ canWrite, variant = 'full', onOp
                         <select value={cutoffFor[a.settlementId] || ''} onChange={e => setCutoffFor(m => ({ ...m, [a.settlementId]: e.target.value }))}
                           className="px-1.5 py-1 rounded-lg border text-[11px] bg-white" style={{ borderColor: '#fde68a' }}>
                           <option value="">Choose cutoff…</option>
-                          {options.map(o => <option key={o} value={o}>{cutoffLabel(o)}</option>)}
+                          {options.filter(o => a.source !== 'HUB' || !a.cutoffPeriod || o > a.cutoffPeriod).map(o => <option key={o} value={o}>{cutoffLabel(o)}</option>)}
                         </select>
                         <button onClick={() => record(a.settlementId)} disabled={busyId === a.settlementId || !cutoffFor[a.settlementId]}
                           className="px-2 py-1 rounded-lg text-[11px] font-semibold text-white flex items-center gap-1 disabled:opacity-50"

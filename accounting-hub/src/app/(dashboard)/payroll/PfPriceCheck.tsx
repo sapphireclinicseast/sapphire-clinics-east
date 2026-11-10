@@ -59,14 +59,20 @@ export default function PfPriceCheck({ variant = 'full', canWrite = false, onOpe
   // Sessions already adjusted in a later payroll are done — every other one this year counts.
   const notDeducted = useMemo(() => (data?.sessions || []).filter(s => s.date >= openSince && !s.recovered), [data, openSince])
 
-  const patch = async (s: SessionIssue, body: Record<string, unknown>) => {
+  const patch = async (s: SessionIssue, body: Record<string, unknown>): Promise<void> => {
     setBusy(sessionKey(s)); setError('')
     try {
       const r = await fetch('/api/payroll/pf-price-check', {
         method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ orderId: s.orderId, consultantId: s.consultantId, unitPayId: s.unitPayId, ...body }),
+        body: JSON.stringify({ orderId: s.orderId, consultantId: s.consultantId, unitPayId: s.unitPayId, branch: s.payroll?.branch, ...body }),
       })
-      if (!r.ok) setError((await r.json().catch(() => ({}))).error || 'Could not save')
+      if (r.status === 409 && !body.byHand) {
+        // That cutoff's payslip is already final/locked — nothing can be added to it.
+        const d = await r.json().catch(() => ({}))
+        if (confirm(`${d.error || 'That payslip is already final.'}\n\nOK = it was already deducted on that payslip by hand. Cancel = pick another cutoff.`)) {
+          return await patch(s, { ...body, byHand: true })
+        }
+      } else if (!r.ok) setError((await r.json().catch(() => ({}))).error || 'Could not save')
       load()
     } finally {
       setBusy('')
@@ -74,11 +80,11 @@ export default function PfPriceCheck({ variant = 'full', canWrite = false, onOpe
   }
   const save = (s: SessionIssue) => {
     const cutoff = cutoffFor[sessionKey(s)]
-    if (!cutoff) { setError('Choose the cutoff it was deducted in first.'); return }
+    if (!cutoff) { setError('Choose the cutoff to deduct it in first.'); return }
     patch(s, { cutoff, amount: s.over })
   }
   const undo = (s: SessionIssue) => {
-    if (!confirm('Mark this session as not yet deducted?')) return
+    if (!confirm('Mark this session as not yet deducted? It comes off that cutoff\'s payslip.')) return
     patch(s, { undo: true })
   }
   const rateConsultants = useMemo(() => new Set((data?.rates || []).map(r => r.consultantId)).size, [data])
@@ -189,8 +195,10 @@ export default function PfPriceCheck({ variant = 'full', canWrite = false, onOpe
         <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>
           Sessions on a payslip compare the PF that payslip paid with what the session was charged at that time; sessions not yet on a payslip use today&apos;s rate and charge.
           {data.hubStart && <> Sessions before {formatDate(data.hubStart)} that aren&apos;t on a hub payslip aren&apos;t checked — that payroll was run outside the hub.</>}
-          {' '}Overpaid PF is deducted automatically on the consultant&apos;s next payslip at the same branch (a highlighted <strong>Auto PF recovery</strong> line);
-          saving that payslip records the cutoff here and the row turns green. If it was deducted some other way, choose the cutoff and press <strong>Record</strong>.
+          {' '}Nothing is deducted until you choose the cutoff to deduct it in and press <strong>Record</strong>: that cutoff&apos;s payslip for the consultant,
+          at the branch that paid the PF, then carries a highlighted <strong>PF recovery</strong> line (generate or re-save it to pick the line up) and the row
+          turns green. <strong>Undo</strong> takes the line off again. If that cutoff&apos;s payslip is already final or locked you&apos;ll be asked whether it was
+          deducted there by hand. Sessions not paid yet have nothing to recover — fix the rate or price before the payroll is run.
         </p>
         {error && <p className="text-xs font-medium text-red-700">{error}</p>}
         {Object.keys(deductionsBy).length > 0 && (
@@ -213,7 +221,7 @@ export default function PfPriceCheck({ variant = 'full', canWrite = false, onOpe
             <table className="w-full text-xs" style={{ color: 'var(--charcoal)' }}>
               <thead>
                 <tr style={{ background: '#fee2e2', color: '#991b1b' }}>
-                  {['Date', 'Order', 'Patient', 'Consultant', 'Service', 'Unit pay', 'Charged', 'PF', 'Over', 'Paid in', 'Deducted in cutoff'].map(h => <th key={h} className={th}>{h}</th>)}
+                  {['Date', 'Order', 'Patient', 'Consultant', 'Service', 'Unit pay', 'Charged', 'PF', 'Over', 'Paid in', 'Deduct in cutoff'].map(h => <th key={h} className={th}>{h}</th>)}
                 </tr>
               </thead>
               <tbody>
@@ -243,19 +251,22 @@ export default function PfPriceCheck({ variant = 'full', canWrite = false, onOpe
                         <span className="flex items-center gap-2">
                           <span className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold" style={{ background: '#bbf7d0', color: '#166534' }}
                             title={[s.recovered.recordedBy && `Recorded by ${s.recovered.recordedBy}`, formatDate(s.recovered.recordedAt),
-                              s.recovered.note?.startsWith('auto:') ? 'Deducted automatically on the payslip' : s.recovered.note].filter(Boolean).join(' · ')}>
+                              s.recovered.note?.toLowerCase().startsWith('by hand') ? `Deducted by hand${s.recovered.note.length > 7 ? ` ${s.recovered.note.slice(7)}` : ''}` : 'On that cutoff\'s payslip as a PF recovery line',
+                              s.recovered.note && !s.recovered.note.toLowerCase().startsWith('by hand') ? s.recovered.note : null].filter(Boolean).join(' · ')}>
                             <CheckCircle2 size={11} /> {cutoffLabel(s.recovered.cutoff)}
                           </span>
                           {canWrite && (
                             <button onClick={() => undo(s)} disabled={busy === sessionKey(s)} className="text-[11px] underline" style={{ color: 'var(--mid-gray)' }}>Undo</button>
                           )}
                         </span>
+                      ) : !s.payroll || s.payroll.status === 'DRAFT' ? (
+                        <span style={{ color: 'var(--mid-gray)' }} title="This PF hasn't been paid — fix the rate or price before the payroll is run">Not paid yet</span>
                       ) : canWrite ? (
                         <span className="flex items-center gap-1.5">
                           <select value={cutoffFor[sessionKey(s)] || ''} onChange={e => setCutoffFor(m => ({ ...m, [sessionKey(s)]: e.target.value }))}
                             className="px-1.5 py-1 rounded-lg border text-[11px] bg-white" style={{ borderColor: '#fecaca' }}>
                             <option value="">Choose cutoff…</option>
-                            {options.filter(o => !s.payroll || o >= s.payroll.cutoff).map(o => <option key={o} value={o}>{cutoffLabel(o)}</option>)}
+                            {options.filter(o => !s.payroll || o > s.payroll.cutoff).map(o => <option key={o} value={o}>{cutoffLabel(o)}</option>)}
                           </select>
                           <button onClick={() => save(s)} disabled={busy === sessionKey(s) || !cutoffFor[sessionKey(s)]}
                             className="px-2 py-1 rounded-lg text-[11px] font-semibold text-white flex items-center gap-1 disabled:opacity-50"

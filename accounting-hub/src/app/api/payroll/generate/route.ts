@@ -3,7 +3,7 @@ import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { notMigratedOrder } from '@/lib/payroll/exclude-migrated'
 import { isRedundantCarrier, netShareOfLines } from '@/lib/payroll/pf-price'
-import { recoveryLines, stampRecoveries } from '@/lib/payroll/pf-recovery'
+import { recoveryLines } from '@/lib/payroll/pf-recovery'
 import { redBlockMessage, zeroUnitPays } from '@/lib/payroll/unit-pay-gaps'
 import { redConsultants } from '@/lib/payroll/unit-pay-gaps-server'
 import { commissionFloor, computeDoctorCommissions, normName } from '@/lib/referral-commission'
@@ -355,8 +355,9 @@ export async function GET(req: Request) {
     }
 
     // ── PF recovery (HMO PF Adjustments + PF Above Price) ──────────────────
-    // PF overpaid on an earlier payslip at this branch comes off this one as
-    // `pr-` deduction lines; saving the payslip records them as deducted here.
+    // PF overpaid on an earlier payslip comes off this one as `pr-` deduction
+    // lines only when the payroll officer recorded this cutoff for it (Record on
+    // HMO PF Adjustments / PF Above Price) — never before a cutoff is picked.
     const prByConsultant = await recoveryLines(cutoffPeriod, branch || '')
 
     // Stale mm-/ca-/rc-/pr- lines out, current ones in. Manual lines untouched.
@@ -951,12 +952,6 @@ export async function POST(req: Request) {
           skipDuplicates: true,
         })
       }
-
-      // Record the overpaid PF this payslip's pr- lines deduct (released and re-taken on every save).
-      await stampRecoveries({
-        entryId: result.id, consultantId: entry.consultantId, cutoffPeriod,
-        adjustments: (entry.adjustments || []) as unknown[], userId: (session.user.id as string) || null,
-      })
 
       results.push(result)
     }

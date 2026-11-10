@@ -5045,7 +5045,7 @@ export default function PayrollPage() {
                                     )}
                                     {prTotal > 0 && (
                                       <span className="ml-1.5 text-[10px] px-1.5 py-0.5 rounded font-semibold" style={{ background: '#fee2e2', color: '#b91c1c' }}
-                                        title="PF overpaid on an earlier payslip is deducted here automatically — see Adjustments">
+                                        title="PF overpaid on an earlier payslip, recorded to be deducted in this cutoff — see Adjustments">
                                         PF recovery −{formatCurrency(prTotal)}
                                       </span>
                                     )}
@@ -5402,8 +5402,8 @@ export default function PayrollPage() {
                                                         {a.name}
                                                         {String(a.id).startsWith('pr-') && (
                                                           <span className="ml-1.5 text-[10px] px-1.5 py-0.5 rounded font-semibold" style={{ background: '#fee2e2', color: '#b91c1c' }}
-                                                            title="Added automatically from Payroll → HMO PF Adjustments / PF Above Price. Saving records these sessions as deducted in this cutoff; delete the line to leave them for a later cutoff.">
-                                                            Auto PF recovery
+                                                            title="From Payroll → HMO PF Adjustments / PF Above Price, where these sessions were recorded to be deducted in this cutoff. To take it off, press Undo there.">
+                                                            PF recovery
                                                           </span>
                                                         )}
                                                       </td>
@@ -5419,7 +5419,7 @@ export default function PayrollPage() {
                                                       </td>
                                                       <td className="px-3 py-2 text-xs" style={{ color: 'var(--mid-gray)' }}>{a.remarks || '—'}</td>
                                                       <td className="px-3 py-2">
-                                                        {p.existingStatus !== 'LOCKED' && (
+                                                        {p.existingStatus !== 'LOCKED' && !String(a.id).startsWith('pr-') && (
                                                         <button onClick={(e) => { e.stopPropagation(); removeAdjustment(p.consultantId, a.id) }} className="p-1 hover:bg-red-50 rounded">
                                                           <Trash2 size={12} className="text-red-400" />
                                                         </button>
