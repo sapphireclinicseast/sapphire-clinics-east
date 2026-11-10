@@ -8,13 +8,15 @@
 // via the global 'Hub Digits' face; pick lists use NameCombobox, never <datalist>.
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
-  AlertTriangle, Check, CheckCircle2, Download, FileText, GraduationCap, Loader2, LogIn, Plus, RotateCcw, Stethoscope, X,
+  AlertTriangle, Check, CheckCircle2, ChevronDown, Download, FileText, GraduationCap, Loader2, LogIn, Plus, RotateCcw, Stethoscope, X,
 } from 'lucide-react'
 import { NameCombobox } from '@/components/NameCombobox'
 import { SignaturePad } from '@/components/SignaturePad'
 import { HR_VARS } from '@/components/ui/hr-tokens'
 import { coveredByUnion, controlToInt, rangeQuantity } from '@/lib/form-ranges'
-import { ACK_FIELD_BRANCHES, ACK_ITEMS, ACK_ITEM_LABELS, DEFAULT_DELIVERED_BY_TITLE, resolveAckBranch, type AckBranch } from '@/lib/form-ack'
+import {
+  ACK_FIELD_BRANCHES, ACK_ITEMS, ACK_ITEM_LABELS, ACK_STAFF_BRANCH_LABEL, DEFAULT_DELIVERED_BY_TITLE, resolveAckBranch, type AckBranch, type AckStaff,
+} from '@/lib/form-ack'
 
 interface Partner { id: string; name: string; kind?: string; detail?: string; affiliation?: string }
 interface GivenRange { a: number; b: number; partnerName: string; dateGiven: string }
@@ -81,7 +83,9 @@ export function AckForm({ initialBranch, userName, allowed }: { initialBranch: A
   const branch = resolveAckBranch(branchSlug)
   const branchChoices = ACK_FIELD_BRANCHES.some((b) => b.slug === initialBranch?.slug) || !initialBranch ? ACK_FIELD_BRANCHES : [...ACK_FIELD_BRANCHES, initialBranch]
   const [d, setD] = useState<Draft>(EMPTY)
-  const [title, setTitle] = useState(DEFAULT_DELIVERED_BY_TITLE)
+  // Delivered by: a name from the active staff list; the title comes from their record.
+  const [staff, setStaff] = useState<AckStaff[]>([])
+  const [staffName, setStaffName] = useState('')
   const [signature, setSignature] = useState<string | null>(null)
   const [sigKey, setSigKey] = useState(0) // remounts the pad to clear it
   const [partners, setPartners] = useState<Partner[]>([])
@@ -95,7 +99,7 @@ export function AckForm({ initialBranch, userName, allowed }: { initialBranch: A
   const [done, setDone] = useState<Done | null>(null)
   const [today, setToday] = useState('')
 
-  // Restore the draft (fields only, never the signature) and the med rep's title.
+  // Restore the draft (fields only, never the signature) and who delivered last time on this device.
   useEffect(() => {
     try {
       const raw = localStorage.getItem(draftKey)
@@ -104,8 +108,8 @@ export function AckForm({ initialBranch, userName, allowed }: { initialBranch: A
         setD(saved)
         if (!initialBranch && saved.branch) setBranchSlug(saved.branch)
       }
-      const t = localStorage.getItem('ack-title')
-      if (t) setTitle(t)
+      const who = localStorage.getItem('ack-staff')
+      if (who) setStaffName(who)
     } catch { /* storage blocked: start blank */ }
     setToday(new Date().toLocaleDateString('en-PH', { weekday: 'short', month: 'long', day: 'numeric', year: 'numeric', timeZone: 'Asia/Manila' }))
     setLoaded(true)
@@ -117,8 +121,8 @@ export function AckForm({ initialBranch, userName, allowed }: { initialBranch: A
   }, [d, branchSlug, draftKey, loaded])
   useEffect(() => {
     if (!loaded) return
-    try { localStorage.setItem('ack-title', title) } catch { /* ignore */ }
-  }, [title, loaded])
+    try { localStorage.setItem('ack-staff', staffName) } catch { /* ignore */ }
+  }, [staffName, loaded])
 
   const loadStock = useCallback(async () => {
     setStock([])
@@ -139,13 +143,24 @@ export function AckForm({ initialBranch, userName, allowed }: { initialBranch: A
       for (const t of Array.isArray(j.templates) ? j.templates : []) if (t.templateNo) m[t.templateNo] = t.templateName
       setTemplates(m)
     }).catch(() => {})
+    fetch('/api/inventory/form-acknowledgments/staff').then((r) => r.json()).then((j) => {
+      const list: AckStaff[] = Array.isArray(j.staff) ? j.staff : []
+      setStaff(list)
+      // First use on this device: start with the signed-in person if they are on the staff list.
+      const self = list.find((x) => same(x.name, userName))
+      if (self) setStaffName((cur) => cur || self.name)
+    }).catch(() => {})
     loadStock()
-  }, [allowed, loadStock])
+  }, [allowed, loadStock, userName])
 
   const set = <K extends keyof Draft>(k: K, v: Draft[K]) => setD((p) => ({ ...p, [k]: v }))
   const setPad = (i: number, patch: Partial<PadRow>) => setD((p) => ({ ...p, pads: p.pads.map((r, j) => (j === i ? { ...r, ...patch } : r)) }))
 
   const doctors = useMemo(() => partners.filter((p) => p.kind === 'Doctor'), [partners])
+  const staffNames = useMemo(() => staff.map((x) => x.name), [staff])
+  const staffHints = useMemo(() => Object.fromEntries(staff.map((x) => [x.name, `${x.jobTitle || 'No job title'} · ${ACK_STAFF_BRANCH_LABEL[x.branch] || x.branch}`])), [staff])
+  const deliverer = staff.find((x) => same(x.name, staffName)) || null
+  const delivererTitle = deliverer ? deliverer.jobTitle || DEFAULT_DELIVERED_BY_TITLE : ''
   const schools = useMemo(() => partners.filter((p) => (p.kind || 'School') === 'School'), [partners])
   const hospitals = useMemo(() => Array.from(new Set(doctors.map((p) => p.affiliation || '').filter(Boolean))).sort(), [doctors])
   const doctorHints = useMemo(() => Object.fromEntries(doctors.filter((p) => p.detail).map((p) => [p.name, p.detail!])), [doctors])
@@ -180,6 +195,8 @@ export function AckForm({ initialBranch, userName, allowed }: { initialBranch: A
     }
     return h
   }, [formOptions, stockBy, templates])
+  // The catalog code for what was typed ("md06" → "MD06"); null when it is not a listed form.
+  const canonForm = (v: string) => formOptions.find((o) => same(o, v)) || null
 
   // Prefill the form type when this branch stocks exactly one form with pads on hand.
   useEffect(() => {
@@ -202,10 +219,12 @@ export function AckForm({ initialBranch, userName, allowed }: { initialBranch: A
 
   const missing: string[] = []
   if (!branch) missing.push('the branch (East or Greenhills)')
+  if (!deliverer) missing.push('who delivered the items (pick a staff name)')
   if (!d.items.length) missing.push('tick at least one item')
   if (!partnerName) missing.push(isSchool ? 'the school / institution' : 'the recipient (doctor) name')
   if (!d.recipientName.trim() && !d.receivedBy.trim()) missing.push('who received the items')
   if (hasPad && d.pads.some((r, i) => !r.formType.trim() || padInfo[i].qty == null)) missing.push('the pad form and From # / To #')
+  else if (hasPad && d.pads.some((r) => !canonForm(r.formType))) missing.push('pick each pad form from the list')
   if (!signature) missing.push('the signature')
 
   const itemSummary = d.items.map((k) => {
@@ -224,8 +243,8 @@ export function AckForm({ initialBranch, userName, allowed }: { initialBranch: A
           branch: branch.branch, recipientKind: d.kind, partnerId: matched?.id || null, partnerName,
           institution: d.institution, recipientName: d.recipientName, recipientDesignation: d.recipientDesignation,
           receivedBy: d.receivedBy, receivedByDesignation: d.receivedByDesignation, items: d.items,
-          pads: hasPad ? d.pads.map((r) => ({ formType: r.formType, fromControl: r.from, toControl: r.to })) : [],
-          remarks: d.remarks, deliveredByTitle: title, signaturePng: signature, alsoRecordReceipt,
+          pads: hasPad ? d.pads.map((r) => ({ formType: canonForm(r.formType) || r.formType, fromControl: r.from, toControl: r.to })) : [],
+          remarks: d.remarks, deliveredByEmployeeId: deliverer?.id ?? '', signaturePng: signature, alsoRecordReceipt,
         }),
       })
       const j = await res.json().catch(() => ({}))
@@ -314,11 +333,23 @@ export function AckForm({ initialBranch, userName, allowed }: { initialBranch: A
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <Label>Name</Label>
-                  <div className="h-12 px-3 rounded-lg border flex items-center text-[16px]" style={{ borderColor: 'var(--light-gray)', background: 'var(--hr-head)' }}>{userName}</div>
+                  <div className="relative">
+                    <NameCombobox value={staffName} onChange={setStaffName} options={staffNames} hints={staffHints}
+                      maxOptions={Math.max(60, staffNames.length)} browseOnFocus
+                      placeholder={staff.length ? 'Pick a staff name' : 'Loading staff…'}
+                      className={`${inputCls} pr-10`} style={inputStyle} />
+                    <ChevronDown size={18} className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: 'var(--mid-gray)' }} />
+                  </div>
+                  {staffName.trim() && !deliverer && staff.length > 0 && (
+                    <p className="text-xs mt-1" style={{ color: '#b45309' }}>Not on the active staff list. Pick a name from the list.</p>
+                  )}
                 </div>
                 <div>
-                  <Label htmlFor="ack-title">Title</Label>
-                  <input id="ack-title" value={title} onChange={(e) => setTitle(e.target.value)} className={inputCls} style={inputStyle} />
+                  <Label>Title</Label>
+                  <div className="h-12 px-3 rounded-lg border flex items-center text-[16px]"
+                    style={{ borderColor: 'var(--light-gray)', background: 'var(--hr-head)', color: deliverer ? 'var(--charcoal)' : 'var(--hr-faint)' }}>
+                    {delivererTitle || 'Fills in from the staff record'}
+                  </div>
                 </div>
               </div>
               <p className="text-xs mt-2" style={{ color: 'var(--hr-faint)' }}>{branch ? branch.name : 'Branch not picked yet'}{today ? ` · ${today}` : ''}</p>
@@ -410,7 +441,12 @@ export function AckForm({ initialBranch, userName, allowed }: { initialBranch: A
                           <div className="flex-1 min-w-0">
                             <Label>Form</Label>
                             <NameCombobox value={r.formType} onChange={(v) => setPad(i, { formType: v })} options={formOptions} maxOptions={Math.max(60, formOptions.length)} hints={formHints}
-                              placeholder="Pick the form" className={inputCls} style={inputStyle} />
+                              matchHints browseOnFocus
+                              onCommit={(v) => { const c = canonForm(v); if (c && c !== v) setPad(i, { formType: c }) }}
+                              placeholder="Type the code or name, e.g. referral" className={inputCls} style={inputStyle} />
+                            {r.formType.trim() && (canonForm(r.formType)
+                              ? templates[canonForm(r.formType)!] && <p className="text-xs mt-1" style={{ color: 'var(--mid-gray)' }}>{templates[canonForm(r.formType)!]}</p>
+                              : <p className="text-xs mt-1" style={{ color: '#b45309' }}>Pick a form from the list. Typing &quot;referral&quot; lists the referral forms.</p>)}
                           </div>
                           {d.pads.length > 1 && (
                             <button type="button" onClick={() => set('pads', d.pads.filter((_, j) => j !== i))} aria-label="Remove range"
@@ -472,11 +508,11 @@ export function AckForm({ initialBranch, userName, allowed }: { initialBranch: A
             <Card title="Signature of doctor / secretary">
               {d.items.length > 0 && (
                 <p className="text-sm mb-3" style={{ color: 'var(--mid-gray)' }}>
-                  By signing, <span className="font-semibold" style={{ color: 'var(--charcoal)' }}>{d.receivedBy.trim() || d.recipientName.trim() || 'the recipient'}</span> acknowledges receiving {itemSummary.join(', ')} from {userName}.
+                  By signing, <span className="font-semibold" style={{ color: 'var(--charcoal)' }}>{d.receivedBy.trim() || d.recipientName.trim() || 'the recipient'}</span> acknowledges receiving {itemSummary.join(', ')} from {deliverer?.name || 'the staff member delivering'}.
                 </p>
               )}
               <SignaturePad key={sigKey} onChange={setSignature} height={210} />
-              <p className="text-xs mt-1" style={{ color: 'var(--hr-faint)' }}>Delivered by: {userName} | {title || DEFAULT_DELIVERED_BY_TITLE}</p>
+              <p className="text-xs mt-1" style={{ color: 'var(--hr-faint)' }}>Delivered by: {deliverer ? `${deliverer.name} | ${delivererTitle}` : 'pick a name under Delivered by'}</p>
             </Card>
 
             {error && <p className="text-sm px-3 py-2.5 rounded-lg" style={{ background: '#fee2e2', color: '#991b1b' }}>{error}</p>}

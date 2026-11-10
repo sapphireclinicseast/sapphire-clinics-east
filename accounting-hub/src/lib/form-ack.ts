@@ -47,6 +47,12 @@ export const ACK_ITEM_LABELS: Record<string, string> = Object.fromEntries(ACK_IT
 
 export const DEFAULT_DELIVERED_BY_TITLE = 'Business Development Officer'
 
+// "Delivered by" is picked from the active staff list (payroll Employee rows);
+// the title is that person's recorded job title.
+export interface AckStaff { id: string; name: string; jobTitle: string | null; branch: string }
+export const ackStaffName = (e: { firstName: string; lastName: string }) => `${e.firstName} ${e.lastName}`.replace(/\s+/g, ' ').trim()
+export const ACK_STAFF_BRANCH_LABEL: Record<string, string> = { SBEA: 'East', SBGH: 'Greenhills', VERDANA: 'Verdana' }
+
 // Who may open the signing link and submit (same as Partner Distribution writers).
 export const ACK_WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN', 'MEDREP', 'AHEA_FRONTDESK', 'AHGH_FRONTDESK']
 // Who may see signed acknowledgments and their PDFs (= who can open Inventory).

@@ -3,14 +3,15 @@ import { randomUUID } from 'crypto'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { controlToInt, rangeQuantity, coveredByUnion, toIntervals } from '@/lib/form-ranges'
-import { ACK_DELETE_ROLES, ACK_ITEMS, ACK_VIEW_ROLES, ACK_WRITE_ROLES, DEFAULT_DELIVERED_BY_TITLE, resolveAckBranch } from '@/lib/form-ack'
+import { ACK_DELETE_ROLES, ACK_ITEMS, ACK_VIEW_ROLES, ACK_WRITE_ROLES, DEFAULT_DELIVERED_BY_TITLE, ackStaffName, resolveAckBranch } from '@/lib/form-ack'
 import { buildAndStoreAckPdf, deleteAcknowledgment } from '@/lib/form-ack-store'
 
 // Signed acknowledgments from the med rep link (/acknowledge/<branch>).
 // The link needs the med rep's own hub login (not a shared token): every
-// signed delivery is attributed to a real account, the Delivered-by name can't
-// be typed in by anyone holding the link, and access ends when the account is
-// disabled. Submitting adds Partner Distribution rows for the referral pads,
+// signed delivery is recorded under a real account (deliveredById), and access
+// ends when the account is disabled. The Delivered-by name is picked from the
+// active staff list and its title is that person's recorded job title, both
+// read here from the Employee row, never taken from the page. Submitting adds Partner Distribution rows for the referral pads,
 // which draw down that branch's on-hand exactly like a manual row.
 
 const MAX_PAD_RANGES = 6
@@ -65,7 +66,18 @@ export async function POST(req: Request) {
     const receivedBy = str(body.receivedBy)
     const receivedByDesignation = str(body.receivedByDesignation)
     const remarks = str(body.remarks, 500)
-    const deliveredByTitle = str(body.deliveredByTitle, 80) || DEFAULT_DELIVERED_BY_TITLE
+    // A page opened before the staff picker existed sends no employee id: it
+    // keeps the old behaviour (the signed-in name and the typed title).
+    let deliveredByName = me.name || session.user.name || 'Med rep'
+    let deliveredByTitle = str(body.deliveredByTitle, 80) || DEFAULT_DELIVERED_BY_TITLE
+    if (body.deliveredByEmployeeId != null) {
+      const emp = typeof body.deliveredByEmployeeId === 'string'
+        ? await prisma.employee.findUnique({ where: { id: body.deliveredByEmployeeId }, select: { firstName: true, lastName: true, jobTitle: true, isActive: true } })
+        : null
+      if (!emp || !emp.isActive) return NextResponse.json({ error: 'That staff member is not on the active staff list — pick another name under Delivered by' }, { status: 400 })
+      deliveredByName = ackStaffName(emp)
+      deliveredByTitle = str(emp.jobTitle, 80) || DEFAULT_DELIVERED_BY_TITLE
+    }
     const partnerName = str(body.partnerName) || (kind === 'SCHOOL' ? institution : recipientName)
     if (!partnerName) {
       return NextResponse.json({ error: kind === 'SCHOOL' ? 'Enter the school / institution' : 'Enter the recipient (doctor) name' }, { status: 400 })
@@ -90,6 +102,11 @@ export async function POST(req: Request) {
         const quantity = rangeQuantity(fromControl, toControl)
         if (!formType || quantity == null) {
           return NextResponse.json({ error: `Pad range ${i + 1}: pick the form and enter a valid From # / To # (To must be ≥ From)` }, { status: 400 })
+        }
+        // A form code (ADMIN23, MD06, HR01a), never free text like "referral": the
+        // code is what Inventory → Forms counts on hand by.
+        if (!/^[A-Za-z]+\d+[A-Za-z]?$/.test(formType)) {
+          return NextResponse.json({ error: `Pad range ${i + 1}: "${formType}" is not a form code — pick the form from the list` }, { status: 400 })
         }
         if (quantity > MAX_PCS_PER_RANGE) {
           return NextResponse.json({ error: `Pad range ${i + 1}: ${quantity.toLocaleString('en-PH')} pcs looks like a typo — check the control numbers` }, { status: 400 })
@@ -134,7 +151,7 @@ export async function POST(req: Request) {
           recipientDesignation: recipientDesignation || null, receivedBy: receivedBy || null,
           receivedByDesignation: receivedByDesignation || null, items, remarks: remarks || null,
           signaturePng: sig, signedAt: now, deliveredById: session.user.id as string,
-          deliveredByName: me.name || session.user.name || 'Med rep', deliveredByTitle,
+          deliveredByName, deliveredByTitle,
         },
       }),
       ...uncovered.map((p) => prisma.formReceipt.create({

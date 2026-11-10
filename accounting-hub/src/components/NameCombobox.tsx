@@ -22,19 +22,24 @@ interface Props {
   hints?: Record<string, string>
   /** Called with the final value when an option is picked or the field loses focus. */
   onCommit?: (v: string) => void
+  /** Act like a dropdown: focusing the field lists every option, even when it already holds one; typing filters again. */
+  browseOnFocus?: boolean
+  /** Also match typed text against the hints (e.g. "referral" finds ADMIN23 · Patient/Client Referral Form). */
+  matchHints?: boolean
 }
 
-export function NameCombobox({ value, onChange, options, placeholder, className, style, disabled, autoFocus, maxOptions = 60, hints, onCommit }: Props) {
+export function NameCombobox({ value, onChange, options, placeholder, className, style, disabled, autoFocus, maxOptions = 60, hints, onCommit, browseOnFocus, matchHints }: Props) {
   const [open, setOpen] = useState(false)
   const [active, setActive] = useState(0)
+  const [browsing, setBrowsing] = useState(false)
   const [rect, setRect] = useState<{ left: number; top: number; width: number; below: boolean } | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   const menuRef = useRef<HTMLDivElement>(null)
 
   const q = value.trim().toLowerCase()
   const shown = useMemo(
-    () => options.filter(o => !q || o.toLowerCase().includes(q)).slice(0, maxOptions),
-    [options, q, maxOptions],
+    () => options.filter(o => browsing || !q || o.toLowerCase().includes(q) || (!!matchHints && !!hints?.[o]?.toLowerCase().includes(q))).slice(0, maxOptions),
+    [options, q, maxOptions, browsing, matchHints, hints],
   )
 
   useEffect(() => {
@@ -64,7 +69,7 @@ export function NameCombobox({ value, onChange, options, placeholder, className,
   // Commit once per change: on pick, or on blur when the text changed since focus.
   const committed = useRef<string | null>(null)
   const commit = (v: string) => { if (!onCommit || committed.current === v) return; committed.current = v; onCommit(v) }
-  const pick = (v: string) => { onChange(v); setOpen(false); commit(v) }
+  const pick = (v: string) => { onChange(v); setOpen(false); setBrowsing(false); commit(v) }
   const onKey = (e: React.KeyboardEvent) => {
     if (!open && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) { setOpen(true); return }
     if (e.key === 'ArrowDown') { e.preventDefault(); setActive(i => Math.min(i + 1, shown.length - 1)) }
@@ -74,16 +79,19 @@ export function NameCombobox({ value, onChange, options, placeholder, className,
   }
 
   // Nothing to suggest once the field already holds the only match.
-  const showMenu = open && rect && shown.length > 0 && !(shown.length === 1 && shown[0] === value)
+  const showMenu = open && rect && shown.length > 0 && !(!browsing && shown.length === 1 && shown[0] === value)
 
   return (
     <>
       <input ref={inputRef} type="text" value={value} disabled={disabled} autoFocus={autoFocus} placeholder={placeholder}
         className={className} style={style} autoComplete="off"
-        onFocus={() => { committed.current = value; setOpen(true) }}
+        onFocus={() => {
+          committed.current = value; setOpen(true)
+          if (browseOnFocus) { setBrowsing(true); setActive(Math.max(0, options.indexOf(value))) }
+        }}
         // Suggestions keep focus (mousedown is prevented), so a blur is a real leave.
         onBlur={e => commit(e.target.value)}
-        onChange={e => { onChange(e.target.value); setOpen(true); setActive(0) }}
+        onChange={e => { onChange(e.target.value); setOpen(true); setBrowsing(false); setActive(0) }}
         onKeyDown={onKey} />
       {showMenu && createPortal(
         <div ref={menuRef} className="rounded-lg border bg-white shadow-lg overflow-auto py-1"
