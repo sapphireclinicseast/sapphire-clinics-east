@@ -32,7 +32,7 @@ import {
   payLabel,
   buildGrid, nameFor, remarkFor, hhmm, parsePay, PAIRED_DEPARTMENTS,
   SAFE_COL, FREE_TEXT_HINT, FREE_TEXT_HINTS, BLOCKED, BREAK, INK,
-  type SheetSlot, type SheetStaff, type Grid, type CellRef,
+  type SheetSlot, type SheetStaff, type SheetClass, type Grid, type CellRef,
 } from './grid'
 import type { sheets_v4 } from 'googleapis'
 
@@ -54,8 +54,94 @@ export interface SyncReport {
 
 // ── loading what the hub knows ──────────────────────────────────────────────
 
+/** The shape of a therapist config, as much of it as the merge below reads. */
+interface ScheduleRow {
+  staffId: string
+  workDays: unknown
+  startTime: string
+  endTime: string
+  deliveryMode: string | null
+  updatedAt: Date
+  slotsPerDay: number | null
+}
+
+/**
+ * One board schedule per consultant, built from EVERY row they hold.
+ *
+ * A consultant has a general schedule and, where the clinic has set one, a
+ * narrower row per service. The sheet has a tab per DEPARTMENT, so it used to
+ * pick exactly one of those rows and draw it — a service row ahead of the
+ * general one, the newer ahead of the older.
+ *
+ * That loses days. Joan Yap keeps Thursdays in clinic and Fridays on
+ * teletherapy; the teletherapy row won, so the board drew her a Friday
+ * afternoon and nothing else, and her Thursday children had nowhere on the
+ * sheet to appear. Three consultants were losing bookings that way.
+ *
+ * So: the board shows every day any of their rows gives the clinic, and each
+ * day is drawn on the hours that govern THAT day — the service rows where one
+ * covers it, the general row everywhere else. A service row still narrows its
+ * own days, which is the behaviour it was added for; it just no longer erases
+ * the days it says nothing about.
+ */
+export function mergeSchedules<T extends ScheduleRow>(configs: T[]) {
+  const dayCount = (c: ScheduleRow) => ((c.workDays as string[]) ?? []).length
+  const byStaff = new Map<string, T[]>()
+  for (const c of configs) byStaff.set(c.staffId, [...(byStaff.get(c.staffId) ?? []), c])
+
+  const out = new Map<string, {
+    primary: T
+    workDays: string[]
+    startTime: string
+    endTime: string
+    dayHours: Record<string, { startTime: string; endTime: string }>
+  }>()
+
+  for (const [staffId, rows] of byStaff) {
+    // The row the rest of the board takes its settings from: still the
+    // service row, still the newest of its kind, and never an empty one.
+    // Only the DAYS are pooled; patients-a-day and the like stay single-valued.
+    let primary = rows[0]
+    for (const c of rows.slice(1)) {
+      const better =
+        (dayCount(c) > 0 && dayCount(primary) === 0) ? true :
+        (dayCount(c) === 0 && dayCount(primary) > 0) ? false :
+        (c.deliveryMode !== null && primary.deliveryMode === null) ||
+        (((c.deliveryMode === null) === (primary.deliveryMode === null)) && c.updatedAt > primary.updatedAt)
+      if (better) primary = c
+    }
+
+    const real = rows.filter(c => dayCount(c) > 0)
+    const dayHours: Record<string, { startTime: string; endTime: string }> = {}
+    for (const day of new Set(real.flatMap(c => (c.workDays as string[]) ?? []))) {
+      const covering = real.filter(c => ((c.workDays as string[]) ?? []).includes(day))
+      // A service row governs the days it names. Only where no service row
+      // mentions the day does the general schedule decide it.
+      const service = covering.filter(c => c.deliveryMode !== null)
+      const deciding = service.length ? service : covering
+      dayHours[day] = {
+        startTime: deciding.map(c => c.startTime).sort()[0],
+        endTime: deciding.map(c => c.endTime).sort().slice(-1)[0],
+      }
+    }
+
+    const workDays = Object.keys(dayHours)
+    const spans = Object.values(dayHours)
+    out.set(staffId, {
+      primary,
+      workDays,
+      // The block's outer span — the widest any of its days reaches. Each day
+      // is still hatched back to its own hours inside it.
+      startTime: spans.length ? spans.map(s => s.startTime).sort()[0] : primary.startTime,
+      endTime: spans.length ? spans.map(s => s.endTime).sort().slice(-1)[0] : primary.endTime,
+      dayHours,
+    })
+  }
+  return out
+}
+
 async function loadDepartment(branch: string, department: string) {
-  const [configs, slots] = await Promise.all([
+  const [configs, slots, classRows] = await Promise.all([
     prisma.deckingTherapistConfig.findMany({
       // EVERY config, not just the general one.
       //
@@ -103,43 +189,37 @@ async function loadDepartment(branch: string, department: string) {
         patientBookings: { where: { paidAt: { not: null } }, select: { downpayment: true }, take: 1 },
       },
     }),
+    // ── Classes ───────────────────────────────────────────────────────────
+    //
+    // A class is one hour with a whole group in it — five children with one
+    // SPED teacher, booked as five rows against the same slot. The grid can
+    // only ever draw the first of them, so classes were left out of the sheet
+    // altogether and front desk could not see from the board that the hour
+    // was taken at all, let alone by whom.
+    //
+    // They are listed below the grid instead, read-only: a class is composed
+    // in the hub, and a roll typed over on the spreadsheet would be a way to
+    // lose a child rather than a way to add one.
+    prisma.deckingSlot.findMany({
+      where: { branch, department, isClass: true, patientId: { not: null } },
+      select: {
+        staffId: true, dayOfWeek: true, startTime: true, endTime: true, date: true,
+        paymentType: true, hmoProvider: true,
+        patient: { select: { firstName: true, lastName: true } },
+      },
+    }),
   ])
 
-  // One schedule per consultant: the one they most recently set.
-  //
-  // A service-specific row beats the general one, because that is what front
-  // desk edit from the board; between two of the same kind, the newer wins.
-  // The sheet has a tab per DEPARTMENT, not per service, so it cannot show
-  // both — and showing the stale one is how this went wrong.
-  // A schedule with NO work days never wins.
-  //
-  // A service-specific row beats the general one, which is right when that row
-  // is real. But an On-site row saved with every day unticked is not a
-  // narrower schedule, it is an empty one — and letting it win meant the
-  // consultant's actual general schedule was never drawn, so their booked
-  // children vanished from the sheet while still sitting in the hub. Front desk
-  // then read those hours as free.
-  const dayCount = (c: { workDays: unknown }) => ((c.workDays as string[]) ?? []).length
-  const chosen = new Map<string, (typeof configs)[number]>()
-  for (const c of configs) {
-    const prev = chosen.get(c.staffId)
-    if (!prev) { chosen.set(c.staffId, c); continue }
-    const better =
-      (dayCount(c) > 0 && dayCount(prev) === 0) ? true :
-      (dayCount(c) === 0 && dayCount(prev) > 0) ? false :
-      (c.deliveryMode !== null && prev.deliveryMode === null) ||
-      (((c.deliveryMode === null) === (prev.deliveryMode === null)) && c.updatedAt > prev.updatedAt)
-    if (better) chosen.set(c.staffId, c)
-  }
-
-  const staff: SheetStaff[] = [...chosen.values()].map(c => ({
-    id: c.staffId,
-    firstName: c.staff.firstName,
-    lastName: c.staff.lastName,
-    workDays: (c.workDays as string[]) ?? [],
-    startTime: c.startTime,
-    endTime: c.endTime,
-    slotsPerDay: c.slotsPerDay,
+  // Every day the consultant gives this department, each on its own hours.
+  const staff: SheetStaff[] = [...mergeSchedules(configs).values()].map(m => ({
+    id: m.primary.staffId,
+    firstName: m.primary.staff.firstName,
+    lastName: m.primary.staff.lastName,
+    workDays: m.workDays,
+    startTime: m.startTime,
+    endTime: m.endTime,
+    slotsPerDay: m.primary.slotsPerDay,
+    dayHours: m.dayHours,
   })).sort((a, b) => a.lastName.localeCompare(b.lastName))
 
   // Consultants who hold a one-off but NO weekly schedule have to be named too.
@@ -152,9 +232,12 @@ async function loadDepartment(branch: string, department: string) {
   // Safe to append: the weekly grid filters on workDays, so somebody with none
   // is still left out of it. Only the name reaches the dated block.
   const named = new Set(staff.map(x => x.id))
-  const extraIds = [...new Set(
-    slots.filter(sl => sl.date && !named.has(sl.staffId)).map(sl => sl.staffId),
-  )]
+  const extraIds = [...new Set([
+    ...slots.filter(sl => sl.date && !named.has(sl.staffId)).map(sl => sl.staffId),
+    // Same for whoever runs a class: the list below is headed by their name,
+    // and a block headed by nothing is a block nobody can read.
+    ...classRows.filter(c => !named.has(c.staffId)).map(c => c.staffId),
+  ])]
   if (extraIds.length) {
     const extras = await prisma.staff.findMany({
       where: { id: { in: extraIds } },
@@ -186,10 +269,25 @@ async function loadDepartment(branch: string, department: string) {
     date: s.date ? s.date.toISOString().slice(0, 10) : null,
   }))
 
+  // One entry per class — the hour — carrying every child in it.
+  const grouped = new Map<string, SheetClass>()
+  for (const c of classRows) {
+    const date = c.date ? c.date.toISOString().slice(0, 10) : null
+    const key = `${c.staffId}|${c.dayOfWeek}|${c.startTime}|${c.endTime}|${date ?? ''}`
+    const got = grouped.get(key) ?? {
+      staffId: c.staffId, dayOfWeek: c.dayOfWeek, startTime: c.startTime, endTime: c.endTime,
+      date, patients: [], payment: payLabel(c.paymentType, c.hmoProvider),
+    }
+    if (c.patient) got.patients.push(`${c.patient.lastName}, ${c.patient.firstName}`.toUpperCase())
+    grouped.set(key, got)
+  }
+  for (const g of grouped.values()) g.patients.sort((a, b) => a.localeCompare(b))
+
   return {
     staff,
     slots: sheetSlots.filter(x => !x.date),
     dated: sheetSlots.filter(x => !!x.date),
+    classes: [...grouped.values()],
     raw: slots,
   }
 }
@@ -227,19 +325,8 @@ async function loadInterns(branch: string, department: string) {
   const configs = all.filter(c => internWindowCovers(c.staff.dateHired, c.staff.contractExpiry))
   if (configs.length === 0) return null
 
-  // Same rule as loadDepartment: an empty schedule never beats a real one.
-  const dayCount = (c: { workDays: unknown }) => ((c.workDays as string[]) ?? []).length
-  const chosen = new Map<string, (typeof configs)[number]>()
-  for (const c of configs) {
-    const prev = chosen.get(c.staffId)
-    if (!prev) { chosen.set(c.staffId, c); continue }
-    const better =
-      (dayCount(c) > 0 && dayCount(prev) === 0) ? true :
-      (dayCount(c) === 0 && dayCount(prev) > 0) ? false :
-      (c.deliveryMode !== null && prev.deliveryMode === null)
-      || (((c.deliveryMode === null) === (prev.deliveryMode === null)) && c.updatedAt > prev.updatedAt)
-    if (better) chosen.set(c.staffId, c)
-  }
+  // Same rule as loadDepartment: every day they give us, each on its own hours.
+  const chosen = mergeSchedules(configs)
 
   const ids = [...chosen.keys()]
   const slots = await prisma.deckingSlot.findMany({
@@ -264,7 +351,8 @@ async function loadInterns(branch: string, department: string) {
     if (sl.supervisorId && !byIntern.has(sl.staffId)) byIntern.set(sl.staffId, supName.get(sl.supervisorId) ?? '')
   }
 
-  const staff: SheetStaff[] = [...chosen.values()].map(c => {
+  const staff: SheetStaff[] = [...chosen.values()].map(m => {
+    const c = m.primary
     const sup = byIntern.get(c.staffId)
     return {
       id: c.staffId,
@@ -273,10 +361,11 @@ async function loadInterns(branch: string, department: string) {
       label: sup
         ? `${c.staff.lastName}, ${c.staff.firstName}  ·  supervised by ${sup}`
         : `${c.staff.lastName}, ${c.staff.firstName}  ·  NO SUPERVISOR SET`,
-      workDays: (c.workDays as string[]) ?? [],
-      startTime: c.startTime,
-      endTime: c.endTime,
+      workDays: m.workDays,
+      startTime: m.startTime,
+      endTime: m.endTime,
       slotsPerDay: c.slotsPerDay,
+      dayHours: m.dayHours,
     }
   }).sort((a, b) => a.lastName.localeCompare(b.lastName))
 
@@ -464,6 +553,11 @@ async function pushTab(
   // layout change and land on rows that are now something else entirely.
   writes.push({ setDataValidation: { range: { sheetId, startRowIndex: 0, endRowIndex: span, startColumnIndex: 0, endColumnIndex: SAFE_COL } } })
   for (const v of grid.validate) {
+    // A closed hour's payment cell. It keeps its place in `validate` so the
+    // grey-and-struck rule below still covers it, but no dropdown is written:
+    // the whole range was cleared above, so skipping it here is what removes
+    // the one a previous run left behind.
+    if (v.locked) continue
     writes.push({ setDataValidation: {
       range: { sheetId, startRowIndex: v.row, endRowIndex: v.row + 1, startColumnIndex: v.col, endColumnIndex: v.col + 1 },
       rule: v.kind === 'pay'
@@ -952,8 +1046,8 @@ export async function syncBranch(branch: string, spreadsheetId: string): Promise
   const mapEntries: (CellRef & { tab: string })[] = []
   for (const dept of DEPARTMENTS) {
     try {
-      const { staff, slots, dated } = await loadDepartment(branch, dept)
-      const grid = buildGrid({ staff, slots, dated, paired: PAIRED_DEPARTMENTS.has(dept) })
+      const { staff, slots, dated, classes } = await loadDepartment(branch, dept)
+      const grid = buildGrid({ staff, slots, dated, classes, paired: PAIRED_DEPARTMENTS.has(dept) })
       if (!grid) continue
       const res = await pushTab(api, spreadsheetId, dept, grid, patientRows, payOptions, client.identity, lastWrote.get(dept))
       for (const c of grid.cells) mapEntries.push({ ...c, tab: dept })

@@ -95,6 +95,21 @@ export interface SheetStaff {
   endTime: string
   /** Patients a day, when the day is not one slot per whole hour. */
   slotsPerDay?: number | null
+  /**
+   * Hours for ONE named day, where that day's hours are not the block's.
+   *
+   * A consultant holds a schedule per service: a general one, and a narrower
+   * row for on-site or teletherapy. The board is per DEPARTMENT, not per
+   * service, so it has to show every day they work — but each day on the hours
+   * that actually govern it, which is the service row where one covers that
+   * day and the general row everywhere else.
+   *
+   * Without this the tab could only pick one of those rows, and a consultant
+   * whose teletherapy row was the newer one had her clinic days drawn with her
+   * teletherapy hours — or not drawn at all. Her booked children then sat in
+   * the hub with nowhere on the sheet to appear.
+   */
+  dayHours?: Record<string, { startTime: string; endTime: string }>
 }
 
 export interface SheetSlot {
@@ -114,6 +129,32 @@ export interface SheetSlot {
   dp: number | null           // downpayment taken against this slot, if any
   /** YYYY-MM-DD when this is a one-off rather than part of the weekly pattern. */
   date?: string | null
+}
+
+/**
+ * One class hour, with everybody in it.
+ *
+ * A class is a group session — five children with one SPED teacher — held in
+ * the hub as one booking per child against the same hour. The weekly grid has
+ * a single patient line per slot, so it can only ever draw the first of them;
+ * listing the class whole, below the grid, is what lets front desk see that
+ * the hour is taken and by whom.
+ *
+ * Read-only on the sheet. A class is composed in the hub, where adding a child
+ * checks the roll and the billing; a name typed over on a spreadsheet would be
+ * a way to lose one rather than a way to add one.
+ */
+export interface SheetClass {
+  staffId: string
+  dayOfWeek: string
+  startTime: string
+  endTime: string
+  /** YYYY-MM-DD when the class is a one-off rather than part of the week. */
+  date?: string | null
+  /** "SURNAME, Firstname", already uppercased upstream. */
+  patients: string[]
+  /** Already formatted, e.g. "CASH" or "HMO – INTELLICARE". */
+  payment: string
 }
 
 /** What one editable cell stands for, and what the sheet was last set to. */
@@ -163,6 +204,13 @@ const HATCH_URL = `${process.env.NEXTAUTH_URL?.replace(/\/$/, '') || 'https://op
 const PAY_BG = '#E4EEF9'
 const REMARK_BG = '#FBF3E2'
 const PAIR_BG = '#F4F1FB'   // the second child of a paired hour
+/** A closed hour's own grey. Matches the rule that greys N/A live on the sheet. */
+export const CLOSED_BG = '#E8EAED'
+// The classes list. Its own colour, distinct from the pink of the one-off
+// blocks, so the two lists below the grid are not read as one.
+const CLASS_BG = '#0F766E'
+const CLASS_HEAD_BG = '#115E59'
+const CLASS_SUB_BG = '#CCFBF1'
 
 const BORDER = {
   top: { style: 'SOLID', color: rgb('#D0D7DE') },
@@ -223,7 +271,15 @@ export function spanLabel(startTime: string, endTime: string): string {
 export interface Grid {
   rows: { values: Cell[] }[]
   merges: { startRowIndex: number; endRowIndex: number; startColumnIndex: number; endColumnIndex: number }[]
-  validate: { row: number; col: number; kind: 'name' | 'pay' }[]
+  /**
+   * Cells that carry a dropdown — and, when `locked`, one that must NOT.
+   *
+   * A closed hour keeps its place in this list because the colouring rules are
+   * built from it, but it is skipped when the dropdowns are written: an hour
+   * shown as N/A offering a choice of CASH, GL or HMO invites a payment to be
+   * recorded against a slot nobody can be booked into.
+   */
+  validate: { row: number; col: number; kind: 'name' | 'pay'; locked?: boolean }[]
   editable: { startRowIndex: number; endRowIndex: number; startColumnIndex: number; endColumnIndex: number }[]
   cells: CellRef[]
   totalCols: number
@@ -254,8 +310,8 @@ export function remarkFor(occupants: SheetSlot[], blocked: SheetSlot | undefined
 }
 
 export function buildGrid(
-  { staff, slots, dated = [], paired = false }:
-    { staff: SheetStaff[]; slots: SheetSlot[]; dated?: SheetSlot[]; paired?: boolean },
+  { staff, slots, dated = [], classes = [], paired = false }:
+    { staff: SheetStaff[]; slots: SheetSlot[]; dated?: SheetSlot[]; classes?: SheetClass[]; paired?: boolean },
 ): Grid | null {
   // Five lines where two children share an hour, three everywhere else.
   const perHour = paired ? PAIRED_ROWS_PER_HOUR : ROWS_PER_HOUR
@@ -312,10 +368,20 @@ export function buildGrid(
   const blockOf = (st: SheetStaff, _axis: AxisSlot[]) => ({
     st,
     days: DAYS.filter(d => st.workDays.includes(d.key)),
-    // Which rows of this band's axis are actually theirs. Keyed by start TIME
-    // rather than by hour number, so a 54-minute row is as addressable as a
-    // whole hour. Everything else in the band is hatched.
-    own: new Set(daySlots(st.startTime, st.endTime, st.slotsPerDay).map(x => x.startTime)),
+    // Which rows of this band's axis are actually theirs, PER DAY. Keyed by
+    // start TIME rather than by hour number, so a 54-minute row is as
+    // addressable as a whole hour. Everything else in the band is hatched.
+    //
+    // Per day, because a consultant's hours are not the same on every day they
+    // work: a teletherapy Friday of 13:00–16:00 sits beside a clinic Thursday
+    // of 09:00–19:00. One set for the whole block had to pick one of the two,
+    // and whichever it picked made the other day's bookings undrawable.
+    own: new Map(st.workDays.map(d => {
+      const h = st.dayHours?.[d]
+      return [d, new Set(
+        daySlots(h?.startTime ?? st.startTime, h?.endTime ?? st.endTime, st.slotsPerDay).map(x => x.startTime),
+      )] as const
+    })),
   })
 
   // Bands, in order: the aligned hourly ones, then one per custom consultant.
@@ -386,7 +452,12 @@ export function buildGrid(
         // run of light slashes on the grey. These cells are decorative: they
         // carry no slot, are never written to the map, and the sync never reads
         // them, so text here cannot be mistaken for data.
-        if (!blk.own.has(h.startTime)) {
+        //
+        // Tested across the block's days first, so a row no day of theirs
+        // reaches is still hatched in one go; days are then checked one at a
+        // time below, because this hour can belong to their Thursday and not
+        // to their Friday.
+        if (!blk.days.some(d => blk.own.get(d.key)?.has(h.startTime))) {
           for (let c = 1; c <= k; c++) {
             // Mode 2 stretches the tile to the cell. The image is already
             // close to a cell's proportions, so the diagonals stay at 45°
@@ -404,7 +475,15 @@ export function buildGrid(
           // columns that are not hours at all. Blank during their shift and
           // hatched outside it — which is what this did — says two different
           // things about the same column.
-          if (!day) { put(c, formulaCell(`=IMAGE("${HATCH_URL}",2)`, { backgroundColor: rgb(OFF_BG) })); continue }
+          //
+          // Hatched too when this hour is outside what THIS day gives the
+          // clinic, which is how a 13:00–16:00 teletherapy Friday sits beside
+          // a 09:00–19:00 Thursday without either one claiming the other's
+          // hours.
+          if (!day || !blk.own.get(day.key)?.has(h.startTime)) {
+            put(c, formulaCell(`=IMAGE("${HATCH_URL}",2)`, { backgroundColor: rgb(OFF_BG) }))
+            continue
+          }
 
           const here = slotAt.get(`${blk.st.id}|${day.key}|${h.startTime}`) ?? []
           const occupants = here.filter(x => x.patient)
@@ -428,7 +507,10 @@ export function buildGrid(
           cells.push({ row: top + r, col: base + c, staffId: blk.st.id, dayOfWeek: day.key, startTime: h.startTime, slotId: '', date: '', line, wrote: value })
 
           if (line === 'name' || line === 'name2') validate.push({ row: top + r, col: base + c, kind: 'name' })
-          else if (line === 'pay' || line === 'pay2') validate.push({ row: top + r, col: base + c, kind: 'pay' })
+          // A closed hour's payment line keeps its entry — the grey-and-struck
+          // rule is built from this list — but is marked so no dropdown is
+          // written onto it. An hour showing N/A must not offer a payment.
+          else if (line === 'pay' || line === 'pay2') validate.push({ row: top + r, col: base + c, kind: 'pay', locked: !!blocked })
 
           // Editable is decided per SLOT, and a blocked hour is not one.
           //
@@ -454,10 +536,15 @@ export function buildGrid(
             // Coloured by the CATEGORY, so "HMO – INTELLICARE" is amber like
             // any other HMO rather than falling back to the cash green.
             const v = line === 'pay' ? pay : pay2
-            put(c, cell(v, { backgroundColor: rgb(PAY_BG), textFormat: { bold: true, fontSize: 8, foregroundColor: rgb(v.startsWith('HMO') ? INK.HMO : INK[v as keyof typeof INK] ?? INK.CASH) } }))
+            put(c, blocked
+              // Closed: grey like the hour above it, and empty. The dropdown is
+              // gone (see `locked`), so the cell reads as part of the closure
+              // rather than as a payment somebody forgot to fill in.
+              ? cell('', { backgroundColor: rgb(CLOSED_BG) })
+              : cell(v, { backgroundColor: rgb(PAY_BG), textFormat: { bold: true, fontSize: 8, foregroundColor: rgb(v.startsWith('HMO') ? INK.HMO : INK[v as keyof typeof INK] ?? INK.CASH) } }))
           } else if (line === 'name2') {
             // Tinted, so a pair reads as a pair and not as two separate hours.
-            put(c, cell(name2, { backgroundColor: rgb(PAIR_BG), textFormat: { bold: true, fontSize: 9 } }))
+            put(c, cell(name2, { backgroundColor: rgb(blocked ? CLOSED_BG : PAIR_BG), textFormat: { bold: true, fontSize: 9 } }))
           } else {
             put(c, name === BLOCKED || name === BREAK
               ? cell(name, { textFormat: { bold: true, fontSize: 9, foregroundColor: rgb(INK.NA) } })
@@ -565,7 +652,7 @@ export function buildGrid(
           const value = line === 'name' ? name : line === 'pay' ? pay : remark
 
           cells.push({ row: top + r, col: base + 1, staffId, dayOfWeek: slot.dayOfWeek, startTime: slot.startTime, slotId: slot.id ?? '', date: dateStr, line, wrote: value })
-          if (line !== 'remark') validate.push({ row: top + r, col: base + 1, kind: line })
+          if (line !== 'remark') validate.push({ row: top + r, col: base + 1, kind: line, locked: line === 'pay' && !!blocked })
           if (line === 'name' && !blocked) {
             editable.push({ startRowIndex: top + r, endRowIndex: top + r + ROWS_PER_HOUR, startColumnIndex: base + 1, endColumnIndex: base + 2 })
           }
@@ -575,13 +662,112 @@ export function buildGrid(
               ? cell(remark, { backgroundColor: rgb(REMARK_BG), textFormat: { fontSize: 7, italic: true, foregroundColor: rgb('#6B7280') } })
               : { ...cell(FREE_TEXT_HINT, { backgroundColor: rgb(REMARK_BG), textFormat: { fontSize: 7, italic: true, foregroundColor: rgb('#B3AFA4') } }), note: FREE_TEXT_NOTE })
           } else if (line === 'pay') {
-            put(1, cell(pay, { backgroundColor: rgb(PAY_BG), textFormat: { bold: true, fontSize: 8, foregroundColor: rgb(pay.startsWith('HMO') ? INK.HMO : INK[pay as keyof typeof INK] ?? INK.CASH) } }))
+            put(1, blocked
+              ? cell('', { backgroundColor: rgb(CLOSED_BG) })
+              : cell(pay, { backgroundColor: rgb(PAY_BG), textFormat: { bold: true, fontSize: 8, foregroundColor: rgb(pay.startsWith('HMO') ? INK.HMO : INK[pay as keyof typeof INK] ?? INK.CASH) } }))
           } else {
             put(1, name === BLOCKED || name === BREAK
               ? cell(name, { textFormat: { bold: true, fontSize: 9, foregroundColor: rgb(INK.NA) } })
               : cell(name, { textFormat: { bold: true, fontSize: 9 } }))
           }
           for (let c = 2; c <= k; c++) put(c, cell('', { backgroundColor: rgb(OFF_BG) }))
+        })
+        rows.push({ values })
+      }
+      rows.push({ values: Array.from({ length: totalCols }, () => blank()) })
+      rows.push({ values: Array.from({ length: totalCols }, () => blank()) })
+    }
+  }
+
+  // ── Classes ───────────────────────────────────────────────────────────────
+  //
+  // A group hour, listed whole. The grid above has one patient line per slot,
+  // so a class of five showed one child and hid four — and since classes were
+  // left out of the hub's sheet query entirely, the hour read as free.
+  //
+  // Nothing here is editable, validated, or written to the cell map, so the
+  // pull never reads it back: the list is a view of the hub, not a copy of it.
+  const classOf = new Map<string, SheetClass[]>()
+  for (const c of classes) {
+    if (!c.patients.length) continue
+    classOf.set(c.staffId, [...(classOf.get(c.staffId) ?? []), c])
+  }
+  if (classOf.size > 0) {
+    const dayIdx = (d: string) => DAYS.findIndex(x => x.key === d)
+    for (const list of classOf.values()) {
+      list.sort((a, b) => (a.date ?? '').localeCompare(b.date ?? '')
+        || dayIdx(a.dayOfWeek) - dayIdx(b.dayOfWeek)
+        || a.startTime.localeCompare(b.startTime))
+    }
+
+    rows.push({ values: Array.from({ length: totalCols }, () => blank()) })
+    const head = Array.from({ length: totalCols }, () => blank())
+    head[0] = cell('CLASSES  ·  read-only — group sessions are set in the Hub', {
+      backgroundColor: rgb(CLASS_BG),
+      textFormat: { bold: true, fontSize: 10, foregroundColor: rgb('#FFFFFF') },
+      horizontalAlignment: 'LEFT',
+    })
+    for (let c = 1; c < totalCols; c++) head[c] = cell('', { backgroundColor: rgb(CLASS_BG) })
+    merges.push({ startRowIndex: rows.length, endRowIndex: rows.length + 1, startColumnIndex: 0, endColumnIndex: totalCols })
+    rows.push({ values: head })
+
+    const keys = [...classOf.keys()].sort((a, b) =>
+      String(nameOf.get(a) ?? '').localeCompare(String(nameOf.get(b) ?? '')))
+
+    for (let i = 0; i < keys.length; i += perBand) {
+      const band = keys.slice(i, i + perBand)
+      // One line per CHILD, so a class of five is five rows tall.
+      const tallest = Math.max(...band.map(id =>
+        (classOf.get(id) ?? []).reduce((n, c) => n + c.patients.length, 0)))
+      const top = rows.length
+      const bandRows = 2 + tallest
+
+      for (let r = 0; r < bandRows; r++) {
+        const values: Cell[] = Array.from({ length: totalCols }, () => blank())
+        band.forEach((staffId, bi) => {
+          const base = bi * stride
+          const put = (off: number, c: Cell) => { values[base + off] = c }
+          const mine = classOf.get(staffId) ?? []
+
+          if (r === 0) {
+            put(0, cell(nameOf.get(staffId) ?? '', {
+              backgroundColor: rgb(CLASS_HEAD_BG),
+              textFormat: { bold: true, fontSize: 10, foregroundColor: rgb('#FFFFFF') },
+            }))
+            for (let c = 1; c <= k; c++) put(c, cell('', { backgroundColor: rgb(CLASS_HEAD_BG) }))
+            merges.push({ startRowIndex: top, endRowIndex: top + 1, startColumnIndex: base, endColumnIndex: base + k + 1 })
+            return
+          }
+          if (r === 1) {
+            put(0, cell('WHEN', { backgroundColor: rgb(CLASS_SUB_BG), textFormat: { bold: true, fontSize: 9 } }))
+            put(1, cell('IN THE CLASS', { backgroundColor: rgb(CLASS_SUB_BG), textFormat: { bold: true, fontSize: 9 } }))
+            for (let c = 2; c <= k; c++) put(c, cell('', { backgroundColor: rgb(CLASS_SUB_BG) }))
+            if (k > 1) merges.push({ startRowIndex: top + 1, endRowIndex: top + 2, startColumnIndex: base + 1, endColumnIndex: base + k + 1 })
+            return
+          }
+
+          // Walk the therapist's classes as one flat list of children, so the
+          // when-label can be merged down over the class it belongs to.
+          let idx = r - 2
+          for (const cls of mine) {
+            if (idx < cls.patients.length) {
+              if (idx === 0) {
+                const when = cls.date
+                  ? `${new Date(`${cls.date}T00:00:00Z`).toLocaleDateString('en-PH', { day: 'numeric', month: 'short', timeZone: 'UTC' })}  ·  ${spanLabel(cls.startTime, cls.endTime)}`
+                  : `${DAYS.find(d => d.key === cls.dayOfWeek)?.label ?? cls.dayOfWeek}\n${spanLabel(cls.startTime, cls.endTime)}`
+                put(0, cell(when, { backgroundColor: rgb(CLASS_SUB_BG), textFormat: { bold: true, fontSize: 8 } }))
+                if (cls.patients.length > 1) {
+                  merges.push({ startRowIndex: top + r, endRowIndex: top + r + cls.patients.length, startColumnIndex: base, endColumnIndex: base + 1 })
+                }
+              }
+              put(1, cell(cls.patients[idx], { textFormat: { fontSize: 9 } }))
+              for (let c = 2; c <= k; c++) put(c, cell('', { backgroundColor: rgb(OFF_BG) }))
+              return
+            }
+            idx -= cls.patients.length
+          }
+          // Shorter than the tallest block in the band: nothing to show.
+          for (let c = 0; c <= k; c++) put(c, cell('', { backgroundColor: rgb(OFF_BG) }))
         })
         rows.push({ values })
       }
