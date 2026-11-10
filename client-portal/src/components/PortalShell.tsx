@@ -238,7 +238,7 @@ export default function PortalShell<K extends string>({
 
       {/* Desktop: persistent sidebar. */}
       <aside
-        className="hidden md:flex flex-col fixed top-0 left-0 h-screen w-[240px] z-30"
+        className="hidden md:flex flex-col fixed top-0 left-0 h-screen w-[240px] z-30 antialiased"
         style={{ background: SIDEBAR_BG }}
       >
         {sidebarInner}
@@ -249,7 +249,7 @@ export default function PortalShell<K extends string>({
         <div className="md:hidden fixed inset-0 z-50">
           <div className="absolute inset-0 bg-black/50" onClick={() => setMobileOpen(false)} />
           <aside
-            className="absolute top-0 left-0 h-full w-[264px] max-w-[85vw] shadow-xl"
+            className="absolute top-0 left-0 h-full w-[264px] max-w-[85vw] shadow-xl antialiased"
             style={{ background: SIDEBAR_BG }}
           >
             {sidebarInner}

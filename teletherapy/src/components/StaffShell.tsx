@@ -146,7 +146,7 @@ export default function StaffShell({ children }: { children: React.ReactNode }) 
 
       {/* Sidebar — off-canvas below lg, always visible on lg+ */}
       <aside
-        className={`fixed lg:static inset-y-0 left-0 z-40 w-[248px] flex-shrink-0 flex flex-col transition-transform duration-300 lg:translate-x-0 ${
+        className={`fixed lg:static inset-y-0 left-0 z-40 w-[248px] flex-shrink-0 flex flex-col antialiased transition-transform duration-300 lg:translate-x-0 ${
           sidebarOpen ? 'translate-x-0' : '-translate-x-full'
         }`}
         // Shared SCEI sidebar: the Class Portal's dark teal with mint accents.
