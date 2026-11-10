@@ -426,7 +426,7 @@ export default function AuthSidebar() {
       {/* Desktop: persistent sidebar. Height fills viewport, fixed so
           long content on the right scrolls independently. */}
       <aside
-        className="hidden md:flex flex-col fixed top-0 left-0 h-screen w-[240px] z-30"
+        className="hidden md:flex flex-col fixed top-0 left-0 h-screen w-[240px] z-30 antialiased"
         style={{ background: 'var(--near-black)' }}
       >
         {sidebarInner}
@@ -440,7 +440,7 @@ export default function AuthSidebar() {
             onClick={() => setMobileOpen(false)}
           />
           <aside
-            className="absolute top-0 left-0 h-full w-[264px] max-w-[85vw] shadow-xl"
+            className="absolute top-0 left-0 h-full w-[264px] max-w-[85vw] shadow-xl antialiased"
             style={{ background: 'var(--near-black)' }}
           >
             {sidebarInner}
