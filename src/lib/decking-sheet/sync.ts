@@ -696,7 +696,12 @@ async function pushOpenSlots(
     // The header block, cleared whole so a previous layout cannot leave a
     // stray line standing — the East tab carried two "FIND AN OPEN SLOT"
     // headings, one from this layout and one from the last.
-    { updateCells: { range: { sheetId, startRowIndex: 0, endRowIndex: 8, startColumnIndex: 0, endColumnIndex: 6 }, fields: 'userEnteredValue,userEnteredFormat' } },
+    { updateCells: { range: { sheetId, startRowIndex: 0, endRowIndex: 8, startColumnIndex: 0, endColumnIndex: 6 }, fields: 'userEnteredValue,userEnteredFormat,note' } },
+    // Its merges too. East was still merged the way the hand-built tab had it
+    // and Greenhills was not merged at all, so the same search box was wide on
+    // one branch and one narrow cell on the other. Cleared here and re-made
+    // below, identically, on both.
+    { unmergeCells: { range: { sheetId, startRowIndex: 0, endRowIndex: 8, startColumnIndex: 0, endColumnIndex: 6 } } },
     // Everything from row 9 down is the FILTER's to spill into.
     { updateCells: { range: { sheetId, startRowIndex: 8, endRowIndex: Math.max(dataRows.length + 60, 300), startColumnIndex: 0, endColumnIndex: 6 }, fields: 'userEnteredValue,userEnteredFormat' } },
     put(0, 0, plain(`OPEN SLOTS — ${branchLabel}`, { textFormat: { bold: true, fontSize: 14, foregroundColor: rgb('#1F3A5F') } })),
@@ -706,16 +711,47 @@ async function pushOpenSlots(
     put(2, 0, plain('Built from the Decking module every few minutes — book in the Hub or on the department tab, and this follows.',
       { textFormat: { fontSize: 9, italic: true, foregroundColor: rgb('#8A8F98') } })),
     put(4, 0, plain('FIND AN OPEN SLOT', { textFormat: { bold: true, fontSize: 10, foregroundColor: rgb('#1F3A5F') } })),
-    put(5, 0, plain('🔍', { horizontalAlignment: 'CENTER' })),
+    // The box, and a label that points AT it. Front desk could not tell which
+    // cell to type in: the prompt sat in the cell beside the box and read as
+    // its contents, and one branch had the box merged while the other did not,
+    // so the two tabs did not even look alike.
+    put(5, 0, plain('🔍  TYPE HERE →', {
+      horizontalAlignment: 'RIGHT',
+      textFormat: { bold: true, fontSize: 10, foregroundColor: rgb('#1F3A5F') },
+    })),
     // Put back only a real search term; a prompt left by an older layout is
     // dropped, which is what unsticks a tab that was filtering on its own
     // instructions.
-    put(5, 1, plain(keepSearch, { backgroundColor: rgb('#FFFDF5'), textFormat: { fontSize: 11 } })),
-    put(5, 2, plain('Type a department, a day, a time or a clinician — leave it empty to see everything',
+    put(5, 1, {
+      userEnteredValue: keepSearch ? { stringValue: keepSearch } : {},
+      userEnteredFormat: {
+        backgroundColor: rgb('#FFFFFF'),
+        horizontalAlignment: 'LEFT', verticalAlignment: 'MIDDLE',
+        textFormat: { fontFamily: 'Roboto', fontSize: 12, bold: true, foregroundColor: rgb('#1F3A5F') },
+        borders: {
+          top: { style: 'SOLID_MEDIUM', color: rgb('#1F3A5F') },
+          bottom: { style: 'SOLID_MEDIUM', color: rgb('#1F3A5F') },
+          left: { style: 'SOLID_MEDIUM', color: rgb('#1F3A5F') },
+          right: { style: 'SOLID_MEDIUM', color: rgb('#1F3A5F') },
+        },
+      },
+      note: 'Type here to narrow the list below.\n\nA department (OT, PT, SLP, SPED), a day (Monday), a time (2 PM) or a clinician\u2019s name. Clear it to see every open hour again.',
+    }),
+    // Under the box, not beside it — beside it, the instruction looked like
+    // something already typed into the search.
+    put(6, 0, plain('Type a department, a day, a time or a clinician into the box above — leave it empty to see every open hour.',
       { textFormat: { fontSize: 9, italic: true, foregroundColor: rgb('#8A8F98') } })),
     // Six headers for six filtered columns; the fifth is the search key and
     // is hidden, because FILTER cannot skip a column in the middle of a range.
     ...['DAY', 'TIME', 'DEPARTMENT', 'CLINICIAN', '', 'SEATS'].map((h, i) => put(7, i, head(h))),
+    // The box spans three columns so it is wide enough to read as a field,
+    // and the long lines span the width so they are not cut off by column A.
+    ...[0, 1, 2, 4, 6].map(r => ({ mergeCells: {
+      range: { sheetId, startRowIndex: r, endRowIndex: r + 1, startColumnIndex: 0, endColumnIndex: 6 },
+      mergeType: 'MERGE_ALL' as const,
+    } })),
+    { mergeCells: { range: { sheetId, startRowIndex: 5, endRowIndex: 6, startColumnIndex: 1, endColumnIndex: 4 }, mergeType: 'MERGE_ALL' } },
+    { updateDimensionProperties: { range: { sheetId, dimension: 'ROWS', startIndex: 5, endIndex: 6 }, properties: { pixelSize: 30 }, fields: 'pixelSize' } },
     put(8, 0, formula(
       `=IFERROR(FILTER('${OPEN_DATA_TAB}'!A2:F, ('${OPEN_DATA_TAB}'!A2:A<>"")`
       + `*((($B$6="")+ISNUMBER(SEARCH($B$6,'${OPEN_DATA_TAB}'!E2:E)))>0)), "No open slot matches that.")`,
