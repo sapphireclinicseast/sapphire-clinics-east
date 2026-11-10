@@ -46,8 +46,14 @@ interface CaseEntry {
   reason: string | null
   patient: { id: string; firstName: string; lastName: string }
 }
+/** How a config says its day divides — count, length, break and all. */
+const shapeOfConfig = (c: { slotsPerDay?: number | null; slotMinutes?: number | null; breakStart?: string | null; breakMinutes?: number | null }) => ({
+  slotsPerDay: c.slotsPerDay, slotMinutes: c.slotMinutes,
+  breakStart: c.breakStart, breakMinutes: c.breakMinutes,
+})
+
 interface SlotCapacity { staffId: string; dayOfWeek: string; startTime: string; date: string | null; capacity: number }
-interface TherapistConfig { id: string; staffId: string; workDays: string[]; startTime: string; endTime: string; useDefault: boolean; branch: string; department: string; deliveryMode?: string | null; slotsPerDay?: number | null }
+interface TherapistConfig { id: string; staffId: string; workDays: string[]; startTime: string; endTime: string; useDefault: boolean; branch: string; department: string; deliveryMode?: string | null; slotsPerDay?: number | null; slotMinutes?: number | null; breakStart?: string | null; breakMinutes?: number | null }
 interface DeckingSlot { id: string; staffId: string; patientId: string | null; patient: Patient | null; dayOfWeek: string; startTime: string; endTime: string; branch: string; department: string; notes: string | null; disabled: boolean; paymentType?: string; isClass?: boolean; deliveryMode?: string | null; supervisorId?: string | null; date?: string | null }
 
 // Cell colouring, the way front desk reads their spreadsheet: what needs
@@ -711,7 +717,7 @@ function TherapistRow({ staff, activeBranch, sectionMode, config, slots, default
   config: TherapistConfig | undefined
   slots: DeckingSlot[]
   defaultHours: { startTime: string; endTime: string }
-  onSaveConfig: (staffId: string, data: { workDays: string[]; startTime: string; endTime: string; useDefault: boolean; branch: string; department: string; deliveryMode?: string | null; slotsPerDay?: number | null }) => Promise<void>
+  onSaveConfig: (staffId: string, data: { workDays: string[]; startTime: string; endTime: string; useDefault: boolean; branch: string; department: string; deliveryMode?: string | null; slotsPerDay?: number | null; slotMinutes?: number | null; breakStart?: string | null; breakMinutes?: number | null }) => Promise<void>
   /** Drop this service's own days so it follows the general schedule again. */
   onClearServiceConfig: (staffId: string, branch: string, deliveryMode: string) => Promise<void>
   onSaveSlot: (data: { staffId: string; patientId: string | null; dayOfWeek: string; startTime: string; endTime: string; branch: string; department: string; notes: string | null; disabled?: boolean; isClass?: boolean; deliveryMode?: string | null }) => Promise<void>
@@ -738,6 +744,11 @@ function TherapistRow({ staff, activeBranch, sectionMode, config, slots, default
   // Empty string = the hourly default. Held as a string so the field can be
   // cleared without snapping back to a number while it is being retyped.
   const [slotCount, setSlotCount] = useState(config?.slotsPerDay ? String(config.slotsPerDay) : '')
+  // The other way of saying a day: a LENGTH per patient, and a break.
+  // "Two hours each, and an hour for lunch" cannot be said as a count.
+  const [slotLen, setSlotLen] = useState(config?.slotMinutes ? String(config.slotMinutes) : '')
+  const [breakAt, setBreakAt] = useState(config?.breakStart ?? '')
+  const [breakLen, setBreakLen] = useState(config?.breakMinutes ? String(config.breakMinutes) : '')
   const [saving, setSaving] = useState(false)
   // Which cell currently has the patient-search input open (for adding a new patient)
   const [addingCell, setAddingCell] = useState<{ dayOfWeek: string; startTime: string } | null>(null)
@@ -807,6 +818,9 @@ function TherapistRow({ staff, activeBranch, sectionMode, config, slots, default
       branch: activeBranch, department: staff.department,
       deliveryMode: sectionMode,
       slotsPerDay: slotCount.trim() ? Number(slotCount) : null,
+      slotMinutes: slotLen.trim() ? Number(slotLen) : null,
+      breakStart: breakLen.trim() && breakAt ? breakAt : null,
+      breakMinutes: breakLen.trim() && breakAt ? Number(breakLen) : null,
     })
     setSaving(false)
     if (workDays.length > 0) setConfigOpen(false)
@@ -865,9 +879,15 @@ function TherapistRow({ staff, activeBranch, sectionMode, config, slots, default
     capacity.get(`${staff.id}|${day}|${time}`) ?? 1,
     getSlotsForCell(day, time).length,
   ))
-  const daySlotList = config ? daySlots(config.startTime, config.endTime, config.slotsPerDay) : []
+  const daySlotList = config ? daySlots(config.startTime, config.endTime, {
+    slotsPerDay: config.slotsPerDay, slotMinutes: config.slotMinutes,
+    breakStart: config.breakStart, breakMinutes: config.breakMinutes,
+  }) : []
   const timeSlots = daySlotList.map(s => s.startTime)
-  const customLength = isCustomLength(config?.slotsPerDay)
+  const customLength = isCustomLength(config ? {
+    slotsPerDay: config.slotsPerDay, slotMinutes: config.slotMinutes,
+    breakStart: config.breakStart, breakMinutes: config.breakMinutes,
+  } : null)
   const endOfSlot = new Map(daySlotList.map(s => [s.startTime, s.endTime]))
 
   // Returns ALL patients assigned to this time slot (up to 3)
@@ -1334,10 +1354,71 @@ function TherapistRow({ staff, activeBranch, sectionMode, config, slots, default
                   style={{ color: tooMany ? '#B91C1C' : 'var(--mid-gray)' }}>
                   {tooMany
                     ? 'That is more patients than there are minutes in the window — lengthen the hours or lower the count.'
-                    : wantCount
-                      ? `${formatTime(startTime)} – ${formatTime(endTime)} split ${perDay} ways — ${eachMins} minutes each.`
-                      : 'Leave blank for one patient per hour. Set a number and the working hours are divided backwards into that many equal slots.'}
+                    : slotLen.trim()
+                      ? 'Ignored while a length per patient is set below.'
+                      : wantCount
+                        ? `${formatTime(startTime)} – ${formatTime(endTime)} split ${perDay} ways — ${eachMins} minutes each.`
+                        : 'Leave blank for one patient per hour. Set a number and the working hours are divided backwards into that many equal slots.'}
                 </p>
+
+                {/* ── Or: a length, and a break ──────────────────────────────
+                    Front desk are told a count; a doctor is told a length.
+                    "Two hours each, and an hour for lunch" is unsayable as a
+                    count — Dr Colet's 9:30–4:30 split four ways is 1h45 each
+                    and lands her consults at 11:15 and 2:45, which is not her
+                    day and puts the break in the wrong place. */}
+                <div className="mt-3 flex flex-wrap items-end gap-3">
+                  <div>
+                    <label htmlFor={`len-${staff.id}`} className="block text-[11px] font-semibold uppercase tracking-wide mb-1" style={{ color: 'var(--mid-gray)' }}>
+                      Or minutes each
+                    </label>
+                    <input id={`len-${staff.id}`} type="number" min={5} max={720} step={5} inputMode="numeric"
+                      value={slotLen} placeholder="e.g. 120"
+                      onChange={e => setSlotLen(e.target.value.replace(/[^0-9]/g, '').slice(0, 3))}
+                      className={CONTROL} style={{ ...CONTROL_STYLE, width: '7rem' }} />
+                  </div>
+                  <div>
+                    <label htmlFor={`brk-${staff.id}`} className="block text-[11px] font-semibold uppercase tracking-wide mb-1" style={{ color: 'var(--mid-gray)' }}>
+                      Break at
+                    </label>
+                    <input id={`brk-${staff.id}`} type="time" step={300}
+                      value={breakAt} onChange={e => setBreakAt(e.target.value)}
+                      className={CONTROL} style={{ ...CONTROL_STYLE, width: '8rem' }} />
+                  </div>
+                  <div>
+                    <label htmlFor={`brklen-${staff.id}`} className="block text-[11px] font-semibold uppercase tracking-wide mb-1" style={{ color: 'var(--mid-gray)' }}>
+                      For (minutes)
+                    </label>
+                    <input id={`brklen-${staff.id}`} type="number" min={5} max={480} step={5} inputMode="numeric"
+                      value={breakLen} placeholder="e.g. 60"
+                      onChange={e => setBreakLen(e.target.value.replace(/[^0-9]/g, '').slice(0, 3))}
+                      className={CONTROL} style={{ ...CONTROL_STYLE, width: '7rem' }} />
+                  </div>
+                  {(slotLen.trim() || breakLen.trim()) && (
+                    <button type="button" onClick={() => { setSlotLen(''); setBreakAt(''); setBreakLen('') }}
+                      className="text-[11px] underline mb-2" style={{ color: 'var(--mid-gray)' }}>
+                      Clear
+                    </button>
+                  )}
+                </div>
+                {/* The day as it will actually be drawn, before it is saved —
+                    a break in the wrong place is obvious here and invisible in
+                    a pair of numbers. */}
+                {(slotLen.trim() || (breakAt && breakLen.trim())) && (() => {
+                  const preview = daySlots(startTime, endTime, {
+                    slotsPerDay: slotCount.trim() ? Number(slotCount) : null,
+                    slotMinutes: slotLen.trim() ? Number(slotLen) : null,
+                    breakStart: breakLen.trim() && breakAt ? breakAt : null,
+                    breakMinutes: breakLen.trim() && breakAt ? Number(breakLen) : null,
+                  })
+                  return (
+                    <p className="mt-1.5 text-[11px]" style={{ color: preview.length ? 'var(--mid-gray)' : '#B91C1C' }}>
+                      {preview.length
+                        ? <>Her day: {preview.map(sl => `${formatTime(sl.startTime)}–${formatTime(sl.endTime)}`).join('  ·  ')}</>
+                        : 'Nothing fits — the length is longer than the working window.'}
+                    </p>
+                  )
+                })()}
               </div>
             </div>
           </div>
@@ -2814,7 +2895,7 @@ export default function DeckingClient({ role }: { role: string }) {
       // Rows the grid draws, which is the hour count only when this consultant
       // is on the hourly default. A doctor seeing 5 in a 4.5-hour window offers
       // 5 slots, not 4.
-      const hours = daySlots(cfg.startTime, cfg.endTime, cfg.slotsPerDay).length
+      const hours = daySlots(cfg.startTime, cfg.endTime, shapeOfConfig(cfg)).length
       for (const d of ((cfg.workDays as string[]) ?? [])) {
         cap[st.department] ??= {}
         cap[st.department][d] = (cap[st.department][d] ?? 0) + hours
@@ -2857,7 +2938,7 @@ export default function DeckingClient({ role }: { role: string }) {
       const offered = new Set<string>()
       for (const c of cfgsByStaff.get(st.id) ?? []) {
         for (const d of ((c.workDays as string[]) ?? [])) {
-          for (const h of dayStarts(c.startTime, c.endTime, c.slotsPerDay)) offered.add(`${d}|${h}`)
+          for (const h of dayStarts(c.startTime, c.endTime, shapeOfConfig(c))) offered.add(`${d}|${h}`)
         }
       }
       const cells = new Map<string, { disabled: boolean; taken: boolean }>()
@@ -2921,7 +3002,7 @@ export default function DeckingClient({ role }: { role: string }) {
       // consultant's patient count. Reading whole hours here while the grid drew
       // five 54-minute rows is how the header ends up disagreeing with the board
       // directly beneath it.
-      const hours = dayStarts(cfg.startTime, cfg.endTime, cfg.slotsPerDay)
+      const hours = dayStarts(cfg.startTime, cfg.endTime, shapeOfConfig(cfg))
       const days = (cfg.workDays as string[]) ?? []
 
       const byCell = new Map<string, DeckingSlot[]>()
@@ -3058,7 +3139,7 @@ export default function DeckingClient({ role }: { role: string }) {
     setCaseload(list => list.filter(c => c.id !== id))
   }
 
-  async function handleSaveConfig(staffId: string, data: { workDays: string[]; startTime: string; endTime: string; useDefault: boolean; branch: string; department: string; deliveryMode?: string | null; slotsPerDay?: number | null }) {
+  async function handleSaveConfig(staffId: string, data: { workDays: string[]; startTime: string; endTime: string; useDefault: boolean; branch: string; department: string; deliveryMode?: string | null; slotsPerDay?: number | null; slotMinutes?: number | null; breakStart?: string | null; breakMinutes?: number | null }) {
     await fetch('/api/decking/therapists', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

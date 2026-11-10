@@ -9,7 +9,7 @@
 // payment beneath it, N/A for an hour nobody may be booked into. What differs
 // is that each value gets its own cell, so each can be validated.
 
-import { daySlots, isCustomLength } from '@/lib/decking-slots'
+import { daySlots, isCustomLength, type DayShape } from '@/lib/decking-slots'
 
 export const ROWS_PER_HOUR = 3        // name, payment, remark
 /**
@@ -105,6 +105,11 @@ export interface SheetStaff {
   endTime: string
   /** Patients a day, when the day is not one slot per whole hour. */
   slotsPerDay?: number | null
+  /** Minutes per patient, when the day is told as a length instead. */
+  slotMinutes?: number | null
+  /** One break, stepped over: no slot straddles it. */
+  breakStart?: string | null
+  breakMinutes?: number | null
   /**
    * Hours for ONE named day, where that day's hours are not the block's.
    *
@@ -347,6 +352,12 @@ export function remarkFor(occupants: SheetSlot[], blocked: SheetSlot | undefined
     .join('  ·  ')
 }
 
+/** How this consultant's day divides — count, length, break and all. */
+const shapeOf = (s: SheetStaff): DayShape => ({
+  slotsPerDay: s.slotsPerDay, slotMinutes: s.slotMinutes,
+  breakStart: s.breakStart, breakMinutes: s.breakMinutes,
+})
+
 export function buildGrid(
   { staff, slots, dated = [], classes = [], cases = [], capacity = new Map() }:
     {
@@ -361,7 +372,7 @@ export function buildGrid(
   // gives the clinic 1:00–1:40 for two patients has no whole hour at all, and
   // the hour test dropped them from the sheet entirely.
   const live = staff.filter(s =>
-    (s.workDays ?? []).length > 0 && daySlots(s.startTime, s.endTime, s.slotsPerDay).length > 0)
+    (s.workDays ?? []).length > 0 && daySlots(s.startTime, s.endTime, shapeOf(s)).length > 0)
   if (live.length === 0) return null
 
   // A cell can hold up to three patients, so this maps to an ARRAY. Keyed to a
@@ -399,8 +410,8 @@ export function buildGrid(
   // patient COUNT cannot sit on it: their rows start at 1:54 and 2:48 and line
   // up with nobody. Those consultants are split out below and given a band of
   // their own, labelled by span. Everyone else keeps the aligned axis.
-  const hourly = live.filter(s => !isCustomLength(s.slotsPerDay))
-  const custom = live.filter(s => isCustomLength(s.slotsPerDay))
+  const hourly = live.filter(s => !isCustomLength(shapeOf(s)))
+  const custom = live.filter(s => isCustomLength(shapeOf(s)))
 
   const axisOf = (list: SheetStaff[]): AxisSlot[] => {
     const from = Math.min(...list.map(s => parseInt(s.startTime.slice(0, 2), 10)))
@@ -435,7 +446,7 @@ export function buildGrid(
     own: new Map(st.workDays.map(d => {
       const h = st.dayHours?.[d]
       return [d, new Set(
-        daySlots(h?.startTime ?? st.startTime, h?.endTime ?? st.endTime, st.slotsPerDay).map(x => x.startTime),
+        daySlots(h?.startTime ?? st.startTime, h?.endTime ?? st.endTime, { ...shapeOf(st) }).map(x => x.startTime),
       )] as const
     })),
   })
@@ -446,7 +457,7 @@ export function buildGrid(
     bands.push({ members: hourly.slice(b, b + perBand).map(st => blockOf(st, SHARED)), axis: SHARED })
   }
   for (const st of custom) {
-    const axis: AxisSlot[] = daySlots(st.startTime, st.endTime, st.slotsPerDay)
+    const axis: AxisSlot[] = daySlots(st.startTime, st.endTime, shapeOf(st))
       .map(x => ({ ...x, label: spanLabel(x.startTime, x.endTime) }))
     bands.push({ members: [blockOf(st, axis)], axis })
   }

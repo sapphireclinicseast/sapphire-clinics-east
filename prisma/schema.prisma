@@ -814,6 +814,17 @@ model DeckingTherapistConfig {
   /// COUNT ("Dr Lim sees 5 on a Wednesday"), never a slot length, so the count
   /// is what gets stored and the length is derived.
   slotsPerDay  Int?
+  /// Minutes per patient, when the doctor is told a LENGTH rather than a count.
+  ///
+  /// "Two hours each, and an hour for lunch" cannot be said as a count: Dr
+  /// Colet's 9:30–16:30 split four ways is 1h45 a patient and lands her
+  /// consults at 11:15 and 14:45, which is not her day. Set, this wins over
+  /// slotsPerDay and the window is walked forwards in steps of this length.
+  slotMinutes  Int?
+  /// "11:30" — when the day breaks, and for how long. The break is stepped
+  /// over: no slot straddles it, and the day resumes on the far side.
+  breakStart   String?
+  breakMinutes Int?
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
