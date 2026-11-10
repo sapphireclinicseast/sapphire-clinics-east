@@ -99,7 +99,11 @@ interface ScheduleRow {
  * own days, which is the behaviour it was added for; it just no longer erases
  * the days it says nothing about.
  */
-export function mergeSchedules<T extends ScheduleRow>(configs: T[]) {
+export function mergeSchedules<T extends ScheduleRow>(
+  configs: T[],
+  /** Days each consultant actually holds a booking on. */
+  bookedDays: Map<string, Set<string>> = new Map(),
+) {
   const dayCount = (c: ScheduleRow) => ((c.workDays as string[]) ?? []).length
   const byStaff = new Map<string, T[]>()
   for (const c of configs) byStaff.set(c.staffId, [...(byStaff.get(c.staffId) ?? []), c])
@@ -127,13 +131,39 @@ export function mergeSchedules<T extends ScheduleRow>(configs: T[]) {
     }
 
     const real = rows.filter(c => dayCount(c) > 0)
+    const service = real.filter(c => c.deliveryMode !== null)
+
+    // ── Which days the board draws ────────────────────────────────────────
+    //
+    // The service rows, where the consultant has any — they are what front
+    // desk edit from the board, and they are the current answer. The general
+    // row is the fallback for a consultant who has never had one split out.
+    //
+    // Pooling the two instead drew days nobody works: Jerome Falsis has an
+    // on-site row of Saturday and a general row from July still listing Friday
+    // and Saturday, so the sheet offered a Friday column with seven empty
+    // hours in it while the hub showed Saturday alone.
+    //
+    // Plus any day he actually HOLDS a booking on, whatever the rows say. That
+    // is the part that must never be dropped: a booked hour with no column to
+    // appear in is a session that exists in the hub and nowhere front desk can
+    // see it, which is how Abarca's four Sundays went missing.
+    const declared = service.length ? service : real
+    const days = new Set([
+      ...declared.flatMap(c => (c.workDays as string[]) ?? []),
+      ...(bookedDays.get(staffId) ?? []),
+    ])
+
     const dayHours: Record<string, { startTime: string; endTime: string }> = {}
-    for (const day of new Set(real.flatMap(c => (c.workDays as string[]) ?? []))) {
+    for (const day of days) {
       const covering = real.filter(c => ((c.workDays as string[]) ?? []).includes(day))
       // A service row governs the days it names. Only where no service row
-      // mentions the day does the general schedule decide it.
-      const service = covering.filter(c => c.deliveryMode !== null)
-      const deciding = service.length ? service : covering
+      // mentions the day does the general schedule decide it — and a day that
+      // appears only because something is booked on it takes the widest hours
+      // the consultant keeps, so the booking lands inside them.
+      const serviceCovering = covering.filter(c => c.deliveryMode !== null)
+      const deciding = serviceCovering.length ? serviceCovering : covering.length ? covering : real
+      if (!deciding.length) continue
       dayHours[day] = {
         startTime: deciding.map(c => c.startTime).sort()[0],
         endTime: deciding.map(c => c.endTime).sort().slice(-1)[0],
@@ -233,8 +263,16 @@ async function loadDepartment(branch: string, department: string) {
     }),
   ])
 
+  // Days somebody is actually booked on, so a schedule that has moved on
+  // cannot take a booked hour off the board.
+  const bookedDays = new Map<string, Set<string>>()
+  for (const sl of slots) {
+    if (sl.date || !sl.patientId) continue
+    bookedDays.set(sl.staffId, new Set([...(bookedDays.get(sl.staffId) ?? []), sl.dayOfWeek]))
+  }
+
   // Every day the consultant gives this department, each on its own hours.
-  const staff: SheetStaff[] = [...mergeSchedules(configs).values()].map(m => ({
+  const staff: SheetStaff[] = [...mergeSchedules(configs, bookedDays).values()].map(m => ({
     id: m.primary.staffId,
     firstName: m.primary.staff.firstName,
     lastName: m.primary.staff.lastName,
@@ -357,10 +395,9 @@ async function loadInterns(branch: string, department: string) {
   const configs = all.filter(c => internWindowCovers(c.staff.dateHired, c.staff.contractExpiry))
   if (configs.length === 0) return null
 
-  // Same rule as loadDepartment: every day they give us, each on its own hours.
-  const chosen = mergeSchedules(configs)
-
-  const ids = [...chosen.keys()]
+  // Loaded before the merge: which days an intern is booked on decides which
+  // days the board draws, so the slots have to be in hand first.
+  const ids = [...new Set(configs.map(c => c.staffId))]
   const slots = await prisma.deckingSlot.findMany({
     where: { branch, department, isClass: false, staffId: { in: ids } },
     select: {
@@ -370,6 +407,15 @@ async function loadInterns(branch: string, department: string) {
       patientBookings: { where: { paidAt: { not: null } }, select: { downpayment: true }, take: 1 },
     },
   })
+
+  const internBookedDays = new Map<string, Set<string>>()
+  for (const sl of slots) {
+    if (sl.date || !sl.patientId) continue
+    internBookedDays.set(sl.staffId, new Set([...(internBookedDays.get(sl.staffId) ?? []), sl.dayOfWeek]))
+  }
+  // Same rule as loadDepartment: the service rows where there are any, the
+  // general row otherwise, plus every day something is actually booked on.
+  const chosen = mergeSchedules(configs, internBookedDays)
 
   // Whoever is named on their hours. One supervisor per intern in practice;
   // if several, the board shows the one most of their hours point at.
