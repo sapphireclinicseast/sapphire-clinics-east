@@ -633,7 +633,25 @@ async function pushOpenSlots(
     userEnteredFormat: { textFormat: { fontFamily: 'Roboto', ...(fmt.textFormat as object ?? {}) }, ...fmt },
   })
 
-  // Written cell by cell, deliberately: row 5 column B is the search box and
+  // ── The search box, and the wreckage of older layouts ───────────────────
+  //
+  // B6 is the box front desk type in, so it is never written — except that an
+  // EARLIER layout put its prompt text there, and this one reads it as a
+  // search term. The East tab therefore came back "No open slot matches
+  // that." against 183 open hours, because it was searching for the words
+  // "Search a department, a day or a clinician".
+  //
+  // So the whole header block is cleared and rewritten, and whatever was in
+  // the box is put back only when it is a real search rather than one of the
+  // prompts a previous version left behind. Self-healing once, harmless after.
+  const LEGACY_PROMPTS = ['search a department', 'type a department']
+  const typed = await api.spreadsheets.values
+    .get({ spreadsheetId, range: `'${OPEN_TAB}'!B6` })
+    .then(r => String(r.data.values?.[0]?.[0] ?? '').trim())
+    .catch(() => '')
+  const keepSearch = typed && !LEGACY_PROMPTS.some(p => typed.toLowerCase().startsWith(p)) ? typed : ''
+
+  // Written cell by cell, deliberately: row 6 column B is the search box and
   // belongs to whoever is typing in it.
   const put = (row: number, col: number, cell: object) => ({ updateCells: {
     rows: [{ values: [cell] }], fields: 'userEnteredValue,userEnteredFormat',
@@ -641,6 +659,10 @@ async function pushOpenSlots(
   } })
 
   await api.spreadsheets.batchUpdate({ spreadsheetId, requestBody: { requests: [
+    // The header block, cleared whole so a previous layout cannot leave a
+    // stray line standing — the East tab carried two "FIND AN OPEN SLOT"
+    // headings, one from this layout and one from the last.
+    { updateCells: { range: { sheetId, startRowIndex: 0, endRowIndex: 8, startColumnIndex: 0, endColumnIndex: 6 }, fields: 'userEnteredValue,userEnteredFormat' } },
     // Everything from row 9 down is the FILTER's to spill into.
     { updateCells: { range: { sheetId, startRowIndex: 8, endRowIndex: Math.max(dataRows.length + 60, 300), startColumnIndex: 0, endColumnIndex: 6 }, fields: 'userEnteredValue,userEnteredFormat' } },
     put(0, 0, plain(`OPEN SLOTS — ${branchLabel}`, { textFormat: { bold: true, fontSize: 14, foregroundColor: rgb('#1F3A5F') } })),
@@ -651,6 +673,10 @@ async function pushOpenSlots(
       { textFormat: { fontSize: 9, italic: true, foregroundColor: rgb('#8A8F98') } })),
     put(4, 0, plain('FIND AN OPEN SLOT', { textFormat: { bold: true, fontSize: 10, foregroundColor: rgb('#1F3A5F') } })),
     put(5, 0, plain('🔍', { horizontalAlignment: 'CENTER' })),
+    // Put back only a real search term; a prompt left by an older layout is
+    // dropped, which is what unsticks a tab that was filtering on its own
+    // instructions.
+    put(5, 1, plain(keepSearch, { backgroundColor: rgb('#FFFDF5'), textFormat: { fontSize: 11 } })),
     put(5, 2, plain('Type a department, a day, a time or a clinician — leave it empty to see everything',
       { textFormat: { fontSize: 9, italic: true, foregroundColor: rgb('#8A8F98') } })),
     // Six headers for six filtered columns; the fifth is the search key and
