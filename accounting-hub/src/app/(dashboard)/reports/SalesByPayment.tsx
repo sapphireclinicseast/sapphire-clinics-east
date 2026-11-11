@@ -6,6 +6,7 @@
 // pesos and as a % of total sales, with cards on top for the overall mix.
 // Totals tie to the Income Statement; see /api/reports/sales-by-payment.
 import { useEffect, useState } from 'react'
+import PaymentMixChart from './PaymentMixChart'
 import { Loader2 } from 'lucide-react'
 import { formatCurrency } from '@/lib/utils'
 
@@ -22,13 +23,20 @@ export type SbpPayload = {
 }
 
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
-type Col = 'cash' | 'gl' | 'hmo' | 'other'
-const COLS: { key: Col; label: string; color: string; bg: string }[] = [
-  { key: 'cash', label: 'Cash', color: '#166534', bg: '#ecfdf5' },
-  { key: 'gl', label: 'GL', color: '#1e40af', bg: '#eff6ff' },
-  { key: 'hmo', label: 'HMO', color: '#9a3412', bg: '#fff7ed' },
-  { key: 'other', label: 'Not from POS', color: '#475569', bg: '#f8fafc' },
+export type Col = 'cash' | 'gl' | 'hmo' | 'other'
+// `fill` marks the series (chart segments, mix bars, swatches) — a validated
+// categorical set (dataviz validate_palette: light mode, adjacent order
+// Cash·GL·HMO·Not from POS, all checks pass; Cash is below 3:1 on white, so the
+// legend and the table carry its values). Text never wears these colors.
+export const COLS: { key: Col; label: string; fill: string; bg: string }[] = [
+  { key: 'cash', label: 'Cash', fill: '#1baf7a', bg: '#f0fbf6' },
+  { key: 'gl', label: 'GL', fill: '#2a78d6', bg: '#f1f6fd' },
+  { key: 'hmo', label: 'HMO', fill: '#eb6834', bg: '#fef4ef' },
+  { key: 'other', label: 'Not from POS', fill: '#6250d6', bg: '#f5f4fd' },
 ]
+const Swatch = ({ fill }: { fill: string }) => (
+  <span aria-hidden className="inline-block w-2.5 h-2.5 rounded-sm mr-1.5 align-[-1px]" style={{ background: fill }} />
+)
 
 export default function SalesByPayment({ year, branch, onData }: {
   year: number
@@ -140,8 +148,8 @@ export default function SalesByPayment({ year, branch, onData }: {
       <div className={`grid grid-cols-1 sm:grid-cols-2 ${showOther ? 'lg:grid-cols-4' : 'lg:grid-cols-3'} gap-3`}>
         {cols.map(c => (
           <div key={c.key} className="rounded-xl px-4 py-3" style={{ border: '1px solid var(--light-gray)', background: c.bg }}>
-            <p className="text-[11px] font-bold uppercase tracking-[.4px]" style={{ color: c.color }}>{c.label}</p>
-            <p className="text-2xl font-bold tabular-nums mt-0.5" style={{ color: c.color }}>{pct(T[c.key], T.total)}</p>
+            <p className="text-[11px] font-bold uppercase tracking-[.4px]" style={{ color: 'var(--mid-gray)' }}><Swatch fill={c.fill} />{c.label}</p>
+            <p className="text-2xl font-bold tabular-nums mt-0.5" style={{ color: 'var(--charcoal)' }}>{pct(T[c.key], T.total)}</p>
             <p className="text-xs tabular-nums" style={{ color: 'var(--charcoal)' }}>{formatCurrency(T[c.key])} of {formatCurrency(T.total)}</p>
             {c.key === 'cash' && (
               <p className="text-[11px] mt-1" style={{ color: 'var(--mid-gray)' }}>Cash, cards, GCash/Maya, package, VIP and prepaid card, advance and downpayment</p>
@@ -154,6 +162,14 @@ export default function SalesByPayment({ year, branch, onData }: {
       </div>
 
       {view === 'monthly' && (
+        <PaymentMixChart
+          months={monthRows.map(r => ({ month: r.month, label: MONTHS[r.month - 1].slice(0, 3), cash: r.cash, gl: r.gl, hmo: r.hmo, other: r.other, total: r.total }))}
+          series={cols}
+          title={pickedRow ? `${pickedRow.number} ${pickedRow.title}` : 'All gross sales'}
+        />
+      )}
+
+      {view === 'monthly' && (
         <div className="rounded-lg overflow-x-auto bg-white" style={{ border: '1px solid var(--light-gray)' }}>
           <table className="w-full table-auto">
             <thead>
@@ -162,7 +178,7 @@ export default function SalesByPayment({ year, branch, onData }: {
                   {pickedRow ? `${pickedRow.number} ${pickedRow.title}` : 'All gross sales'}
                 </th>
                 {cols.map(c => (
-                  <th key={c.key} colSpan={2} className="px-2 py-2 text-right text-[11px] font-bold uppercase tracking-[.4px]" style={{ color: c.color }}>{c.label}</th>
+                  <th key={c.key} colSpan={2} className="px-2 py-2 text-right text-[11px] font-bold uppercase tracking-[.4px] whitespace-nowrap" style={{ color: 'var(--mid-gray)' }}><Swatch fill={c.fill} />{c.label}</th>
                 ))}
                 <th className="px-2 py-2 text-right text-[11px] font-bold uppercase tracking-[.4px]" style={{ color: 'var(--mid-gray)', borderLeft: '2px solid #94a3b8' }}>Total</th>
                 <th className="px-3 py-2 text-left text-[11px] font-bold uppercase tracking-[.4px]" style={{ color: 'var(--mid-gray)', minWidth: 140 }}>Mix</th>
@@ -180,9 +196,9 @@ export default function SalesByPayment({ year, branch, onData }: {
                       const v = r[c.key]
                       return [
                         <td key={`${c.key}a`} className={`pl-2 py-1.5 text-right tabular-nums text-xs whitespace-nowrap ${isTotal ? 'font-semibold' : ''}`}
-                          style={{ color: v < 0 ? '#b91c1c' : isTotal ? c.color : 'var(--charcoal)' }}>{Math.abs(v) < 0.5 ? '—' : fmt(v)}</td>,
+                          style={{ color: v < 0 ? '#b91c1c' : isTotal ? '#111827' : 'var(--charcoal)' }}>{Math.abs(v) < 0.5 ? '—' : fmt(v)}</td>,
                         <td key={`${c.key}p`} className={`pr-3 pl-1 py-1.5 text-right tabular-nums text-[11px] whitespace-nowrap ${isTotal ? 'font-semibold' : ''}`}
-                          style={{ color: isTotal ? c.color : 'var(--mid-gray)' }}>{Math.abs(v) < 0.5 ? '' : pct(v, r.total)}</td>,
+                          style={{ color: isTotal ? 'var(--charcoal)' : 'var(--mid-gray)' }}>{Math.abs(v) < 0.5 ? '' : pct(v, r.total)}</td>,
                       ]
                     })}
                     <td className={`pl-2 pr-2 py-1.5 text-right tabular-nums text-xs whitespace-nowrap ${isTotal ? 'font-bold' : 'font-semibold'}`}
@@ -193,7 +209,7 @@ export default function SalesByPayment({ year, branch, onData }: {
                           title={cols.map(c => `${c.label} ${pct(r[c.key], r.total)}`).join(' · ')}>
                           {cols.map(c => {
                             const w = Math.max(0, (r[c.key] / r.total) * 100)
-                            return w > 0 ? <div key={c.key} style={{ width: `${w}%`, background: c.color }} /> : null
+                            return w > 0 ? <div key={c.key} style={{ width: `${w}%`, background: c.fill }} /> : null
                           })}
                         </div>
                       )}
@@ -213,7 +229,7 @@ export default function SalesByPayment({ year, branch, onData }: {
             <tr style={{ background: 'var(--hr-head)' }}>
               <th className="px-2 py-2 text-left text-[11px] font-bold uppercase tracking-[.4px]" style={{ color: 'var(--mid-gray)' }}>Gross Sales</th>
               {cols.map(c => (
-                <th key={c.key} colSpan={2} className="px-2 py-2 text-right text-[11px] font-bold uppercase tracking-[.4px]" style={{ color: c.color }}>{c.label}</th>
+                <th key={c.key} colSpan={2} className="px-2 py-2 text-right text-[11px] font-bold uppercase tracking-[.4px] whitespace-nowrap" style={{ color: 'var(--mid-gray)' }}><Swatch fill={c.fill} />{c.label}</th>
               ))}
               <th colSpan={2} className="px-2 py-2 text-right text-[11px] font-bold uppercase tracking-[.4px]" style={{ color: 'var(--mid-gray)', borderLeft: '2px solid #94a3b8' }}>Total</th>
             </tr>
@@ -238,8 +254,8 @@ export default function SalesByPayment({ year, branch, onData }: {
             <tr style={{ borderTop: '2px solid #94a3b8', background: '#f8fafc' }}>
               <td className="px-2 py-1.5 text-xs font-semibold whitespace-nowrap" style={{ color: 'var(--charcoal)' }}>Total Gross Sales</td>
               {cols.map(c => [
-                <td key={`${c.key}a`} className="pl-2 py-1.5 text-right tabular-nums text-xs font-semibold whitespace-nowrap" style={{ color: c.color }}>{fmt(T[c.key])}</td>,
-                <td key={`${c.key}p`} className="pr-3 pl-1 py-1.5 text-right tabular-nums text-[11px] font-semibold whitespace-nowrap" style={{ color: c.color }}>{pct(T[c.key], T.total)}</td>,
+                <td key={`${c.key}a`} className="pl-2 py-1.5 text-right tabular-nums text-xs font-semibold whitespace-nowrap" style={{ color: '#111827' }}>{fmt(T[c.key])}</td>,
+                <td key={`${c.key}p`} className="pr-3 pl-1 py-1.5 text-right tabular-nums text-[11px] font-semibold whitespace-nowrap" style={{ color: 'var(--charcoal)' }}>{pct(T[c.key], T.total)}</td>,
               ])}
               <td className="pl-2 py-1.5 text-right tabular-nums text-xs font-bold whitespace-nowrap" style={{ color: '#111827', borderLeft: '2px solid #94a3b8' }}>{fmt(T.total)}</td>
               <td className="pr-2 pl-1 py-1.5 text-right tabular-nums text-[11px] font-semibold whitespace-nowrap" style={{ color: 'var(--mid-gray)' }}>100%</td>
