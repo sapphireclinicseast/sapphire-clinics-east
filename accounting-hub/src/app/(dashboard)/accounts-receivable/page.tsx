@@ -698,6 +698,15 @@ export default function AccountsReceivablePage() {
   // view in fixed shapes (doctor-consult sessions only / on a submitted SOA but
   // still unpaid) — all four render through the same block below.
   const [hmoSubTab, setHmoSubTab] = useState<'overview' | 'per-hmo' | 'md-consults' | 'soa-report' | 'submitted-soa' | 'submitted-unpaid' | 'loa' | 'follow-up' | 'revised-amounts' | 'payment-history' | 'directory' | 'unmatched'>(searchParams.get('sub') === 'directory' ? 'directory' : searchParams.get('sub') === 'unmatched' ? 'unmatched' : 'overview')
+  // HMO Overview: the % Settled card's breakdown popover (Hannah 2026-11-11:
+  // keep the card compact, all summary cards in one row, details on click).
+  const [hmoSettledOpen, setHmoSettledOpen] = useState(false)
+  useEffect(() => {
+    if (!hmoSettledOpen) return
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setHmoSettledOpen(false) }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [hmoSettledOpen])
   // useSession resolves after the first render, so the initial tab/sub-tab are
   // picked before the role is known. Snap them back once it arrives — a ?type=
   // link or a stale sub-tab must not park a restricted user on a hidden view.
@@ -2095,89 +2104,109 @@ export default function AccountsReceivablePage() {
         return (
           <div className="rounded-2xl border p-4 space-y-4" style={{ borderColor: 'var(--light-gray)', background: 'white' }}>
             <h2 className="text-base font-bold" style={{ color: 'var(--charcoal)', fontFamily: 'var(--font-display)' }}>HMO Summary</h2>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div className="rounded-xl p-4 border" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
-                <p className="text-xs uppercase tracking-wide font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Total HMO Providers</p>
-                <p className="text-3xl font-bold" style={{ color: 'var(--charcoal)' }}>{totalProviders}</p>
+            <div className={`grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 ${(summary?.directToClinician?.orderCount ?? 0) > 0 ? 'xl:grid-cols-5' : 'xl:grid-cols-4'} gap-3`}>
+              <div className="rounded-xl p-3 border min-w-0" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
+                <p className="text-[11px] uppercase tracking-wide font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Total HMO Providers</p>
+                <p className="text-2xl font-bold" style={{ color: 'var(--charcoal)' }}>{totalProviders}</p>
                 <p className="text-xs mt-1" style={{ color: 'var(--mid-gray)' }}>Active HMO wallets</p>
               </div>
-              <div className="rounded-xl p-4 border" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
-                <p className="text-xs uppercase tracking-wide font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>% Settled vs HMO Orders</p>
-                <p className="text-xl font-bold" style={{ color: '#166534' }}>{pctSettled.toFixed(1)}%</p>
-                <div className="mt-2 flex gap-[2px] rounded-full overflow-hidden h-2" style={{ background: 'var(--light-gray)' }}
-                  role="img" aria-label={`${pctSettled.toFixed(1)}% of HMO billings settled`}>
+              <div className="relative min-w-0">
+                <button type="button" onClick={() => settled && setHmoSettledOpen(o => !o)} aria-expanded={settled ? hmoSettledOpen : undefined}
+                  className="w-full h-full rounded-xl p-3 border text-left" style={{ borderColor: hmoSettledOpen ? 'var(--teal)' : 'var(--light-gray)', background: 'var(--off-white)', cursor: settled ? 'pointer' : 'default' }}
+                  title={settled ? 'Show the breakdown' : undefined}>
+                  <p className="text-[11px] uppercase tracking-wide font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>% Settled vs HMO Orders</p>
+                  <p className="text-lg font-bold" style={{ color: '#166534' }}>{pctSettled.toFixed(1)}%</p>
+                  <div className="mt-1.5 flex gap-[2px] rounded-full overflow-hidden h-2" style={{ background: 'var(--light-gray)' }}
+                    role="img" aria-label={`${pctSettled.toFixed(1)}% of HMO billings settled`}>
+                    {settled ? (
+                      <>
+                        {paidS > 0 && <div style={{ width: `${pctOfBilled(paidS)}%`, background: '#16a34a', height: '100%' }} />}
+                        {sciPaidS > 0 && <div style={{ width: `${pctOfBilled(sciPaidS)}%`, background: '#2a78d6', height: '100%' }} />}
+                        {sciPendingS > 0 && <div style={{ width: `${pctOfBilled(sciPendingS)}%`, background: PENDING_BG, height: '100%' }} />}
+                      </>
+                    ) : <div style={{ width: `${pctSettled}%`, background: '#16a34a', height: '100%' }} />}
+                  </div>
                   {settled ? (
-                    <>
-                      {paidS > 0 && <div style={{ width: `${pctOfBilled(paidS)}%`, background: '#16a34a', height: '100%' }} />}
-                      {sciPaidS > 0 && <div style={{ width: `${pctOfBilled(sciPaidS)}%`, background: '#2a78d6', height: '100%' }} />}
-                      {sciPendingS > 0 && <div style={{ width: `${pctOfBilled(sciPendingS)}%`, background: PENDING_BG, height: '100%' }} />}
-                    </>
-                  ) : <div style={{ width: `${pctSettled}%`, background: '#16a34a', height: '100%' }} />}
-                </div>
-                {settled ? (
-                  <ul className="mt-2 space-y-1 text-xs" style={{ color: 'var(--charcoal)' }}>
-                    <li className="flex items-start gap-1.5">
-                      <span aria-hidden className="mt-1 inline-block w-2 h-2 rounded-sm flex-none" style={{ background: '#16a34a' }} />
-                      <span><span className="font-semibold">{formatCurrency(paidS)}</span> paid by the HMOs · {pctOfBilled(paidS).toFixed(1)}%</span>
-                    </li>
-                    {sciS > 0 && (
-                      <li className="flex items-start gap-1.5"
-                        title={`${settled.sciSessionCount} SCI (BGC) era sessions, ${formatCurrency(sciS)}${sciDeal ? `, settled for ${formatCurrency(sciDeal.totalDue)}${sciDeal.checks ? ` in ${sciDeal.checks} PDCs` : ''}; the other ${formatCurrency(Math.max(0, sciS - sciDeal.totalDue))} went to EWT, tax and clinic share, the BGC payable offset and write-off (Other Customers)` : ''}`}>
-                        <span aria-hidden className="mt-1 inline-block w-2 h-2 rounded-sm flex-none" style={{ background: '#2a78d6' }} />
-                        <span>
-                          <span className="font-semibold">{formatCurrency(sciPaidS)}</span> paid by BGC (SCI settlement) · {pctOfBilled(sciPaidS).toFixed(1)}%
-                          {sciDeal && (
-                            <span className="block text-[11px]" style={{ color: 'var(--mid-gray)' }}>
-                              {sciDeal.checks ? `${sciDeal.checksReceived} of ${sciDeal.checks} PDCs deposited` : 'Deposited'}: {formatCurrency(sciDeal.received)} of {formatCurrency(sciDeal.totalDue)}
-                            </span>
-                          )}
-                        </span>
-                      </li>
-                    )}
-                    {sciPendingS >= 0.5 && (
-                      <li className="flex items-start gap-1.5">
-                        <span aria-hidden className="mt-1 inline-block w-2 h-2 rounded-sm flex-none" style={{ background: PENDING_BG }} />
-                        <span>
-                          <span className="font-semibold">{formatCurrency(sciPendingS)}</span> BGC, PDCs not yet deposited · {pctOfBilled(sciPendingS).toFixed(1)}%
-                          {sciDeal && (
-                            <span className="block text-[11px]" style={{ color: 'var(--mid-gray)' }}>
-                              {sciDeal.checks ? `${Math.max(0, sciDeal.checks - sciDeal.checksReceived)} checks · ` : ''}{formatCurrency(Math.max(0, sciDeal.totalDue - sciDeal.received))} to come; not counted until deposited
-                            </span>
-                          )}
-                        </span>
-                      </li>
-                    )}
-                    <li className="flex items-start gap-1.5">
-                      <span aria-hidden className="mt-1 inline-block w-2 h-2 rounded-sm flex-none border" style={{ background: 'var(--light-gray)', borderColor: '#cbd2d9' }} />
-                      <span><span className="font-semibold" style={{ color: '#b91c1c' }}>{formatCurrency(unpaidS)}</span> not yet paid by the HMOs · {pctOfBilled(unpaidS).toFixed(1)}%</span>
-                    </li>
-                    <li className="pt-1 text-[11px]" style={{ color: 'var(--mid-gray)' }}>Cash received from HMOs: {formatCurrency(totalPaid)} (Payment History)</li>
-                  </ul>
-                ) : (
+                    <p className="text-xs mt-1.5" style={{ color: 'var(--mid-gray)' }}>
+                      {formatCurrency(paidS + sciPaidS)} settled · <span className="underline" style={{ color: 'var(--teal)' }}>{hmoSettledOpen ? 'Hide' : 'Breakdown'}</span>
+                    </p>
+                  ) : (
+                    <p className="text-xs mt-1.5" style={{ color: 'var(--mid-gray)' }}>{formatCurrency(totalPaid)} received of {formatCurrency(totalHmoOrders)}</p>
+                  )}
+                </button>
+                {settled && hmoSettledOpen && (
                   <>
-                    <p className="text-xs mt-1" style={{ color: 'var(--mid-gray)' }}>{formatCurrency(totalPaid)} received of {formatCurrency(totalHmoOrders)}</p>
-                    <p className="text-xs mt-0.5 font-semibold" style={{ color: '#b91c1c' }}>{formatCurrency(totalReceivable)} not yet paid</p>
+                    <div className="fixed inset-0 z-30" aria-hidden onClick={() => setHmoSettledOpen(false)} />
+                    <div role="dialog" aria-label="% Settled breakdown"
+                      className="absolute z-40 left-0 top-full mt-2 rounded-xl border bg-white p-3 shadow-lg"
+                      style={{ borderColor: 'var(--light-gray)', width: 'min(360px, calc(100vw - 2rem))' }}>
+                      <div className="flex items-start justify-between gap-2 mb-2">
+                        <p className="text-xs font-semibold" style={{ color: 'var(--charcoal)' }}>
+                          {pctSettled.toFixed(1)}% settled of {formatCurrency(totalHmoOrders)} billed
+                          <span className="block font-normal text-[11px]" style={{ color: 'var(--mid-gray)' }}>Counts what the HMOs paid us and the BGC checks already deposited</span>
+                        </p>
+                        <button type="button" onClick={() => setHmoSettledOpen(false)} aria-label="Close"><X size={14} style={{ color: 'var(--mid-gray)' }} /></button>
+                      </div>
+                      <ul className="space-y-1.5 text-xs" style={{ color: 'var(--charcoal)' }}>
+                        <li className="flex items-start gap-1.5">
+                          <span aria-hidden className="mt-1 inline-block w-2 h-2 rounded-sm flex-none" style={{ background: '#16a34a' }} />
+                          <span><span className="font-semibold">{formatCurrency(paidS)}</span> paid by the HMOs · {pctOfBilled(paidS).toFixed(1)}%</span>
+                        </li>
+                        {sciS > 0 && (
+                          <li className="flex items-start gap-1.5"
+                            title={`${settled.sciSessionCount} SCI (BGC) era sessions, ${formatCurrency(sciS)}${sciDeal ? `, settled for ${formatCurrency(sciDeal.totalDue)}${sciDeal.checks ? ` in ${sciDeal.checks} PDCs` : ''}; the other ${formatCurrency(Math.max(0, sciS - sciDeal.totalDue))} went to EWT, tax and clinic share, the BGC payable offset and write-off (Other Customers)` : ''}`}>
+                            <span aria-hidden className="mt-1 inline-block w-2 h-2 rounded-sm flex-none" style={{ background: '#2a78d6' }} />
+                            <span>
+                              <span className="font-semibold">{formatCurrency(sciPaidS)}</span> paid by BGC (SCI settlement) · {pctOfBilled(sciPaidS).toFixed(1)}%
+                              {sciDeal && (
+                                <span className="block text-[11px]" style={{ color: 'var(--mid-gray)' }}>
+                                  {sciDeal.checks ? `${sciDeal.checksReceived} of ${sciDeal.checks} PDCs deposited` : 'Deposited'}: {formatCurrency(sciDeal.received)} of {formatCurrency(sciDeal.totalDue)}
+                                </span>
+                              )}
+                            </span>
+                          </li>
+                        )}
+                        {sciPendingS >= 0.5 && (
+                          <li className="flex items-start gap-1.5">
+                            <span aria-hidden className="mt-1 inline-block w-2 h-2 rounded-sm flex-none" style={{ background: PENDING_BG }} />
+                            <span>
+                              <span className="font-semibold">{formatCurrency(sciPendingS)}</span> BGC, PDCs not yet deposited · {pctOfBilled(sciPendingS).toFixed(1)}%
+                              {sciDeal && (
+                                <span className="block text-[11px]" style={{ color: 'var(--mid-gray)' }}>
+                                  {sciDeal.checks ? `${Math.max(0, sciDeal.checks - sciDeal.checksReceived)} checks · ` : ''}{formatCurrency(Math.max(0, sciDeal.totalDue - sciDeal.received))} to come; not counted until deposited
+                                </span>
+                              )}
+                            </span>
+                          </li>
+                        )}
+                        <li className="flex items-start gap-1.5">
+                          <span aria-hidden className="mt-1 inline-block w-2 h-2 rounded-sm flex-none border" style={{ background: 'var(--light-gray)', borderColor: '#cbd2d9' }} />
+                          <span><span className="font-semibold" style={{ color: '#b91c1c' }}>{formatCurrency(unpaidS)}</span> not yet paid by the HMOs · {pctOfBilled(unpaidS).toFixed(1)}%</span>
+                        </li>
+                        <li className="pt-1 text-[11px]" style={{ color: 'var(--mid-gray)' }}>Cash received from HMOs: {formatCurrency(totalPaid)} (Payment History)</li>
+                      </ul>
+                    </div>
                   </>
                 )}
               </div>
-              <div className="rounded-xl p-4 border" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
-                <p className="text-xs uppercase tracking-wide font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Total HMO Billed</p>
-                <p className="text-xl font-bold" style={{ color: 'var(--deep-teal)' }}>{formatCurrency(totalHmoOrders)}</p>
+              <div className="rounded-xl p-3 border min-w-0" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
+                <p className="text-[11px] uppercase tracking-wide font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Total HMO Billed</p>
+                <p className="text-lg font-bold" style={{ color: 'var(--deep-teal)' }}>{formatCurrency(totalHmoOrders)}</p>
                 <p className="text-xs mt-1" style={{ color: 'var(--mid-gray)' }}>Total outstanding: {formatCurrency(totalReceivable)}</p>
               </div>
               <button type="button" onClick={() => setHmoSubTab('revised-amounts')}
-                className="rounded-xl p-4 border text-left" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}
+                className="rounded-xl p-3 border min-w-0 text-left" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}
                 title="Open Session Adjustments">
-                <p className="text-xs uppercase tracking-wide font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Decrease due to HMO Payment</p>
-                <p className="text-xl font-bold" style={{ color: 'var(--charcoal)' }}>{formatCurrency(summary?.hmoDecrease?.total ?? 0)}</p>
+                <p className="text-[11px] uppercase tracking-wide font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Decrease due to HMO Payment</p>
+                <p className="text-lg font-bold" style={{ color: 'var(--charcoal)' }}>{formatCurrency(summary?.hmoDecrease?.total ?? 0)}</p>
                 <p className="text-xs mt-1" style={{ color: 'var(--mid-gray)' }}>
                   {summary?.hmoDecrease?.sessionCount ?? 0} session{summary?.hmoDecrease?.sessionCount === 1 ? '' : 's'} repriced to what the HMO paid, already out of Total HMO Billed
                 </p>
               </button>
               {(summary?.directToClinician?.orderCount ?? 0) > 0 && (
-                <div className="rounded-xl p-4 border" style={{ borderColor: '#fdba74', background: '#fff7ed' }}>
-                  <p className="text-xs uppercase tracking-wide font-semibold mb-1" style={{ color: '#9a3412' }}>Paid Direct to Clinician</p>
-                  <p className="text-xl font-bold" style={{ color: '#9a3412' }}>{formatCurrency(summary!.directToClinician!.total)}</p>
+                <div className="rounded-xl p-3 border min-w-0" style={{ borderColor: '#fdba74', background: '#fff7ed' }}>
+                  <p className="text-[11px] uppercase tracking-wide font-semibold mb-1" style={{ color: '#9a3412' }}>Paid Direct to Clinician</p>
+                  <p className="text-lg font-bold" style={{ color: '#9a3412' }}>{formatCurrency(summary!.directToClinician!.total)}</p>
                   <p className="text-xs mt-1" style={{ color: '#9a3412' }}>
                     {summary!.directToClinician!.orderCount} session{summary!.directToClinician!.orderCount === 1 ? '' : 's'} the HMO settles with the clinician — not in our AR
                   </p>
