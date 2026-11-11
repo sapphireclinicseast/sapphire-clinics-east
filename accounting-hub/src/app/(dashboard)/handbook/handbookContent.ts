@@ -732,17 +732,18 @@ export const SECTIONS: Section[] = [
       { k: 'p', t: `The company's **financial statements**, built live from the ledger. On-screen title "Financial Reports."` },
       { k: 'sub', t: 'Tabs' },
       { k: 'ul', items: [
-        `**Balance Sheet · Income Statement · Cash Flow Statement · Graphs · Contribution Margin.**`,
+        `**Balance Sheet · Income Statement · Sales by Payment · Cash Flow Statement · Graphs · Contribution Margin.**`,
       ] },
       { k: 'sub', t: 'Read a statement' },
       { k: 'steps', items: [
         `Pick the **tab**, then the **Year** and a **View Mode** (**Whole Year / Quarterly / Monthly**).`,
-        `Pick the **Branch** (on the Income Statement and Contribution Margin you can tick a subset of branches to total).`,
+        `Pick the **Branch** (on the Income Statement, Sales by Payment and Contribution Margin you can tick a subset of branches to total).`,
         `Click any **teal amount** to open a drill-down panel of the underlying transactions (with **Download Excel**).`,
         `Tick **Vertical Analysis** to show each line as a % of revenue. Use **CSV / Excel / PDF** (top-right) to export.`,
       ] },
       { k: 'ul', items: [
         `**Graphs** — the "Monthly Income Statement Metrics" chart (Gross Sales, Net Sales, Gross Profit, EBITDA, Net Income); toggle **Table** for the data behind it.`,
+        `**Sales by Payment** — the Income Statement's gross sales, each line split into how it was paid: **Cash** (cash, cards, GCash/Maya, package, VIP and prepaid card, advance and downpayment), **GL** and **HMO**, in pesos and as a % of total sales (or of the line). Cards on top show the overall mix; revenue booked by journal entry rather than a POS sale shows as **Not from POS**, so every line ties to the Income Statement. Pick the months with From / to.`,
         `**Contribution Margin** — a per-department profit view; **Expense allocation** sets how shared costs split by department.`,
         `A presentation-**currency** dropdown can show figures in another currency (books stay in pesos).`,
       ] },

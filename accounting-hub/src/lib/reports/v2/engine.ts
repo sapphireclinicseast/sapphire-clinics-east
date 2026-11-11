@@ -163,6 +163,14 @@ const BRANCH_MAP: Record<string, string> = {
   VERDANA_STORE: 'VERDANA_STORE', AHI: 'AURA_INSTITUTE', AURA_INSTITUTE: 'AURA_INSTITUTE',
 }
 
+/** The JE / order branch values a report branch selection covers (null = every branch) —
+ *  exported so reports that read journal lines directly filter exactly like the engine. */
+export function ledgerBranchValues(branch: string): string[] | null {
+  if (branch === 'ALL') return null
+  const orderBranch = BRANCH_MAP[branch] || branch
+  return Array.from(new Set([branch, orderBranch, ...(orderBranch === 'VERDANA_STORE' ? ['VERDANA', 'SBVR'] : [])]))
+}
+
 const OPENING_PLUG = '3999'
 const IMBALANCE_PLUG = '9990'
 /* A loss that belongs to a closed, audited year (e.g. a write-off dated in the
@@ -299,8 +307,7 @@ export async function computeLedgerStatements(
   const orderBranch = BRANCH_MAP[branch] || branch
   // Payroll tables (and some historical JEs) carry their own short branch codes,
   // so the Verdana view must also match VERDANA/SBVR-coded rows.
-  const branchValues = branch === 'ALL' ? null
-    : Array.from(new Set([branch, orderBranch, ...(orderBranch === 'VERDANA_STORE' ? ['VERDANA', 'SBVR'] : [])]))
+  const branchValues = ledgerBranchValues(branch)
 
   const validation: V2Statements['validation'] = {
     openingPlug: 0, imbalancePlugs: [], unclassified: [], synthesized: [], fromLedger: [],

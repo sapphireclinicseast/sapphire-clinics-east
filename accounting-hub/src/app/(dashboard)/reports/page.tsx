@@ -5,7 +5,7 @@ import { useSession } from 'next-auth/react'
 import { userBranchScope } from '@/lib/branch-scope'
 import {
   FileText, Download, Printer, Loader2, ChevronDown,
-  Calendar, Building2, LayoutList, BarChart3, X, TrendingUp, Percent, ShieldCheck, CalendarRange,
+  Calendar, Building2, LayoutList, BarChart3, X, TrendingUp, Percent, ShieldCheck, CalendarRange, Wallet,
 } from 'lucide-react'
 import { formatCurrency } from '@/lib/utils'
 import { DISPLAY_CURRENCIES, type DisplayCurrency, setDisplay, inDisplay, fmt, fmtSigned } from './display-currency'
@@ -15,6 +15,7 @@ import HistoricalReport from './HistoricalReport'
 import LedgerStatements from './LedgerStatements'
 import GraphsView from './GraphsView'
 import ContributionMargin, { type CmPayload } from './ContributionMargin'
+import SalesByPayment, { type SbpPayload } from './SalesByPayment'
 import AuditedStatement from './AuditedStatement'
 import YoYComparison from './YoYComparison'
 import { HR_PAGE_CLASS, HR_PAGE_STYLE, HrShimmerStyle, hrBtn } from '@/components/ui/hr-look'
@@ -104,7 +105,7 @@ interface ReportData {
   unearnedRevenueFromAR?: number
 }
 
-type ReportTab = 'balance-sheet' | 'income-statement' | 'cash-flow' | 'graphs' | 'contribution' | 'audited' | 'yoy'
+type ReportTab = 'balance-sheet' | 'income-statement' | 'sales-payment' | 'cash-flow' | 'graphs' | 'contribution' | 'audited' | 'yoy'
 // 'quarterly' is offered on the full statements only; the med-rep revenue view
 // treats it as 'annual' if it ever reaches it.
 type ViewMode = 'annual' | 'quarterly' | 'monthly'
@@ -155,6 +156,8 @@ const tickChip = (on: boolean) => ({
 const TABS: { key: ReportTab; label: string; icon: typeof FileText }[] = [
   { key: 'balance-sheet', label: 'Balance Sheet', icon: FileText },
   { key: 'income-statement', label: 'Income Statement', icon: BarChart3 },
+  // Gross sales split by how they were paid — Cash / GL / HMO (Hannah 2026-11-11).
+  { key: 'sales-payment', label: 'Sales by Payment', icon: Wallet },
   { key: 'cash-flow', label: 'Cash Flow Statement', icon: LayoutList },
   { key: 'graphs', label: 'Graphs', icon: TrendingUp },
   { key: 'contribution', label: 'Contribution Margin', icon: Percent },
@@ -1679,6 +1682,7 @@ export default function ReportsPage() {
   const [isTicked, setIsTicked] = useState<string[]>(TICK_BRANCHES.map(b => b.value))
   // Contribution-margin: the latest payload (for exports).
   const [cmData, setCmData] = useState<CmPayload | null>(null)
+  const [sbpData, setSbpData] = useState<SbpPayload | null>(null)
   const toggleIsBranch = (v: string) => {
     setIsTicked(prev => {
       const next = prev.includes(v) ? prev.filter(x => x !== v) : [...prev, v]
@@ -1722,7 +1726,7 @@ export default function ReportsPage() {
   // Tickboxes replace the dropdown on the income-statement tab (whole-company
   // users only — branch-scoped admins keep their pinned branch, med-reps keep
   // the dropdown-driven restricted view).
-  const isTickboxes = (effTab === 'income-statement' || effTab === 'contribution') && !isMedrep && !scope.short
+  const isTickboxes = (effTab === 'income-statement' || effTab === 'contribution' || effTab === 'sales-payment') && !isMedrep && !scope.short
   const allIsTicked = isTicked.length === TICK_BRANCHES.length
   const isBranchSel = allIsTicked ? 'ALL' : isTicked.length === 1 ? isTicked[0] : isTicked.join('+')
   const effIsBranch = isTickboxes ? isBranchSel : effBranch
@@ -1756,7 +1760,7 @@ export default function ReportsPage() {
   // Export filename branch tag — reflects the income-statement tickboxes
   // when they drive the view (e.g. "AHEA+AHGH"), else the dropdown branch.
   const exportBranchTag = () => {
-    const bsel = ((activeTab === 'income-statement' || activeTab === 'contribution') && isTickboxes) ? isBranchSel : branch
+    const bsel = ((activeTab === 'income-statement' || activeTab === 'contribution' || activeTab === 'sales-payment') && isTickboxes) ? isBranchSel : branch
     return bsel.split('+').map(p => branchCode(p)).join('+').replace(/\s+/g, '-')
   }
 
@@ -1972,6 +1976,30 @@ export default function ReportsPage() {
     fmt === 'xls' ? downloadRowsAsExcel(rows) : fmt === 'pdf' ? downloadRowsAsPDF(rows) : downloadRowsAsCSV(rows)
 
   const handleDownloadCSV = (fmt: 'csv' | 'xls' | 'pdf' = 'csv') => {
+    if (activeTab === 'sales-payment') {
+      if (!sbpData) return
+      const branchLbl = (isTickboxes ? isBranchSel : effBranch).split('+').map(pt => BRANCHES.find(b => b.value === pt)?.label || (pt === 'ALL' ? 'All Branches' : pt)).join(' + ')
+      const MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+      const period = sbpData.from === 1 && sbpData.to === 12 ? `${year}` : `${MON[sbpData.from - 1]}–${MON[sbpData.to - 1]} ${year}`
+      const T = sbpData.totals
+      const withOther = sbpData.rows.some(r => Math.abs(r.other) >= 0.5)
+      const pct = (v: number) => (T.total ? `${((v / T.total) * 100).toFixed(1)}%` : '')
+      const rows: string[][] = [[`Sales by Payment — ${period} — ${branchLbl}`]]
+      rows.push(['Gross Sales', 'Cash', '% of total', 'GL', '% of total', 'HMO', '% of total', ...(withOther ? ['Not from POS', '% of total'] : []), 'Total', '% of total'])
+      for (const r of sbpData.rows) {
+        rows.push([`${r.number} ${r.title}`, r.cash.toFixed(2), pct(r.cash), r.gl.toFixed(2), pct(r.gl), r.hmo.toFixed(2), pct(r.hmo),
+          ...(withOther ? [r.other.toFixed(2), pct(r.other)] : []), r.total.toFixed(2), pct(r.total)])
+      }
+      rows.push(['Total Gross Sales', T.cash.toFixed(2), pct(T.cash), T.gl.toFixed(2), pct(T.gl), T.hmo.toFixed(2), pct(T.hmo),
+        ...(withOther ? [T.other.toFixed(2), pct(T.other)] : []), T.total.toFixed(2), '100%'])
+      if (sbpData.cashMethods.length) {
+        rows.push([])
+        rows.push(['What makes up Cash', 'Amount', '% of cash'])
+        for (const m of sbpData.cashMethods) rows.push([m.label, m.amount.toFixed(2), T.cash ? `${((m.amount / T.cash) * 100).toFixed(1)}%` : ''])
+      }
+      exportRows(rows, fmt)
+      return
+    }
     if (activeTab === 'contribution') {
       if (!cmData) return
       const shown = cmData.rows
@@ -2139,7 +2167,7 @@ export default function ReportsPage() {
         <div className="flex flex-wrap gap-1.5" style={{ display: (isMedrep || isInvestor || effTab === 'graphs' || effTab === 'audited' || effTab === 'yoy') ? 'none' : undefined }}>
           <button
             onClick={() => handleDownloadCSV('csv')}
-            disabled={effTab === 'contribution' ? !cmData : (loading || !data)}
+            disabled={effTab === 'contribution' ? !cmData : effTab === 'sales-payment' ? !sbpData : (loading || !data)}
             className={`${hrBtn.outline} disabled:opacity-40`}
             style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}
           >
@@ -2148,7 +2176,7 @@ export default function ReportsPage() {
           </button>
           <button
             onClick={() => handleDownloadCSV('xls')}
-            disabled={effTab === 'contribution' ? !cmData : (loading || !data)}
+            disabled={effTab === 'contribution' ? !cmData : effTab === 'sales-payment' ? !sbpData : (loading || !data)}
             className={`${hrBtn.outline} disabled:opacity-40`}
             style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}
           >
@@ -2157,7 +2185,7 @@ export default function ReportsPage() {
           </button>
           <button
             onClick={() => handleDownloadCSV('pdf')}
-            disabled={effTab === 'contribution' ? !cmData : (loading || !data)}
+            disabled={effTab === 'contribution' ? !cmData : effTab === 'sales-payment' ? !sbpData : (loading || !data)}
             className={`${hrBtn.outline} disabled:opacity-40`}
             style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}
           >
@@ -2171,7 +2199,7 @@ export default function ReportsPage() {
       {!isMedrep && (
       <div className="border-b-2 print:hidden" style={{ borderColor: 'var(--light-gray)' }}>
       <div className="flex items-end gap-1 -mb-[2px] max-w-full overflow-x-auto" role="tablist" aria-label="Report">
-        {TABS.filter(t => !(isInvestor && (t.key === 'contribution' || t.key === 'audited' || t.key === 'yoy'))).map((tab) => {
+        {TABS.filter(t => !(isInvestor && (t.key === 'contribution' || t.key === 'sales-payment' || t.key === 'audited' || t.key === 'yoy'))).map((tab) => {
           const Icon = tab.icon
           const isActive = activeTab === tab.key
           return (
@@ -2200,6 +2228,50 @@ export default function ReportsPage() {
         <YoYComparison lockedBranch={scope.short} />
       ) : effTab === 'audited' ? (
         <AuditedStatement />
+      ) : effTab === 'sales-payment' ? (
+        <>
+          <div className={`${HR_TOOLBAR} mb-4`} style={HR_TOOLBAR_STYLE}>
+            <div className="flex items-center gap-2">
+              <Calendar size={15} style={{ color: 'var(--mid-gray)' }} />
+              <div className="relative">
+                <select
+                  value={year}
+                  onChange={(e) => setYear(Number(e.target.value))}
+                  className={HR_SELECT}
+                  style={HR_SELECT_STYLE}
+                >
+                  {years.map((y) => <option key={y} value={y}>{y}</option>)}
+                </select>
+                <ChevronDown size={14} className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: 'var(--mid-gray)' }} />
+              </div>
+            </div>
+            {isTickboxes && (
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <Building2 size={15} style={{ color: 'var(--mid-gray)' }} />
+                {TICK_BRANCHES.map(b => (
+                  <label
+                    key={b.value}
+                    className="flex items-center gap-1.5 h-8 px-3 rounded-full border text-[13px] font-semibold cursor-pointer select-none transition-colors"
+                    style={{ ...tickChip(isTicked.includes(b.value)), fontFamily: 'var(--font-display)' }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={isTicked.includes(b.value)}
+                      onChange={() => toggleIsBranch(b.value)}
+                      className="accent-current"
+                    />
+                    {b.label}
+                  </label>
+                ))}
+              </div>
+            )}
+          </div>
+          <SalesByPayment
+            year={year}
+            branch={isTickboxes ? isBranchSel : effBranch}
+            onData={setSbpData}
+          />
+        </>
       ) : effTab === 'contribution' ? (
         <>
           {/* Year + branch filters — the shared filter row lives in the
