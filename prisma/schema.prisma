@@ -58,6 +58,39 @@ model WaitlistFollowUp {
   @@index([formId])
 }
 
+/// A child left behind by a departed consultant whose family has said they are
+/// not continuing.
+///
+/// The booking is NOT deleted and neither is the patient. Families come back —
+/// a year later, a sibling, a different department — and the slot is the only
+/// record of what they were having and when. Deleting it would also make the
+/// decision invisible: the row would simply vanish from the rehoming list and
+/// the next person to look would have no idea whether it was moved, dropped,
+/// or lost.
+///
+/// So this is a tag beside the booking rather than a change to it. Tagged rows
+/// stay on the page, marked, and drop out of the "still to move" counts.
+/// Untagging puts them straight back.
+model DeckingBookingDiscontinued {
+  id        String @id @default(cuid())
+  /// The DeckingSlot that holds the booking. Unique: one decision per booking,
+  /// and re-tagging updates the remark rather than stacking rows.
+  slotId    String @unique
+  /// Recorded alongside the slot so the decision survives the slot being
+  /// reorganised later — this is the fact worth keeping, not the row id.
+  patientId String?
+  branch    String
+  /// Why they are not continuing, in whoever's words. The point of the button:
+  /// "moved to Cebu" and "unhappy with the therapist" are both reasons to stop
+  /// chasing, and only one of them is something the clinic should act on.
+  remarks   String @default("")
+  setByName String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([branch])
+}
+
 /// One "we have slots" message sent to somebody on the waitlist.
 ///
 /// Keyed to the HR form submission, like WaitlistFollowUp, because the waitlist

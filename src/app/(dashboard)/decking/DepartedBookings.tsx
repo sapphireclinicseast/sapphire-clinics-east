@@ -13,8 +13,9 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
-import { AlertTriangle, ArrowRight, Check, Clock, Layers, RefreshCw, UserX, Users } from 'lucide-react'
+import { AlertTriangle, ArrowRight, Check, Clock, Layers, RefreshCw, RotateCcw, UserMinus, UserX, Users } from 'lucide-react'
 import { branchLabel } from '@/lib/branch-label'
+import type { DiscontinuedTag } from '@/app/api/decking/departed/route'
 import { DashCard, KpiCard, Skeleton, EmptyState, DeptChip, CARD_STYLE } from '../patients/dashboard/ui'
 import { Avatar, displayName, ErrorCard, CONTROL_SM, CONTROL_STYLE, BTN_SM, TEAL_HEX } from './ui'
 
@@ -132,6 +133,14 @@ export default function DepartedBookings({ branch, boardConfigs = [], boardSlots
   const [picked, setPicked] = useState<Record<string, string>>({})
   const [movingId, setMovingId] = useState<string | null>(null)
   const [moved, setMoved] = useState<Record<string, string>>({})
+  // Families who are not continuing. Keyed by slot id, seeded from the server
+  // so the decision survives a reload — the whole point is that the next
+  // person to open this page knows it was decided, not lost.
+  const [stopped, setStopped] = useState<Record<string, DiscontinuedTag>>({})
+  // Which row is having its reason typed, and what has been typed so far.
+  const [noteFor, setNoteFor] = useState<string | null>(null)
+  const [noteText, setNoteText] = useState('')
+  const [savingNote, setSavingNote] = useState(false)
 
   const load = useCallback(() => {
     setLoading(true); setError('')
@@ -141,6 +150,7 @@ export default function DepartedBookings({ branch, boardConfigs = [], boardSlots
         if (!r.ok) throw new Error(d.error ?? 'Could not load')
         setRows(d.rows ?? [])
         setReplacements(d.replacements ?? {})
+        setStopped(d.discontinued ?? {})
       })
       .catch(e => setError(e.message))
       .finally(() => setLoading(false))
@@ -155,7 +165,41 @@ export default function DepartedBookings({ branch, boardConfigs = [], boardSlots
   // Per-branch UI state. These are keyed by slot id, and slot ids do not repeat
   // across branches — but leaving a previous branch's selections in place makes
   // the new list look part-filled, so they are cleared with the data.
-  useEffect(() => { setPicked({}); setMoved({}) }, [branch])
+  useEffect(() => { setPicked({}); setMoved({}); setNoteFor(null); setNoteText('') }, [branch])
+
+  /** Record (or correct) a family's decision not to continue. */
+  async function saveStopped(row: Row) {
+    setSavingNote(true)
+    try {
+      const res = await fetch('/api/decking/departed', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ slotId: row.slotId, remarks: noteText }),
+      })
+      const d = await res.json()
+      if (!res.ok) throw new Error(d.error ?? 'Could not save that')
+      setStopped(m => ({ ...m, [row.slotId]: d.discontinued }))
+      setNoteFor(null); setNoteText('')
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not save that')
+    } finally {
+      setSavingNote(false)
+    }
+  }
+
+  /** Put the booking back on the list — they changed their mind, or it was the wrong row. */
+  async function undoStopped(row: Row) {
+    setSavingNote(true)
+    try {
+      const res = await fetch(`/api/decking/departed?slotId=${encodeURIComponent(row.slotId)}`,
+        { method: 'DELETE' })
+      if (!res.ok) throw new Error((await res.json()).error ?? 'Could not undo that')
+      setStopped(m => { const n = { ...m }; delete n[row.slotId]; return n })
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not undo that')
+    } finally {
+      setSavingNote(false)
+    }
+  }
 
   async function move(row: Row) {
     const staffId = picked[row.slotId]
@@ -220,7 +264,11 @@ export default function DepartedBookings({ branch, boardConfigs = [], boardSlots
     )
   }
 
-  const outstanding = rows.filter(r => !moved[r.slotId])
+  // Not to move, and not outstanding: a family who are not continuing need no
+  // consultant. They stay on the page, marked, so the decision is visible —
+  // but every count here is about work left to do, and this is not work left.
+  const outstanding = rows.filter(r => !moved[r.slotId] && !stopped[r.slotId])
+  const stoppedCount = rows.filter(r => stopped[r.slotId] && !moved[r.slotId]).length
 
   if (rows.length === 0) {
     return (
@@ -248,7 +296,10 @@ export default function DepartedBookings({ branch, boardConfigs = [], boardSlots
 
   // KPI figures — derived from the rows already loaded, and counted on what is
   // still to move so they fall as bookings are rehomed.
-  const movedCount = rows.length - outstanding.length
+  // Counted directly, not as "rows minus outstanding". Outstanding now also
+  // excludes the families who are not continuing, and subtracting would report
+  // those as moved — which is the opposite of what happened to them.
+  const movedCount = rows.filter(r => moved[r.slotId]).length
   const consultantsLeft = new Set(outstanding.map(r => r.staffId)).size
   const consultantsAll = new Set(rows.map(r => r.staffId)).size
   const childrenLeft = new Set(outstanding.map(r => r.patientId ?? `name:${r.patientName}`)).size
@@ -281,10 +332,17 @@ export default function DepartedBookings({ branch, boardConfigs = [], boardSlots
           sub={`with bookings still to move · ${consultantsAll} in all`} />
         <KpiCard label="Children affected" icon={<Users size={15} />}
           value={childrenLeft}
-          sub={childrenLeft === 1 ? 'child still to rehome' : 'children still to rehome'} />
+          sub={`${childrenLeft === 1 ? 'child' : 'children'} still to rehome`
+            // Named beside the figure rather than hidden in the rows: a desk
+            // that has worked through the list should be able to see WHY the
+            // number fell, and "we stopped chasing them" is a different
+            // outcome from "we found them a consultant".
+            + (stoppedCount > 0 ? ` · ${stoppedCount} not continuing` : '')} />
         <KpiCard label="Weekly slots booked" icon={<Clock size={15} />}
           value={outstanding.length}
-          sub={movedCount > 0 ? `${movedCount} moved just now` : 'standing slots each week'} />
+          sub={movedCount > 0 ? `${movedCount} moved just now`
+            : stoppedCount > 0 ? `${stoppedCount} not continuing, not counted`
+            : 'standing slots each week'} />
         <KpiCard label="By department" icon={<Layers size={15} />}
           value={
             deptList.length === 0
@@ -317,7 +375,7 @@ export default function DepartedBookings({ branch, boardConfigs = [], boardSlots
       {groups.map(g => {
         const head = g.rows[0]
         const options = replacements[`${head.branch}||${head.department}`] ?? []
-        const left = g.rows.filter(r => !moved[r.slotId]).length
+        const left = g.rows.filter(r => !moved[r.slotId] && !stopped[r.slotId]).length
         const name = displayName(head.staffName)
         const where = branchLabel(head.branch) ?? head.branch
         return (
@@ -364,12 +422,16 @@ export default function DepartedBookings({ branch, boardConfigs = [], boardSlots
             <ul>
               {g.rows.map((r, i) => {
                 const done = moved[r.slotId]
+                const stop = stopped[r.slotId]
+                const noting = noteFor === r.slotId
                 const isMoving = movingId === r.slotId
                 const mode = r.deliveryMode ? MODE_LABEL[r.deliveryMode] ?? r.deliveryMode : null
                 return (
                   <li key={r.slotId}
                     className={`px-5 py-2.5 flex flex-wrap items-center gap-x-4 gap-y-2 ${done ? '' : 'transition-colors hover:bg-gray-50/70'}`}
-                    style={{ borderTop: i === 0 ? undefined : '1px solid #EEF2F1', background: done ? DONE.bg : undefined }}>
+                    style={{ borderTop: i === 0 ? undefined : '1px solid #EEF2F1',
+                             background: done ? DONE.bg : stop ? '#F7F8F9' : undefined,
+                             opacity: stop && !noting ? 0.72 : 1 }}>
                     {/* Who and when */}
                     <div className="flex items-center gap-3 min-w-0" style={{ flex: '1 1 16rem' }}>
                       <span
@@ -398,6 +460,67 @@ export default function DepartedBookings({ branch, boardConfigs = [], boardSlots
                         <span className="inline-flex items-center gap-1.5 text-[13px] font-semibold" style={{ color: DONE.fg }}>
                           <Check size={14} /> Moved to {done}
                         </span>
+                      ) : noting ? (
+                        // Asked for in the same row rather than a dialog: the
+                        // reason is short, and a modal would hide the child's
+                        // name and hour while it is being typed.
+                        <>
+                          <label htmlFor={`dp-note-${r.slotId}`} className="sr-only">
+                            Why {displayName(r.patientName)} is not continuing
+                          </label>
+                          <input
+                            id={`dp-note-${r.slotId}`}
+                            autoFocus
+                            value={noteText}
+                            onChange={e => setNoteText(e.target.value)}
+                            onKeyDown={e => {
+                              if (e.key === 'Enter') saveStopped(r)
+                              if (e.key === 'Escape') { setNoteFor(null); setNoteText('') }
+                            }}
+                            placeholder="Reason — moved away, finished, transferred…"
+                            className={CONTROL_SM}
+                            style={{ ...CONTROL_STYLE, minWidth: 260, maxWidth: '100%' }}
+                          />
+                          <button type="button" onClick={() => saveStopped(r)} disabled={savingNote}
+                            className={BTN_SM}
+                            style={{ background: 'var(--teal)', color: '#fff', border: '1px solid var(--teal)' }}>
+                            {savingNote ? 'Saving…' : 'Save'}
+                          </button>
+                          <button type="button" onClick={() => { setNoteFor(null); setNoteText('') }}
+                            disabled={savingNote} className={BTN_SM}
+                            style={{ background: '#F3F6F5', color: 'var(--mid-gray)', border: '1px solid var(--light-gray)' }}>
+                            Cancel
+                          </button>
+                        </>
+                      ) : stop ? (
+                        <>
+                          <span className="inline-flex items-center gap-1.5 text-[13px] font-semibold" style={{ color: '#7A5C00' }}>
+                            <UserMinus size={14} aria-hidden /> Not continuing
+                          </span>
+                          {stop.remarks && (
+                            <span className="text-[12px] truncate" title={stop.remarks}
+                              style={{ color: 'var(--mid-gray)', maxWidth: '22rem' }}>
+                              &ldquo;{stop.remarks}&rdquo;
+                            </span>
+                          )}
+                          <span className="text-[11px] whitespace-nowrap" style={{ color: '#9AA0A6' }}>
+                            {stop.setByName ? `${stop.setByName} · ` : ''}
+                            {new Date(stop.at).toLocaleDateString('en-PH', { day: 'numeric', month: 'short', year: 'numeric' })}
+                          </span>
+                          <button type="button" disabled={savingNote}
+                            onClick={() => { setNoteFor(r.slotId); setNoteText(stop.remarks) }}
+                            className={BTN_SM}
+                            style={{ background: '#F3F6F5', color: 'var(--mid-gray)', border: '1px solid var(--light-gray)' }}>
+                            Edit note
+                          </button>
+                          {/* Not a delete: the booking was never changed, so
+                              putting it back is removing the tag. */}
+                          <button type="button" onClick={() => undoStopped(r)} disabled={savingNote}
+                            className={BTN_SM}
+                            style={{ background: '#fff', color: 'var(--teal)', border: '1px solid var(--light-gray)' }}>
+                            <RotateCcw size={13} aria-hidden /> Put back
+                          </button>
+                        </>
                       ) : (
                         <>
                           <label htmlFor={`dp-move-${r.slotId}`} className="sr-only">
@@ -456,6 +579,15 @@ export default function DepartedBookings({ branch, boardConfigs = [], boardSlots
                           >
                             <ArrowRight size={13} />
                             {isMoving ? 'Moving…' : 'Move'}
+                          </button>
+                          {/* The other outcome. Quiet rather than competing
+                              with Move — rehoming is what should usually
+                              happen, and this is the exception. */}
+                          <button type="button" onClick={() => { setNoteFor(r.slotId); setNoteText('') }}
+                            disabled={isMoving} className={BTN_SM}
+                            title={`${displayName(r.patientName)} is not continuing with us`}
+                            style={{ background: '#fff', color: 'var(--mid-gray)', border: '1px solid var(--light-gray)' }}>
+                            <UserMinus size={13} aria-hidden /> Not continuing
                           </button>
                         </>
                       )}
