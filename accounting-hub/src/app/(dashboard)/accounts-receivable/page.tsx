@@ -2020,17 +2020,25 @@ export default function AccountsReceivablePage() {
           : orders.reduce((s, o) => s + o.payments.reduce((ps, p) => ps + toNum(p.amount), 0), 0)
         const totalPaid = arPayments.reduce((s, p) => s + toNum(p.amount), 0)
         // Billed sessions split by how they were settled (Hannah 2026-11-11): paid
-        // by the HMO (tagged to an HMO payment, its EWT included), closed by the
-        // SCI (BGC) settlement — the 18 PDCs recorded in Other Customers, never
-        // HMO cash — or not yet paid. The three add up to Total HMO Billed.
+        // by the HMO (tagged to an HMO payment, its EWT included), the SCI (BGC)
+        // settlement — paid through 18 PDCs recorded in Other Customers, never HMO
+        // cash — or not yet paid. The parts add up to Total HMO Billed.
         const settled = summary?.settled ?? null
         const paidS = settled?.paidSessions ?? 0
         const sciS = settled?.sciSessions ?? 0
         const unpaidS = settled ? Math.max(0, totalHmoOrders - paidS - sciS) : totalReceivable
         const pctOfBilled = (v: number) => (totalHmoOrders > 0 ? (v / totalHmoOrders) * 100 : 0)
-        // Older API: fall back to cash received over billed.
-        const pctSettled = Math.min(100, settled ? pctOfBilled(paidS + sciS) : pctOfBilled(totalPaid))
         const sciDeal = settled?.sciSettlement ?? null
+        // Only the PDCs BGC has actually paid count as settled — a check not yet
+        // deposited may still bounce (Hannah 2026-11-11). The SCI sessions count in
+        // proportion: 3 of 18 checks deposited settles 1/6 of them.
+        const sciPaidShare = sciDeal && sciDeal.totalDue > 0 ? Math.min(1, sciDeal.received / sciDeal.totalDue) : 0
+        const sciPaidS = sciS * sciPaidShare
+        const sciPendingS = sciS - sciPaidS
+        // Older API: fall back to cash received over billed.
+        const pctSettled = Math.min(100, settled ? pctOfBilled(paidS + sciPaidS) : pctOfBilled(totalPaid))
+        // Striped blue: BGC sessions whose checks are not deposited yet.
+        const PENDING_BG = 'repeating-linear-gradient(135deg, #2a78d6 0 2px, #c9dcf5 2px 5px)'
 
         // Department breakdown — split each order's payment proportionally across
         // departments. Served by the API across all orders; the local pass is the
@@ -2101,7 +2109,8 @@ export default function AccountsReceivablePage() {
                   {settled ? (
                     <>
                       {paidS > 0 && <div style={{ width: `${pctOfBilled(paidS)}%`, background: '#16a34a', height: '100%' }} />}
-                      {sciS > 0 && <div style={{ width: `${pctOfBilled(sciS)}%`, background: '#2a78d6', height: '100%' }} />}
+                      {sciPaidS > 0 && <div style={{ width: `${pctOfBilled(sciPaidS)}%`, background: '#2a78d6', height: '100%' }} />}
+                      {sciPendingS > 0 && <div style={{ width: `${pctOfBilled(sciPendingS)}%`, background: PENDING_BG, height: '100%' }} />}
                     </>
                   ) : <div style={{ width: `${pctSettled}%`, background: '#16a34a', height: '100%' }} />}
                 </div>
@@ -2112,22 +2121,27 @@ export default function AccountsReceivablePage() {
                       <span><span className="font-semibold">{formatCurrency(paidS)}</span> paid by the HMOs · {pctOfBilled(paidS).toFixed(1)}%</span>
                     </li>
                     {sciS > 0 && (
-                      <li className="flex items-start gap-1.5">
+                      <li className="flex items-start gap-1.5"
+                        title={`${settled.sciSessionCount} SCI (BGC) era sessions, ${formatCurrency(sciS)}${sciDeal ? `, settled for ${formatCurrency(sciDeal.totalDue)}${sciDeal.checks ? ` in ${sciDeal.checks} PDCs` : ''}; the other ${formatCurrency(Math.max(0, sciS - sciDeal.totalDue))} went to EWT, tax and clinic share, the BGC payable offset and write-off (Other Customers)` : ''}`}>
                         <span aria-hidden className="mt-1 inline-block w-2 h-2 rounded-sm flex-none" style={{ background: '#2a78d6' }} />
                         <span>
-                          <span className="font-semibold">{formatCurrency(sciS)}</span> SCI (BGC) settlement · {pctOfBilled(sciS).toFixed(1)}%
-                          <span className="block text-[11px]" style={{ color: 'var(--mid-gray)' }}>
-                            {settled.sciSessionCount} session{settled.sciSessionCount === 1 ? '' : 's'}{sciDeal && <> · settled for {formatCurrency(sciDeal.totalDue)}{sciDeal.checks ? ` (${sciDeal.checks} PDCs)` : ''}</>}
-                          </span>
+                          <span className="font-semibold">{formatCurrency(sciPaidS)}</span> paid by BGC (SCI settlement) · {pctOfBilled(sciPaidS).toFixed(1)}%
                           {sciDeal && (
                             <span className="block text-[11px]" style={{ color: 'var(--mid-gray)' }}>
-                              {formatCurrency(sciDeal.received)} deposited{sciDeal.checks ? ` (${sciDeal.checksReceived})` : ''} · {formatCurrency(Math.max(0, sciDeal.totalDue - sciDeal.received))} to come{sciDeal.checks ? ` (${Math.max(0, sciDeal.checks - sciDeal.checksReceived)})` : ''}
+                              {sciDeal.checks ? `${sciDeal.checksReceived} of ${sciDeal.checks} PDCs deposited` : 'Deposited'}: {formatCurrency(sciDeal.received)} of {formatCurrency(sciDeal.totalDue)}
                             </span>
                           )}
-                          {sciDeal && sciS - sciDeal.totalDue >= 1 && (
-                            <span className="block text-[11px]" style={{ color: 'var(--mid-gray)' }}
-                              title="Per the SCI-SCEI settlement in Other Customers: EWT, tax and clinic share, the offset against the BGC payable, and the write-off">
-                              {formatCurrency(sciS - sciDeal.totalDue)} closed by EWT, tax and clinic share, BGC offset and write-off
+                        </span>
+                      </li>
+                    )}
+                    {sciPendingS >= 0.5 && (
+                      <li className="flex items-start gap-1.5">
+                        <span aria-hidden className="mt-1 inline-block w-2 h-2 rounded-sm flex-none" style={{ background: PENDING_BG }} />
+                        <span>
+                          <span className="font-semibold">{formatCurrency(sciPendingS)}</span> BGC, PDCs not yet deposited · {pctOfBilled(sciPendingS).toFixed(1)}%
+                          {sciDeal && (
+                            <span className="block text-[11px]" style={{ color: 'var(--mid-gray)' }}>
+                              {sciDeal.checks ? `${Math.max(0, sciDeal.checks - sciDeal.checksReceived)} checks · ` : ''}{formatCurrency(Math.max(0, sciDeal.totalDue - sciDeal.received))} to come; not counted until deposited
                             </span>
                           )}
                         </span>
@@ -2135,7 +2149,7 @@ export default function AccountsReceivablePage() {
                     )}
                     <li className="flex items-start gap-1.5">
                       <span aria-hidden className="mt-1 inline-block w-2 h-2 rounded-sm flex-none border" style={{ background: 'var(--light-gray)', borderColor: '#cbd2d9' }} />
-                      <span><span className="font-semibold" style={{ color: '#b91c1c' }}>{formatCurrency(unpaidS)}</span> not yet paid · {pctOfBilled(unpaidS).toFixed(1)}%</span>
+                      <span><span className="font-semibold" style={{ color: '#b91c1c' }}>{formatCurrency(unpaidS)}</span> not yet paid by the HMOs · {pctOfBilled(unpaidS).toFixed(1)}%</span>
                     </li>
                     <li className="pt-1 text-[11px]" style={{ color: 'var(--mid-gray)' }}>Cash received from HMOs: {formatCurrency(totalPaid)} (Payment History)</li>
                   </ul>
@@ -2557,10 +2571,13 @@ export default function AccountsReceivablePage() {
           const received = arPayments.reduce((s, p) => s + toNum(p.amount), 0)
           // Same measure as the Overview card: sessions settled by the HMOs plus
           // those closed by the SCI (BGC) settlement (older API: cash received).
+          // Only deposited BGC PDCs count (an undeposited check may bounce).
           const st = summary?.settled ?? null
-          const settledAmt = st ? st.paidSessions + st.sciSessions : received
+          const deal = st?.sciSettlement ?? null
+          const bgcPaid = st && deal && deal.totalDue > 0 ? st.sciSessions * Math.min(1, deal.received / deal.totalDue) : 0
+          const settledAmt = st ? st.paidSessions + bgcPaid : received
           const settledCaption = st
-            ? `${formatCurrency(st.paidSessions)} paid by the HMOs${st.sciSessions ? ` + ${formatCurrency(st.sciSessions)} SCI (BGC) settlement` : ''} of ${formatCurrency(billed)} · ${formatCurrency(Math.max(0, billed - settledAmt))} not yet paid`
+            ? `${formatCurrency(st.paidSessions)} paid by the HMOs${bgcPaid ? ` + ${formatCurrency(bgcPaid)} paid by BGC` : ''} of ${formatCurrency(billed)} · ${formatCurrency(Math.max(0, billed - settledAmt))} not yet paid${st.sciSessions - bgcPaid >= 0.5 ? ` (${formatCurrency(st.sciSessions - bgcPaid)} of it BGC PDCs not yet deposited)` : ''}`
             : `${formatCurrency(received)} received of ${formatCurrency(billed)} · ${formatCurrency(totalReceivable)} not yet paid`
           return (
             <div id="ar-payment-history" className="grid grid-cols-1 sm:grid-cols-2 gap-4 items-stretch">
