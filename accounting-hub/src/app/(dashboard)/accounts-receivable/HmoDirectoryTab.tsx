@@ -5,7 +5,7 @@
 // renewal popup and the bell read the MOA date saved here.
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import { ExternalLink, FileText, Loader2, Pencil, Search, Tag, X } from 'lucide-react'
+import { ExternalLink, FileText, Loader2, MapPin, Pencil, Search, Tag, X } from 'lucide-react'
 import { ScanUpload } from '@/components/ScanUpload'
 import { NameCombobox } from '@/components/NameCombobox'
 import { formatCurrency } from '@/lib/utils'
@@ -18,6 +18,10 @@ import {
 const MISSING_RED = '#B91C1C'
 const MISSING_BG = '#FEF2F2'
 const MISSING_BORDER = '#FCA5A5'
+// Not-yet-accredited HMOs (Hannah 11/11): greyed out so they don't compete with the live ones.
+const MUTED_BG = '#F4F4F2'
+const MUTED_INK = '#8A8A85'
+const MUTED_PILL = { background: '#E7E7E3', color: '#5F5F5A' }
 
 const CONTACTS = [
   { key: 'accreditation', title: 'Accreditation' },
@@ -44,6 +48,8 @@ type Entry = Partial<Record<ContactField, string | null>> & {
   accreditedBranches?: string[]
   moaValidUntil?: string | null
   moaNoEndDate?: boolean
+  notYetAccredited?: boolean
+  address?: string | null
   moaFileUrls?: string[]
   priceListFileUrls?: unknown[]
   mdPayment?: MdPayment | null
@@ -75,6 +81,8 @@ type Form = Record<ContactField, string> & {
   accreditedBranches: string[]
   moaValidUntil: string
   moaNoEndDate: boolean
+  notYetAccredited: boolean
+  address: string
   moaFileUrls: string[]
   priceListFileUrls: PriceListFile[]
   mdPayment: MdPayment | null
@@ -103,6 +111,8 @@ function toForm(e: Entry): Form {
     accreditedBranches: e.accreditedBranches || [],
     moaValidUntil: ymd(e.moaValidUntil),
     moaNoEndDate: !!e.moaNoEndDate,
+    notYetAccredited: !!e.notYetAccredited,
+    address: e.address || '',
     moaFileUrls: e.moaFileUrls || [],
     priceListFileUrls: priceListFiles(e.priceListFileUrls),
     mdPayment: e.mdPayment || null,
@@ -337,17 +347,21 @@ export default function HmoDirectoryTab({ canEdit, focusWalletId = '' }: { canEd
 
   const renewalCount = useMemo(() => (entries || []).filter(e => moaNeedsRenewal(e.moaValidUntil)).length, [entries])
   const missingByWallet = useMemo(() => new Map((entries || []).map(e => [e.walletId, missingInfo(e)])), [entries])
-  const missingCount = useMemo(() => [...missingByWallet.values()].filter(m => m.length).length, [missingByWallet])
+  // A not-yet-accredited HMO naturally lacks an MOA and the rest, so it is not counted as missing.
+  const flagged = useMemo(() => new Set((entries || []).filter(e => !e.notYetAccredited && missingByWallet.get(e.walletId)?.length).map(e => e.walletId)), [entries, missingByWallet])
+  const missingCount = flagged.size
   const shown = useMemo(() => {
     const q = search.trim().toLowerCase()
     return (entries || []).filter(e => {
       if (renewalOnly && !moaNeedsRenewal(e.moaValidUntil)) return false
-      if (missingOnly && !missingByWallet.get(e.walletId)?.length) return false
+      if (missingOnly && !flagged.has(e.walletId)) return false
       if (!q) return true
       const contacts = CONTACTS.flatMap(c => [e[`${c.key}Name`], e[`${c.key}Email`], e[`${c.key}Number`]])
-      return [e.hmoName, e.serviceCategory, ...contacts].some(v => v && v.toLowerCase().includes(q))
+      return [e.hmoName, e.serviceCategory, e.address, ...contacts].some(v => v && v.toLowerCase().includes(q))
     })
-  }, [entries, search, renewalOnly, missingOnly, missingByWallet])
+      // Accredited HMOs first; the ones still applying sit at the end.
+      .sort((a, b) => Number(!!a.notYetAccredited) - Number(!!b.notYetAccredited))
+  }, [entries, search, renewalOnly, missingOnly, flagged])
 
   const editing = form ? entries?.find(e => e.walletId === form.walletId) : null
 
@@ -437,17 +451,25 @@ export default function HmoDirectoryTab({ canEdit, focusWalletId = '' }: { canEd
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
       {shown.map(e => {
         const missing = missingByWallet.get(e.walletId) || []
+        const pending = !!e.notYetAccredited
         const branches = ACCREDITABLE_BRANCHES.filter(b => (e.accreditedBranches || []).includes(b.value))
         const acc = { name: e.accreditationName, email: e.accreditationEmail, number: e.accreditationNumber }
+        const ink = pending ? MUTED_INK : 'var(--charcoal)'
         return (
           <button key={e.walletId} type="button" onClick={() => setDetailsId(e.walletId)} aria-haspopup="dialog"
-            className="text-left rounded-xl border bg-white p-4 flex flex-col gap-3 min-w-0 transition-[box-shadow,border-color] hover:shadow-[0_4px_12px_rgba(0,0,0,0.07)] focus-visible:outline-2 focus-visible:outline-offset-2"
-            style={{ borderColor: missing.length ? MISSING_BORDER : 'var(--light-gray)', outlineColor: 'var(--teal)' }}>
+            className="text-left rounded-xl border p-4 flex flex-col gap-3 min-w-0 transition-[box-shadow,border-color] hover:shadow-[0_4px_12px_rgba(0,0,0,0.07)] focus-visible:outline-2 focus-visible:outline-offset-2"
+            style={{
+              background: pending ? MUTED_BG : 'white',
+              borderColor: !pending && missing.length ? MISSING_BORDER : 'var(--light-gray)',
+              outlineColor: 'var(--teal)',
+            }}>
             <div className="flex items-start justify-between gap-3">
-              <HmoLogo url={e.logoUrl} name={e.hmoName} size="card" />
+              <span className={pending ? 'grayscale opacity-50' : undefined}><HmoLogo url={e.logoUrl} name={e.hmoName} size="card" /></span>
               {/* Missing count, then the branches the HMO accredits us for (Hannah 11/11) */}
               <div className="flex flex-col items-end gap-1">
-                {missing.length > 0 && (
+                {pending ? (
+                  <span className="px-2 py-0.5 rounded-full text-[11px] font-semibold whitespace-nowrap" style={MUTED_PILL}>Not yet accredited</span>
+                ) : missing.length > 0 && (
                   <span title={`Missing: ${missing.join(', ')}`} className="px-2 py-0.5 rounded-full text-[11px] font-semibold whitespace-nowrap text-white" style={{ background: MISSING_RED }}>
                     {missing.length} missing
                   </span>
@@ -455,26 +477,27 @@ export default function HmoDirectoryTab({ canEdit, focusWalletId = '' }: { canEd
                 {branches.length ? (
                   <div className="flex flex-wrap justify-end gap-1" aria-label="Accredited branches">
                     {branches.map(b => (
-                      <span key={b.value} className="px-2 py-0.5 rounded-full text-[11px] font-semibold whitespace-nowrap" style={{ background: 'var(--pale-teal, #E6F4F2)', color: 'var(--teal)' }}>{b.label}</span>
+                      <span key={b.value} className="px-2 py-0.5 rounded-full text-[11px] font-semibold whitespace-nowrap"
+                        style={pending ? MUTED_PILL : { background: 'var(--pale-teal, #E6F4F2)', color: 'var(--teal)' }}>{b.label}</span>
                     ))}
                   </div>
-                ) : (
+                ) : !pending && (
                   <span className="text-[11px] font-medium whitespace-nowrap" style={{ color: MISSING_RED }}>No branch set</span>
                 )}
               </div>
             </div>
             <div className="min-w-0">
-              <p className="text-sm font-bold truncate" style={{ color: 'var(--charcoal)' }}>{e.hmoName}</p>
-              <div className="mt-1"><MoaBadge validUntil={e.moaValidUntil} noEndDate={e.moaNoEndDate} /></div>
+              <p className="text-sm font-bold truncate" style={{ color: ink }}>{e.hmoName}</p>
+              {!pending && <div className="mt-1"><MoaBadge validUntil={e.moaValidUntil} noEndDate={e.moaNoEndDate} /></div>}
             </div>
             <div className="border-t pt-2.5 min-w-0" style={{ borderColor: 'var(--light-gray)' }}>
-              <p className="text-[11px] font-semibold uppercase tracking-wide mb-1" style={{ color: 'var(--mid-gray)' }}>Accreditation contact</p>
+              <p className="text-[11px] font-semibold uppercase tracking-wide mb-1" style={{ color: pending ? MUTED_INK : 'var(--mid-gray)' }}>Accreditation contact</p>
               {!acc.name && !acc.email && !acc.number ? (
-                <p className="text-xs font-medium" style={{ color: MISSING_RED }}>No contact yet</p>
+                <p className="text-xs font-medium" style={{ color: pending ? MUTED_INK : MISSING_RED }}>No contact yet</p>
               ) : (
-                <div className="text-xs space-y-0.5" style={{ color: 'var(--charcoal)' }}>
+                <div className="text-xs space-y-0.5" style={{ color: ink }}>
                   {acc.name && <p className="font-medium truncate">{acc.name}</p>}
-                  {acc.email && <p className="truncate" style={{ color: 'var(--teal)' }}>{acc.email}</p>}
+                  {acc.email && <p className="truncate" style={{ color: pending ? MUTED_INK : 'var(--teal)' }}>{acc.email}</p>}
                   {acc.number && <p className="truncate">{acc.number}</p>}
                 </div>
               )}
@@ -496,7 +519,9 @@ export default function HmoDirectoryTab({ canEdit, focusWalletId = '' }: { canEd
             <div className="flex flex-wrap items-center gap-3 px-6 pt-5 pb-3 border-b" style={{ borderColor: 'var(--light-gray)' }}>
               <HmoLogo url={e.logoUrl} name={e.hmoName} size="row" />
               <h2 id="hmo-details-title" className="text-lg font-bold" style={{ color: 'var(--charcoal)' }}>{e.hmoName}</h2>
-              <MoaBadge validUntil={e.moaValidUntil} noEndDate={e.moaNoEndDate} />
+              {e.notYetAccredited
+                ? <span className="px-2 py-0.5 rounded-full text-[11px] font-semibold whitespace-nowrap" style={MUTED_PILL}>Not yet accredited</span>
+                : <MoaBadge validUntil={e.moaValidUntil} noEndDate={e.moaNoEndDate} />}
               <div className="ml-auto flex items-center gap-2">
                 {canEdit && (
                   <button onClick={() => { setFormError(''); setForm(toForm(e)) }} className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium text-white" style={{ background: 'var(--teal)' }}>
@@ -508,8 +533,9 @@ export default function HmoDirectoryTab({ canEdit, focusWalletId = '' }: { canEd
             </div>
             <div className="px-6 py-4 space-y-3 overflow-y-auto">
             {missing.length > 0 && (
-              <p className="text-xs rounded-lg px-3 py-2" style={{ background: MISSING_BG, color: MISSING_RED, border: `1px solid ${MISSING_BORDER}` }}>
-                <span className="font-semibold">Missing: </span>{missing.join(', ')}
+              <p className="text-xs rounded-lg px-3 py-2"
+                style={e.notYetAccredited ? { background: MUTED_BG, color: '#5F5F5A', border: '1px solid var(--light-gray)' } : { background: MISSING_BG, color: MISSING_RED, border: `1px solid ${MISSING_BORDER}` }}>
+                <span className="font-semibold">{e.notYetAccredited ? 'Still to collect: ' : 'Missing: '}</span>{missing.join(', ')}
               </p>
             )}
             <div className="flex flex-wrap items-center gap-2">
@@ -536,6 +562,18 @@ export default function HmoDirectoryTab({ canEdit, focusWalletId = '' }: { canEd
                 <p className={`text-xs${branches.length ? '' : ' font-medium'}`} style={{ color: branches.length ? 'var(--charcoal)' : MISSING_RED }}>
                   {branches.length ? branches.map(b => b.label).join(', ') : 'Not set'}
                 </p>
+              </div>
+              <div className="min-w-0">
+                <p className="text-[11px] font-semibold uppercase tracking-wide mb-1" style={{ color: 'var(--mid-gray)' }}>Address for courier</p>
+                {e.address ? (
+                  <p className="text-xs whitespace-pre-line flex gap-1.5" style={{ color: 'var(--charcoal)' }}>
+                    <MapPin size={13} className="flex-none mt-px" style={{ color: 'var(--mid-gray)' }} />{e.address}
+                  </p>
+                ) : missing.includes('Courier address') ? (
+                  <p className="text-xs font-medium" style={{ color: e.notYetAccredited ? MUTED_INK : MISSING_RED }}>No address yet</p>
+                ) : (
+                  <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>Not recorded</p>
+                )}
               </div>
               <div className="min-w-0">
                 <p className="text-[11px] font-semibold uppercase tracking-wide mb-1" style={{ color: 'var(--mid-gray)' }}>Terms</p>
@@ -630,6 +668,17 @@ export default function HmoDirectoryTab({ canEdit, focusWalletId = '' }: { canEd
                   </label>
                 ))}
               </div>
+              <label className="flex items-center gap-2 text-sm mt-2" style={{ color: 'var(--charcoal)' }}>
+                <input type="checkbox" checked={form.notYetAccredited} onChange={ev => setForm({ ...form, notYetAccredited: ev.target.checked })} />
+                Not yet accredited
+              </label>
+              <p className="text-[11px] mt-0.5" style={{ color: 'var(--mid-gray)' }}>Greys out its card and moves it to the end. Missing details are not flagged until it is accredited.</p>
+            </section>
+
+            <section>
+              <label htmlFor="hmo-address" className="text-sm font-semibold block mb-1" style={{ color: 'var(--charcoal)' }}>Address for courier</label>
+              <textarea id="hmo-address" rows={2} placeholder="Office address where couriered SOAs and documents go" value={form.address}
+                onChange={ev => setForm({ ...form, address: ev.target.value })} className={inputClass} style={inputStyle} />
             </section>
 
             <section className="space-y-3">

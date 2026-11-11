@@ -1062,6 +1062,8 @@ model HmoDirectory {
   soaSubmission       String? // EMAIL | COURIER | EMAIL_AND_COURIER — how this HMO takes our SOAs
   logoUrl             String? // The HMO's logo (an /api/files/ image), shown on its directory card
   moaNoEndDate        Boolean       @default(false) // The MOA runs until either party terminates it, so it has no validity date
+  notYetAccredited    Boolean       @default(false) // Still applying (Hannah 11/11): its directory card is greyed out
+  address             String? // Office address, for couriered SOAs and documents (Hannah 11/11)
   earlyDiscountPct    Decimal?
   earlyDiscountDays   Int?
   earlyDiscountNotes  String?

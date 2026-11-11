@@ -1158,6 +1158,8 @@ ALTER TABLE "ClinicianHmoPayment" ADD COLUMN IF NOT EXISTS "coursedThroughClinic
 ALTER TABLE "ClinicianHmoPayment" ADD COLUMN IF NOT EXISTS "rfpId" TEXT;
 ALTER TABLE "HmoDirectory" ADD COLUMN IF NOT EXISTS "logoUrl" TEXT;
 ALTER TABLE "HmoDirectory" ADD COLUMN IF NOT EXISTS "moaNoEndDate" BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE "HmoDirectory" ADD COLUMN IF NOT EXISTS "notYetAccredited" BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE "HmoDirectory" ADD COLUMN IF NOT EXISTS "address" TEXT;
 SQL
 
 echo "Redeploy complete."

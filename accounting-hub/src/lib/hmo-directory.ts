@@ -94,6 +94,10 @@ export interface HmoDirectoryFields {
   moaValidUntil: Date | null
   // The MOA runs until terminated (Hannah 11/11: Amaphil, AsianCare), so there is no date to renew by.
   moaNoEndDate: boolean
+  // Still applying for accreditation (Hannah 11/11): the card is greyed out, not flagged.
+  notYetAccredited: boolean
+  // Where couriered SOAs and documents go (Hannah 11/11).
+  address: string | null
   moaFileUrls: string[]
   priceListFileUrls: PriceListFile[]
   mdPayment: MdPayment | null
@@ -121,6 +125,7 @@ type CompletenessInput = Partial<Record<`${'accreditation' | 'submission' | 'col
   mdPayment?: string | null
   soaSubmission?: string | null
   serviceCategory?: string | null
+  address?: string | null
 }
 const DIRECTORY_CONTACTS = [['accreditation', 'Accreditation'], ['submission', 'Submission'], ['collection', 'Collection']] as const
 const blankText = (v: unknown) => typeof v !== 'string' || !v.trim()
@@ -134,6 +139,8 @@ export function missingInfo(e: CompletenessInput): string[] {
     if (email) out.push(`${title} email`)
     if (number) out.push(`${title} number`)
     if (key === 'submission' && !e.soaSubmission) out.push('How SOAs are submitted')
+    // A courier needs somewhere to go; an HMO that takes SOAs by email only does not.
+    if (key === 'submission' && (e.soaSubmission === 'COURIER' || e.soaSubmission === 'EMAIL_AND_COURIER') && blankText(e.address)) out.push('Courier address')
   }
   if (!e.accreditedBranches?.length) out.push('Accredited branches')
   if (!e.mdPayment) out.push('Doctor payment')
@@ -186,6 +193,10 @@ export function cleanDirectoryInput(body: Record<string, unknown>): { data: Part
     else if (isLogoUrl(body.logoUrl)) data.logoUrl = body.logoUrl
     else return { data, error: 'The logo must be a PNG, JPG or WEBP image' }
   }
+  if ('address' in body) {
+    data.address = typeof body.address === 'string' && body.address.trim() ? body.address.trim().slice(0, 500) : null
+  }
+  if ('notYetAccredited' in body) data.notYetAccredited = body.notYetAccredited === true
   if ('earlyDiscountNotes' in body) {
     data.earlyDiscountNotes = typeof body.earlyDiscountNotes === 'string' && body.earlyDiscountNotes.trim() ? body.earlyDiscountNotes.trim().slice(0, 500) : null
   }
