@@ -23,6 +23,11 @@ export async function POST(req: Request) {
 
     const paymentAmount = Number(amount)
     const discountAmount = Number(discount) || 0
+    // A discount with no account cannot post (post-ar-payment refuses it), and the
+    // payment would sit in AR as paid while the ledger never saw it.
+    if (discountAmount > 0 && !discountAccountId) {
+      return NextResponse.json({ error: 'Choose the account for the discount / EWT (usually 1140 Creditable Withholding Tax) — without it the payment cannot be posted to the ledger' }, { status: 400 })
+    }
     // Overpayment: the payer remitted more than the AR being settled. The excess
     // is booked to an income account, NOT against AR — single-wallet only.
     const overpayAmount = effectiveWalletIds.length === 1 ? Math.max(0, Number(overpayment) || 0) : 0
@@ -180,6 +185,12 @@ export async function PUT(req: Request) {
 
     const newAmount = Number(amount)
     const newDiscount = Number(discount) || 0
+    // Checked BEFORE the edit reverses the standing journal: a discount with no
+    // account cannot re-post, which is how AHEA-AR26-0017 fell out of the ledger
+    // on 2026-10-31 (the edit form had blanked the 1140 EWT account).
+    if (newDiscount > 0 && !discountAccountId) {
+      return NextResponse.json({ error: 'Choose the account for the discount / EWT (usually 1140 Creditable Withholding Tax) — without it the payment cannot be posted to the ledger' }, { status: 400 })
+    }
     const newOverpay = Math.max(0, Number(overpayment) || 0)
     if (newOverpay > 0 && !overpaymentAccountId) {
       return NextResponse.json({ error: 'Choose an income account for the overpayment' }, { status: 400 })

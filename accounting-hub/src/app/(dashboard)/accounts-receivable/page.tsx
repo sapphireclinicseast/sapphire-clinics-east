@@ -127,6 +127,8 @@ interface ARPaymentRecord {
   branch?: string | null
   cashAccountId?: string | null
   cashAccount?: { accountNumber: string; accountTitle: string } | null
+  discountAccountId?: string | null
+  discountAccount?: { accountNumber: string; accountTitle: string } | null
   overpayment?: number | string | null
   overpaymentAccountId?: string | null
   overpaymentAccount?: { accountNumber: string; accountTitle: string } | null
@@ -679,6 +681,9 @@ export default function AccountsReceivablePage() {
   const [payCashAccountSearch, setPayCashAccountSearch] = useState('')
   // HMO overpayment: income accounts (REVENUE, credit balance) the excess can be classified to
   const [incomeAccounts, setIncomeAccounts] = useState<{ id: string; accountNumber: string; accountTitle: string }[]>([])
+  // Where an overpayment can also go besides income: 4050 Unearned Revenue (held —
+  // owed to the HMO; listed in Unmatched Payments) and 4080 Output VAT (a VAT top-up).
+  const [heldAccounts, setHeldAccounts] = useState<{ id: string; accountNumber: string; accountTitle: string }[]>([])
   const [payOverpayAccountId, setPayOverpayAccountId] = useState('')
   const [editingPaymentId, setEditingPaymentId] = useState<string | null>(null)
 
@@ -942,6 +947,15 @@ export default function AccountsReceivablePage() {
       .catch(() => {})
   }, [])
 
+  useEffect(() => {
+    fetch('/api/chart-of-accounts?accountType=LIABILITY&pageSize=500')
+      .then(r => r.json())
+      .then(d => setHeldAccounts(((d.data || []) as { id: string; accountNumber: string; accountTitle: string }[])
+        .filter(a => a.accountNumber === '4050' || a.accountNumber === '4080')
+        .map(a => ({ id: a.id, accountNumber: a.accountNumber, accountTitle: a.accountTitle }))))
+      .catch(() => {})
+  }, [])
+
   // Fetch ASSET-type accounts for cash/bank account selection (Debit Account)
   useEffect(() => {
     fetch('/api/chart-of-accounts?accountType=ASSET&pageSize=500')
@@ -1196,8 +1210,10 @@ export default function AccountsReceivablePage() {
     setPayDate(new Date(p.paymentDate).toISOString().split('T')[0])
     setPayAmount(String(toNum(p.amount)))
     setPayDiscount(toNum(p.discount) > 0 ? String(toNum(p.discount)) : '')
-    setPayDiscountAccountId('')
-    setPayDiscountSearch('')
+    // Keep the payment's own discount / EWT account. Blanking it here made every
+    // edit of a payment with EWT fail to re-post (AHEA-AR26-0017, 2026-10-31).
+    setPayDiscountAccountId(p.discountAccountId || '')
+    setPayDiscountSearch(p.discountAccount ? `${p.discountAccount.accountNumber} ${p.discountAccount.accountTitle}` : '')
     setPayCashAccountId(p.cashAccountId || '')
     setPayCashAccountSearch(p.cashAccount ? `${p.cashAccount.accountNumber} ${p.cashAccount.accountTitle}` : '')
     setPayOverpayAccountId(p.overpaymentAccountId || '')
@@ -1234,7 +1250,8 @@ export default function AccountsReceivablePage() {
     const effectiveWalletIds = tab === 'GL' && !editingPaymentId ? payWalletIds : (payWalletId ? [payWalletId] : [])
     if (effectiveWalletIds.length === 0) { setPayError('Select an HMO/Agency'); return }
     if (!payAmount || toNum(payAmount) <= 0) { setPayError('Amount is required'); return }
-    if (payOverpay > 0 && !payOverpayAccountId) { setPayError(`Choose an income account for the ${formatCurrency(payOverpay)} overpayment`); return }
+    if (payOverpay > 0 && !payOverpayAccountId) { setPayError(`Choose an account for the ${formatCurrency(payOverpay)} overpayment`); return }
+    if (toNum(payDiscount) > 0 && !payDiscountAccountId) { setPayError('Choose the account for the discount / EWT (usually 1140 Creditable Withholding Tax)'); return }
     setPaySaving(true)
     setPayError('')
     try {
@@ -4020,7 +4037,9 @@ export default function AccountsReceivablePage() {
                   )}
                   {payDiscountSearch && !payDiscountAccountId && (
                     <div className="absolute z-20 left-0 right-0 mt-1 bg-white border rounded-xl shadow-lg max-h-36 overflow-y-auto" style={{ borderColor: 'var(--light-gray)' }}>
-                      {discountAccounts.filter(a => `${a.accountNumber} ${a.accountTitle}`.toLowerCase().includes(payDiscountSearch.toLowerCase())).slice(0, 8).map(a => (
+                      {/* 1140 CWT first: the HMO's 2% EWT is the usual "discount", and it is an
+                          ASSET account, so the revenue-only list never offered it. */}
+                      {[...cashAccounts.filter(a => a.accountNumber === '1140'), ...discountAccounts].filter(a => `${a.accountNumber} ${a.accountTitle}`.toLowerCase().includes(payDiscountSearch.toLowerCase())).slice(0, 8).map(a => (
                         <button key={a.id} type="button" onClick={() => { setPayDiscountAccountId(a.id); setPayDiscountSearch(`${a.accountNumber} ${a.accountTitle}`) }}
                           className="w-full text-left px-3 py-2 text-xs hover:bg-gray-50" style={{ color: 'var(--charcoal)' }}>
                           <span className="font-mono font-medium" style={{ color: 'var(--teal)' }}>{a.accountNumber}</span> {a.accountTitle}
@@ -4120,13 +4139,26 @@ export default function AccountsReceivablePage() {
                 <div className="rounded-xl border p-3" style={{ borderColor: '#fcd34d', background: '#fffbeb' }}>
                   <p className="text-xs font-semibold mb-2" style={{ color: '#92400e' }}>
                     Overpayment of {formatCurrency(payOverpay)} — the payment exceeds the tagged transactions.
-                    Only {formatCurrency(payTaggedTotal)} settles AR; classify the excess as income:
+                    Only {formatCurrency(payTaggedTotal)} settles AR. Choose where the excess goes — <strong>4050 Unearned Revenue</strong> if
+                    it matches none of our sessions (held as owed to the HMO, listed in Unmatched Payments), 4080 for a VAT top-up, or an income account:
                   </p>
                   <select value={payOverpayAccountId} onChange={e => setPayOverpayAccountId(e.target.value)}
                     className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none bg-white"
                     style={{ borderColor: payOverpayAccountId ? 'var(--teal)' : '#fcd34d' }}>
-                    <option value="">— Select income account —</option>
-                    {incomeAccounts.map(a => <option key={a.id} value={a.id}>{a.accountNumber} — {a.accountTitle}</option>)}
+                    <option value="">— Select account —</option>
+                    {heldAccounts.length > 0 && (
+                      <optgroup label="Held or VAT">
+                        {heldAccounts.map(a => <option key={a.id} value={a.id}>{a.accountNumber} — {a.accountTitle}</option>)}
+                      </optgroup>
+                    )}
+                    <optgroup label="Income">
+                      {incomeAccounts.map(a => <option key={a.id} value={a.id}>{a.accountNumber} — {a.accountTitle}</option>)}
+                    </optgroup>
+                    {/* The payment's own account when it is in neither list, so editing never silently swaps it. */}
+                    {payOverpayAccountId && ![...heldAccounts, ...incomeAccounts].some(a => a.id === payOverpayAccountId) && (() => {
+                      const cur = arPayments.find(p => p.id === editingPaymentId)?.overpaymentAccount
+                      return <option value={payOverpayAccountId}>{cur ? `${cur.accountNumber} — ${cur.accountTitle}` : 'Current account'}</option>
+                    })()}
                   </select>
                 </div>
               )}

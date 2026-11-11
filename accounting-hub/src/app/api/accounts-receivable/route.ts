@@ -420,6 +420,10 @@ export async function GET(req: Request) {
         branch: true,
         cashAccountId: true,
         cashAccount: { select: { accountNumber: true, accountTitle: true } },
+        // Carried so editing a payment keeps its discount / EWT account (the edit
+        // form used to blank it, and the re-post then failed — AHEA-AR26-0017).
+        discountAccountId: true,
+        discountAccount: { select: { accountNumber: true, accountTitle: true } },
         overpayment: true,
         overpaymentAccountId: true,
         overpaymentAccount: { select: { accountNumber: true, accountTitle: true } },
