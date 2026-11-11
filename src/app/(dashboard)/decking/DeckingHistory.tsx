@@ -1,36 +1,31 @@
 'use client'
 
-// The decking board over time: one stacked area — filled beneath open, both
-// drawn up from zero, so the band heights are the day's composition and the
-// top edge is every bookable slot on the board.
+// Filled slots over time: one column per day, each built of stacked bricks.
 //
-// Why stacked, and what it costs. A reader gets "how much could we sell" and
-// "how much of it sold" from one shape instead of holding two charts in their
-// head. The price is resolution: on an axis running to several hundred slots,
-// a day when three or four more children were booked barely moves the seam.
-// That trade is deliberate — composition is what this chart is read for — and
-// the exact figures are in the tiles above it and in the tooltip for any day.
-// (This replaced two separately-scaled line panels, which were zoomed to make
-// those small moves visible.)
+// Why bricks rather than the stacked area this replaced. The area drew filled
+// beneath open, so the thing the desk actually watches — did we book more
+// children than yesterday — was a seam between two bands on an axis running to
+// several hundred, where four more bookings moved it by about a pixel. A column
+// of countable bricks turns the same change into a brick you can see appear.
+// The cost is that composition is no longer in this chart: "how much could we
+// have sold" now lives only in the tiles and the fill-rate panel. That is the
+// trade asked for — one question per chart, answered obviously.
 //
-// From zero, never a cut axis: a stacked area read off a truncated baseline
-// misstates the proportion, which is the one thing the shape is meant to show.
+// Only filled is drawn. Open and unavailable hours are not a second series
+// here; a chart with one series needs no legend, and the title names it.
 //
-// Blocked (unavailable) hours are not drawn and are not capacity. They were
-// over half the height on some days and buried the two numbers the desk acts
-// on; and an hour a consultant never offered is not one that could be sold.
-// So the top edge is filled + open, fill rate is filled ÷ (filled + open), and
-// the tiles name the unavailable hours beside the bookable figure rather than
-// inside it.
+// From zero, never a cut axis: a column read off a truncated baseline misstates
+// how much it grew, which is the one thing these columns are for.
 //
-// Green/gold rather than green/yellow-green: green against yellow is the
-// red-green confusion, and a bright yellow cannot hold 3:1 against white. This
-// pair separates by ΔE 16.3 under protanopia and clears contrast — checked with
-// the palette validator, not by eye.
+// One brick is a fixed number of slots, chosen so the tallest day is 6–14
+// bricks high — few enough to count at a glance, tall enough that one brick is
+// a visible step. The top brick is drawn part-height when the day's figure is
+// not a whole multiple, so a column's height stays exactly proportional to its
+// value and the bricks never round the number up.
 
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
-  AreaChart, Area, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine,
+  BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine,
 } from 'recharts'
 import { ArrowDownRight, ArrowUpRight, Gauge, Layers, Loader2, Minus, Percent } from 'lucide-react'
 import { CARD_STYLE, DashCard, KpiCard, Skeleton, EmptyState } from '../patients/dashboard/ui'
@@ -62,6 +57,11 @@ interface Point {
   fillRate: number | null
 }
 
+/** One day's figures for one department, as the table reads them. */
+interface Reading { totalSlots: number; booked: number; blocked: number; open: number }
+interface DeptSeries { department: string; readings: (Reading | null)[] }
+interface Column { date: string; label: string }
+
 function isoDaysAgo(n: number) {
   const d = new Date()
   d.setDate(d.getDate() - n)
@@ -73,9 +73,13 @@ const bookableOf = (p: Point) => p.booked + p.open
 
 export default function DeckingHistory({ branch }: { branch: string }) {
   const [dept, setDept] = useState('all')
-  const [from, setFrom] = useState(isoDaysAgo(90))
+  // 30 days by default, not 90: the columns are meant to be counted, and at
+  // ninety of them a brick is narrower than it is tall.
+  const [from, setFrom] = useState(isoDaysAgo(29))
   const [to, setTo] = useState(new Date().toISOString().slice(0, 10))
   const [points, setPoints] = useState<Point[]>([])
+  const [columns, setColumns] = useState<Column[]>([])
+  const [perDepartment, setPerDepartment] = useState<DeptSeries[]>([])
   const [firstRecorded, setFirstRecorded] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -91,6 +95,8 @@ export default function DeckingHistory({ branch }: { branch: string }) {
         const d = await r.json()
         if (!r.ok) throw new Error(d.error ?? 'Could not load history')
         setPoints(d.points ?? [])
+        setColumns(d.columns ?? [])
+        setPerDepartment(d.perDepartment ?? [])
         setFirstRecorded(d.firstRecorded ?? null)
       })
       .catch(err => { if (err.name !== 'AbortError') setError(err.message) })
@@ -118,8 +124,9 @@ export default function DeckingHistory({ branch }: { branch: string }) {
             {(() => {
               const today = new Date().toISOString().slice(0, 10)
               const presets = [
-                { id: '30', label: '30 days', from: isoDaysAgo(30) },
-                { id: '90', label: '90 days', from: isoDaysAgo(90) },
+                { id: '14', label: '14 days', from: isoDaysAgo(13) },
+                { id: '30', label: '30 days', from: isoDaysAgo(29) },
+                { id: '90', label: '90 days', from: isoDaysAgo(89) },
                 ...(firstRecorded ? [{ id: 'all', label: 'Since start', from: firstRecorded }] : []),
               ]
               const current = to === today ? presets.find(pr => pr.from === from)?.id ?? 'custom' : 'custom'
@@ -189,10 +196,10 @@ export default function DeckingHistory({ branch }: { branch: string }) {
             </div>
           )}
 
-          {/* First, because it is the one people came for: the charts show
-              the shape, this says whether it went up or down and by how much. */}
-          <WeeklyTable branch={branch} />
-          <StackedChart points={points} firstRecorded={firstRecorded} />
+          <BrickChart points={points} firstRecorded={firstRecorded} />
+          {/* The chart shows the shape; this says whether it went up or down
+              and by how much, per department, which no single column can. */}
+          <DayTable columns={columns} perDepartment={perDepartment} />
           {points.some(pt => pt.fillRate !== null) && <FillRateChart points={points} />}
         </>
       )}
@@ -225,28 +232,152 @@ function ChangeTile({ first, latest }: { first: Point | undefined; latest: Point
   )
 }
 
-// Plot geometry, fixed so the direct labels can be placed against the bands.
-// The y-axis starts at zero, so the baseline is the bottom of the plot area.
+// Plot geometry. The y-axis starts at zero, so the baseline is the bottom of
+// the plot area. Top margin leaves room for the label above the last column.
 const CHART_H = 300
-const CHART_MARGIN = { top: 10, right: 84, bottom: 0, left: -8 }
+// Right margin holds the "start" datum's label. It has to live outside the
+// plot: filled slots rarely fall near zero, so the columns reach most of the
+// way up and an inline label lands on dark green, where it cannot be read.
+const CHART_MARGIN = { top: 22, right: 62, bottom: 0, left: -8 }
 const X_AXIS_H = 22
-const BASELINE_Y = CHART_H - CHART_MARGIN.bottom - X_AXIS_H
 
-function StackedChart({ points, firstRecorded }: { points: Point[]; firstRecorded: string | null }) {
+// ── The brick chart ─────────────────────────────────────────────────────────
+
+/** Brick sizes worth printing on a card: a reader can multiply by these. */
+const BRICK_UNITS = [1, 2, 5, 10, 20, 25, 50, 100, 200, 250, 500, 1000]
+/** How many bricks the tallest column may be — countable at a glance. */
+const MAX_BRICKS = 14
+const BRICK_GAP = 2        // surface gap between bricks, per the mark specs
+const BRICK_MAX_W = 24     // bars are capped; the band's leftover stays as air
+
+/**
+ * How many slots one brick stands for.
+ *
+ * The smallest size on the list that fits the tallest day into MAX_BRICKS, so
+ * the bricks are as fine-grained as the cap allows. A range topping out at 166
+ * filled slots takes bricks of 20 — the first size that keeps it under 14 —
+ * and reads as a column of eight and a bit.
+ */
+function brickUnit(max: number) {
+  return BRICK_UNITS.find(u => max / u <= MAX_BRICKS) ?? Math.ceil(max / MAX_BRICKS)
+}
+
+/** A rect with only its top corners rounded — the data-end, square at the baseline. */
+function topRoundedPath(x: number, y: number, w: number, h: number, r: number) {
+  const rr = Math.max(0, Math.min(r, h, w / 2))
+  return `M${x},${y + h} L${x},${y + rr} Q${x},${y} ${x + rr},${y}`
+    + ` L${x + w - rr},${y} Q${x + w},${y} ${x + w},${y + rr} L${x + w},${y + h} Z`
+}
+
+interface BrickProps {
+  x?: number; y?: number; width?: number; height?: number
+  index?: number; payload?: Point
+  unit: number; lastIndex: number; latestDelta: number | null
+}
+
+/**
+ * One day's column, drawn as bricks stacked from the baseline.
+ *
+ * The partial top brick is what keeps this honest: full bricks are whole
+ * multiples of the unit and the remainder is drawn at its true fraction of a
+ * brick, so the column's total height is the value, not the value rounded to
+ * the nearest brick.
+ */
+function BrickColumn(props: BrickProps) {
+  const { x = 0, y = 0, width = 0, height = 0, index = 0, payload, unit, lastIndex, latestDelta } = props
+  const value = payload?.booked ?? 0
+  if (!Number.isFinite(height) || height <= 0 || value <= 0) return <g />
+
+  const pitch = height / (value / unit)          // pixels per whole brick
+  const gap = pitch >= 8 ? BRICK_GAP : 1         // a 2px gap would eat a short brick
+  const w = Math.min(BRICK_MAX_W, width)
+  const bx = x + (width - w) / 2
+  const baseline = y + height
+
+  const full = Math.floor(value / unit + 1e-9)
+  const remainder = value - full * unit
+  const bricks: { top: number; h: number }[] = []
+  for (let i = 0; i < full; i++) {
+    bricks.push({ top: baseline - (i + 1) * pitch, h: pitch - gap })
+  }
+  if (remainder > 1e-9) {
+    const h = (remainder / unit) * pitch - gap
+    // A sliver thinner than a hairline reads as dirt, not data; the column's
+    // height already carries it, and the exact figure is in the tooltip.
+    if (h >= 1) bricks.push({ top: y, h })
+  }
+  const top = bricks[bricks.length - 1]
+
+  const isLast = index === lastIndex
+  const tone = latestDelta === null || latestDelta === 0 ? 'var(--charcoal)' : latestDelta > 0 ? FILLED : '#B0453A'
+
+  return (
+    <g>
+      {bricks.map((b, i) => (
+        i === bricks.length - 1
+          // 4px rounded data-end on the cap only.
+          ? <path key={i} d={topRoundedPath(bx, b.top, w, b.h, 4)} fill={FILLED} />
+          : <rect key={i} x={bx} y={b.top} width={w} height={Math.max(0, b.h)} fill={FILLED} />
+      ))}
+      {/* Labelled selectively: the last column only, because that is the one
+          the reader is asking about. The rest are carried by the axis, the
+          tooltip and the table. */}
+      {isLast && top && (
+        // Haloed in the surface colour rather than placed to avoid collisions:
+        // the last column is often shorter than the one before it, and the
+        // label then sits over that neighbour's bricks. paintOrder puts the
+        // stroke under the glyphs, so it reads as a gap, not an outline.
+        <text x={bx + w / 2} y={Math.max(11, top.top - 7)} textAnchor="middle"
+          fontSize={11} fontWeight={800} fill="var(--charcoal)"
+          stroke="#fff" strokeWidth={3} paintOrder="stroke" strokeLinejoin="round">
+          {value.toLocaleString()}
+          {latestDelta !== null && latestDelta !== 0 && (
+            <tspan fill={tone} fontWeight={700}> {latestDelta > 0 ? '+' : '−'}{Math.abs(latestDelta)}</tspan>
+          )}
+        </text>
+      )}
+    </g>
+  )
+}
+
+function BrickChart({ points, firstRecorded }: { points: Point[]; firstRecorded: string | null }) {
   const lastIndex = points.length - 1
   const latest = points[lastIndex]
+  const first = points[0]
+
+  const { unit, axisMax } = useMemo(() => {
+    const max = Math.max(...points.map(p => p.booked), 1)
+    const u = brickUnit(max)
+    // The top of the axis is a whole brick, so the last gridline is a brick
+    // edge rather than cutting one in half.
+    return { unit: u, axisMax: Math.ceil(max / u) * u }
+  }, [points])
+
+  // Change from the day before, for the tooltip and the end label.
+  const deltas = useMemo(() => points.map((p, i) => i === 0 ? null : p.booked - points[i - 1].booked), [points])
+  const deltaByDate = useMemo(
+    () => Object.fromEntries(points.map((p, i) => [p.date, deltas[i]])) as Record<string, number | null>,
+    [points, deltas])
+
+  // At most six labels on the y-axis, always on brick edges.
+  const ticks = useMemo(() => {
+    const bricks = axisMax / unit
+    const stride = Math.ceil(bricks / 5)
+    const out: number[] = []
+    for (let b = 0; b <= bricks; b += stride) out.push(b * unit)
+    if (out[out.length - 1] !== axisMax) out.push(axisMax)
+    return out
+  }, [axisMax, unit])
 
   return (
     <DashCard
-      title="Filled and open slots"
+      title="Filled slots each day"
       icon={<Layers size={15} />}
-      description="Stacked from zero — filled beneath open; the top edge is every bookable slot."
-      action={
-        <div className="flex items-center gap-3 text-[11px] font-semibold" style={{ color: 'var(--mid-gray)' }} aria-hidden>
-          <span className="flex items-center gap-1.5"><Swatch colour={FILLED} /> Filled</span>
-          <span className="flex items-center gap-1.5"><Swatch colour={OPEN_FILL} /> Open</span>
-        </div>
-      }
+      description={<>
+        One column per day, built of bricks. <strong>Each brick is {unit.toLocaleString()} filled
+        slot{unit === 1 ? '' : 's'}</strong> — a column that gains a brick gained {unit.toLocaleString()}{' '}
+        booking{unit === 1 ? '' : 's'}.
+      </>}
       footer={firstRecorded ? (
         <>History begins {new Date(`${firstRecorded}T00:00:00Z`).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric', timeZone: 'UTC' })} —
           the first day a reading was taken. Nothing before that was recorded.</>
@@ -255,60 +386,65 @@ function StackedChart({ points, firstRecorded }: { points: Point[]; firstRecorde
       {/* Animation off: it stalled on the first frame elsewhere in this module
           and drew nothing at all. */}
       <ResponsiveContainer width="100%" height={CHART_H}>
-        <AreaChart data={points} margin={CHART_MARGIN}>
-          <CartesianGrid strokeDasharray="3 3" stroke={GRID_STROKE} vertical={false} />
-          {/* minTickGap drops labels rather than overprinting them: a 90-day
-              range is the default, and every date will not fit. */}
+        <BarChart data={points} margin={CHART_MARGIN} barCategoryGap="12%">
+          <CartesianGrid stroke={GRID_STROKE} vertical={false} />
+          {/* minTickGap drops labels rather than overprinting them: every date
+              will not fit once the range is more than a few weeks. */}
           <XAxis dataKey="label" tick={AXIS_TICK} tickLine={false} axisLine={{ stroke: GRID_STROKE }}
             height={X_AXIS_H} minTickGap={16} interval="preserveStartEnd" />
-          <YAxis tick={AXIS_TICK} tickLine={false} axisLine={false} allowDecimals={false} width={44}
-            domain={[0, 'auto']} />
-          <Tooltip content={p => <HistoryTooltip active={p.active} payload={p.payload} />}
-            cursor={{ stroke: '#CBD5E1', strokeWidth: 1 }} />
-          {/* Filled first so it sits beneath. Its white stroke is the seam
-              between the two bands; the open band carries its own top edge.
-              Only the last point gets a "dot": a direct label in the right
-              margin, level with the middle of its band. */}
-          <Area type="monotone" dataKey="booked" name="Filled" stackId="deck"
-            fill={FILLED} fillOpacity={0.85} stroke="#fff" strokeWidth={2}
-            dot={d => {
-              if (d.index !== lastIndex || !Number.isFinite(d.cy) || !latest) return <g key={`f-${d.index}`} />
-              return (
-                <EndLabel key="end-filled" x={d.cx as number} y={(BASELINE_Y + (d.cy as number)) / 2}
-                  name="Filled" value={latest.booked} colour={FILLED} />
-              )
-            }}
-            activeDot={{ r: 4, strokeWidth: 2, stroke: '#fff', fill: FILLED }}
-            isAnimationActive={false} />
-          <Area type="monotone" dataKey="open" name="Open" stackId="deck"
-            fill={OPEN_FILL} fillOpacity={0.75} stroke={OPEN} strokeWidth={1.5}
-            dot={d => {
-              if (d.index !== lastIndex || !Number.isFinite(d.cy) || !latest) return <g key={`o-${d.index}`} />
-              // The axis is linear from zero, so the seam's height follows from
-              // the stack's top and the filled share of it.
-              const top = d.cy as number
-              const stack = latest.booked + latest.open
-              const bottom = stack > 0 ? BASELINE_Y - (BASELINE_Y - top) * (latest.booked / stack) : BASELINE_Y
-              // Kept clear of the filled label when the open band is thin.
-              const y = Math.max(8, Math.min((top + bottom) / 2, (BASELINE_Y + bottom) / 2 - 14))
-              return (
-                <EndLabel key="end-open" x={d.cx as number} y={y}
-                  name="Open" value={latest.open} colour={OPEN} />
-              )
-            }}
-            activeDot={{ r: 4, strokeWidth: 2, stroke: '#fff', fill: OPEN }}
-            isAnimationActive={false} />
-        </AreaChart>
+          {/* Grouped, so the axis and the column labels write a thousand the
+              same way; width follows, or four digits clip. */}
+          <YAxis tick={AXIS_TICK} tickLine={false} axisLine={false} allowDecimals={false}
+            width={axisMax >= 1000 ? 52 : 44} domain={[0, axisMax]} ticks={ticks}
+            tickFormatter={v => Number(v).toLocaleString()} />
+          <Tooltip content={p => <HistoryTooltip active={p.active} payload={p.payload} deltaByDate={deltaByDate} />}
+            cursor={{ fill: 'rgba(22,101,52,0.06)' }} />
+          <Bar dataKey="booked" name="Filled" isAnimationActive={false}
+            shape={(p: object) => (
+              <BrickColumn {...(p as BrickProps)} unit={unit} lastIndex={lastIndex}
+                latestDelta={deltas[lastIndex] ?? null} />
+            )} />
+          {/* Where the range started, so "are we above where we began" is read
+              off the chart rather than worked out. This is the whole reason the
+              columns are legible at all on a zero baseline: filled rarely goes
+              to nothing, so every column is tall and the differences live in
+              the top fifth. The line puts a datum across them.
+              After <Bar>, deliberately — Recharts paints in JSX order, and
+              behind the columns the line is invisible exactly where it is being
+              read. Solid hairline; a dash here would read as a target. */}
+          {first && points.length > 1 && (
+            <ReferenceLine y={first.booked} stroke="#475569" strokeWidth={1} ifOverflow="extendDomain"
+              label={{ value: `start ${first.booked.toLocaleString()}`, position: 'right', fontSize: 10, fontWeight: 700, fill: '#475569' }} />
+          )}
+        </BarChart>
       </ResponsiveContainer>
+
+      {latest && (
+        <p className="mt-3 text-[11px]" style={{ color: 'var(--mid-gray)' }}>
+          {points.length === 1
+            ? <>One reading so far — {latest.booked.toLocaleString()} filled on {latest.label}. A second day gives something to compare it against.</>
+            : <>{latest.label}: <strong style={{ color: 'var(--charcoal)' }}>{latest.booked.toLocaleString()} filled</strong>
+              {' · '}{describeDelta(deltas[lastIndex])} on the day before
+              {first && first.date !== latest.date && <> · {describeDelta(latest.booked - first.booked)} since {first.label}</>}
+            </>}
+        </p>
+      )}
     </DashCard>
   )
 }
 
+/** "up 4", "down 11", "unchanged" — in words, so it reads without the colour. */
+function describeDelta(delta: number | null | undefined) {
+  if (delta === null || delta === undefined) return 'no earlier reading'
+  if (delta === 0) return 'unchanged'
+  return `${delta > 0 ? 'up' : 'down'} ${Math.abs(delta).toLocaleString()}`
+}
+
 /**
- * Fill rate on its own axis (0–100%). The stacked chart above shows how many
- * slots; this shows the share, which the stack hides — a 14-point drop barely
- * moves the seam on an axis that runs to several hundred. Its own chart, never
- * a second axis on the first.
+ * Fill rate on its own axis (0–100%). The bricks above show how many slots were
+ * filled; this shows what share of the bookable ones that was, which a count
+ * cannot say — thirty filled is good on a thin day and poor on a full one.
+ * Its own chart, never a second axis on the first.
  */
 function FillRateChart({ points }: { points: Point[] }) {
   const rated = points.filter(pt => pt.fillRate !== null)
@@ -350,22 +486,24 @@ function FillRateChart({ points }: { points: Point[] }) {
   )
 }
 
-/** "Filled 166", printed just right of the last reading. */
-function EndLabel({ x, y, name, value, colour }: { x: number; y: number; name: string; value: number; colour: string }) {
-  return (
-    <text x={x + 8} y={y} dy="0.35em" fontSize={11} style={{ fontVariantNumeric: 'tabular-nums' }}>
-      <tspan fill="#64748B" fontWeight={600}>{name} </tspan>
-      <tspan fill={colour} fontWeight={800}>{value.toLocaleString()}</tspan>
-    </text>
-  )
-}
-
-/** The day, both bands and the fill rate. */
-function HistoryTooltip({ active, payload }: { active?: boolean; payload?: ReadonlyArray<{ payload?: unknown }> }) {
+/**
+ * The day's figures, and what filled did between the day before and this one.
+ *
+ * The change is keyed by date rather than by the payload's index: Recharts
+ * hands the tooltip one point, and which point it is cannot be read off that
+ * object reliably — the date can.
+ */
+function HistoryTooltip({ active, payload, deltaByDate }: {
+  active?: boolean
+  payload?: ReadonlyArray<{ payload?: unknown }>
+  deltaByDate?: Record<string, number | null>
+}) {
   const p = payload?.[0]?.payload as Point | undefined
   if (!active || !p) return null
+  const delta = deltaByDate ? deltaByDate[p.date] ?? null : null
   const rows: { label: string; value: string; colour?: string }[] = [
     { label: 'Filled', value: p.booked.toLocaleString(), colour: FILLED },
+    ...(deltaByDate ? [{ label: 'vs day before', value: delta === null ? '—' : `${delta > 0 ? '+' : delta < 0 ? '−' : '±'}${Math.abs(delta)}` }] : []),
     { label: 'Open', value: p.open.toLocaleString(), colour: OPEN_FILL },
     { label: 'Fill rate', value: p.fillRate === null ? '—' : `${p.fillRate}%` },
   ]
@@ -416,35 +554,22 @@ function HistorySkeleton() {
   )
 }
 
-// ── Week on week ────────────────────────────────────────────────────────────
+// ── Day on day ──────────────────────────────────────────────────────────────
 //
-// The charts show the shape of the board over time, which is the wrong tool
-// for the question actually asked: is it up or down on last week, and by how
-// much. An area chart makes a change of six slots and a change of sixty look
-// much the same, and reading one department out of a stacked band is guesswork.
+// The chart shows one line of columns — everything the filters left, summed.
+// This is the same days split by department, because "SPED is down eleven and
+// OT is up nine" is the sentence front desk act on, and a single column can
+// only say the two cancelled out.
 //
-// So: a reading per week per department, the way front desk already keep it on
-// paper, with the change from the week before printed next to it.
+// Days run left to right, newest last, so the table reads in the same
+// direction as the chart above it. The figure under each number is the change
+// from the day before it in this table — not from the calendar day before,
+// which may have no reading at all.
 
-type Reading = { total: number; booked: number; blocked: number; open: number }
-interface WeeklyData {
-  weekday: number
-  columns: { date: string; label: string }[]
-  departments: string[]
-  cells: { department: string; readings: (Reading | null)[]; live: Reading | null }[]
-  totals: { readings: (Reading | null)[]; live: Reading | null }
-}
-
-const WEEKDAYS = [
-  { id: '0', label: 'Sun' }, { id: '1', label: 'Mon' }, { id: '2', label: 'Tue' },
-  { id: '3', label: 'Wed' }, { id: '4', label: 'Thu' }, { id: '5', label: 'Fri' }, { id: '6', label: 'Sat' },
-]
-const WEEK_COUNTS = [{ id: '8', label: '8 weeks' }, { id: '12', label: '12 weeks' }, { id: '26', label: '26 weeks' }]
-
-type Metric = 'open' | 'booked' | 'fill'
+type Metric = 'booked' | 'open' | 'fill'
 const METRICS: { id: Metric; label: string }[] = [
+  { id: 'booked', label: 'Filled' },
   { id: 'open', label: 'Open slots' },
-  { id: 'booked', label: 'Booked' },
   { id: 'fill', label: 'Fill rate' },
 ]
 
@@ -460,7 +585,7 @@ function valueOf(r: Reading | null, metric: Metric): number | null {
 /**
  * Which direction is the good one.
  *
- * Fewer OPEN hours means a busier clinic; fewer BOOKED hours does not. Colour
+ * Fewer OPEN hours means a busier clinic; fewer FILLED hours does not. Colour
  * that says "down is bad" on both would be worse than no colour, so the table
  * asks the metric rather than assuming.
  */
@@ -469,7 +594,7 @@ const goodWhenRising = (metric: Metric) => metric !== 'open'
 function DeltaChip({ delta, metric }: { delta: number | null; metric: Metric }) {
   if (delta === null) return null
   if (delta === 0) {
-    return <span className="block text-[10px] leading-none mt-0.5" style={{ color: '#9AA0A6' }}>no change</span>
+    return <span className="block text-[10px] leading-none mt-0.5" style={{ color: '#9AA0A6' }}>—</span>
   }
   const good = delta > 0 === goodWhenRising(metric)
   const Icon = delta > 0 ? ArrowUpRight : ArrowDownRight
@@ -482,72 +607,69 @@ function DeltaChip({ delta, metric }: { delta: number | null; metric: Metric }) 
   )
 }
 
-function WeeklyTable({ branch }: { branch: string }) {
-  const [weekday, setWeekday] = useState('1')
-  const [weeks, setWeeks] = useState('12')
-  const [metric, setMetric] = useState<Metric>('open')
-  const [data, setData] = useState<WeeklyData | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState('')
+const add = (a: Reading, b: Reading): Reading => ({
+  totalSlots: a.totalSlots + b.totalSlots, booked: a.booked + b.booked,
+  blocked: a.blocked + b.blocked, open: a.open + b.open,
+})
 
-  useEffect(() => {
-    const ctl = new AbortController()
-    setLoading(true); setError('')
-    const p = new URLSearchParams({ branch, weekday, weeks })
-    fetch(`/api/decking/history/weekly?${p}`, { signal: ctl.signal })
-      .then(r => { if (!r.ok) throw new Error(`Couldn't load the weekly table (${r.status})`); return r.json() })
-      .then(setData)
-      .catch(err => { if (err.name !== 'AbortError') setError(err.message) })
-      .finally(() => setLoading(false))
-    return () => ctl.abort()
-  }, [branch, weekday, weeks])
+function DayTable({ columns, perDepartment }: { columns: Column[]; perDepartment: DeptSeries[] }) {
+  const [metric, setMetric] = useState<Metric>('booked')
 
+  // One extra row: every department added up, per day. Built here rather than
+  // on the server so it always agrees with the rows above it, whatever the
+  // filters left.
+  //
+  // A day where some department has no reading is tracked as it is built. The
+  // sum of what was recorded is still worth showing, but the CHANGE across such
+  // a day is not: a night the cron half-failed would otherwise read as the
+  // clinic losing thirty bookings. So the figure stays and its delta is
+  // withheld, with the missing departments named on hover.
+  const { totals, missing } = useMemo(() => {
+    const totals: (Reading | null)[] = []
+    const missing: string[][] = []
+    columns.forEach((_, i) => {
+      const present = perDepartment.filter(d => d.readings[i] !== null)
+      totals.push(present.length ? present.map(d => d.readings[i] as Reading).reduce(add) : null)
+      missing.push(perDepartment.filter(d => d.readings[i] === null).map(d => d.department))
+    })
+    return { totals, missing }
+  }, [columns, perDepartment])
+
+  const rows = [
+    ...perDepartment,
+    ...(perDepartment.length > 1 ? [{ department: 'ALL', readings: totals }] : []),
+  ]
   const unit = metric === 'fill' ? '%' : ''
-  const rows = data
-    ? [...data.cells, { department: 'ALL', readings: data.totals.readings, live: data.totals.live }]
-    : []
 
   return (
-    <DashCard title="Week on week" icon={<Layers size={15} />}
-      description={`One reading per week, taken each ${WEEKDAYS[Number(weekday)].label}. The figure under each number is the change from the week before.`}>
+    <DashCard title="Day on day" icon={<Layers size={15} />}
+      description={<>One reading per day, per department. The figure under each number is the change from the
+        column before it. A dot means nothing was recorded that day; <span style={{ color: '#B0453A' }}>*</span> on
+        a total means not every department was, so its change is left out rather than counted as a drop.</>}>
       <div className="flex flex-wrap items-end gap-x-5 gap-y-3 mb-3">
         <div>
           <span className={LABEL} style={{ color: 'var(--mid-gray)' }}>Showing</span>
           <PillTabs label="Metric" size="sm" tabs={METRICS} value={metric} onChange={v => setMetric(v as Metric)} />
         </div>
-        <div>
-          <span className={LABEL} style={{ color: 'var(--mid-gray)' }}>Counted every</span>
-          <PillTabs label="Weekday counted" size="sm" tabs={WEEKDAYS} value={weekday} onChange={setWeekday} />
-        </div>
-        <div>
-          <span className={LABEL} style={{ color: 'var(--mid-gray)' }}>Going back</span>
-          <PillTabs label="Weeks shown" size="sm" tabs={WEEK_COUNTS} value={weeks} onChange={setWeeks} />
-        </div>
-        <span className="flex items-center gap-1.5 h-9 ml-auto text-[11px]" style={{ color: 'var(--mid-gray)' }} aria-live="polite">
-          {loading && data && <><Loader2 size={12} className="animate-spin" /> Updating…</>}
+        <span className="text-[11px] self-center" style={{ color: 'var(--mid-gray)' }}>
+          Department and dates are set above — this table follows them.
         </span>
       </div>
 
-      {error ? (
-        <EmptyState title="Couldn't load the weekly table" hint={error} />
-      ) : loading && !data ? (
-        <Skeleton className="h-48 w-full" />
-      ) : !data || data.departments.length === 0 ? (
-        <EmptyState title="No weekly readings yet"
-          hint="A reading is taken once a day. Once a few have landed on the weekday you picked, the columns fill in from the left." />
+      {rows.length === 0 || columns.length === 0 ? (
+        <EmptyState title="No readings in this range"
+          hint="A reading is taken once a day. Once a few have landed, the columns fill in from the left." />
       ) : (
         <div className="overflow-x-auto -mx-1 px-1">
           <table className="w-full border-collapse text-[12px]">
             <caption className="sr-only">
-              {METRICS.find(m => m.id === metric)?.label} per department, one reading each week
+              {METRICS.find(m => m.id === metric)?.label} per department, one reading each day
             </caption>
             <thead>
               <tr>
                 <th scope="col" className="text-left font-bold px-2 py-1.5 sticky left-0 z-10"
                   style={{ background: 'var(--card, #fff)', color: '#1F3A5F' }}>Department</th>
-                <th scope="col" className="text-right font-bold px-2 py-1.5"
-                  style={{ color: '#1F3A5F', background: '#EEF4FA' }}>Live</th>
-                {data.columns.map(c => (
+                {columns.map(c => (
                   <th key={c.date} scope="col" className="text-right font-semibold px-2 py-1.5 whitespace-nowrap"
                     style={{ color: 'var(--mid-gray)' }}>{c.label}</th>
                 ))}
@@ -556,33 +678,33 @@ function WeeklyTable({ branch }: { branch: string }) {
             <tbody>
               {rows.map(row => {
                 const isTotal = row.department === 'ALL'
-                const liveValue = valueOf(row.live, metric)
-                const lastRecorded = [...row.readings].reverse().find(r => r !== null) ?? null
                 return (
                   <tr key={row.department} style={isTotal ? { borderTop: '2px solid #D5DEE8' } : undefined}>
                     <th scope="row" className="text-left px-2 py-1.5 sticky left-0 z-10 whitespace-nowrap"
                       style={{ background: 'var(--card, #fff)', fontWeight: isTotal ? 800 : 600, color: isTotal ? '#1F3A5F' : '#334E68' }}>
                       {isTotal ? 'All departments' : row.department}
                     </th>
-                    <td className="text-right px-2 py-1.5 align-top" style={{ background: '#EEF4FA' }}>
-                      <span className="font-bold tabular-nums" style={{ color: '#1F3A5F' }}>
-                        {liveValue === null ? '—' : `${liveValue}${unit}`}
-                      </span>
-                      <DeltaChip metric={metric}
-                        delta={liveValue === null || valueOf(lastRecorded, metric) === null
-                          ? null : liveValue - (valueOf(lastRecorded, metric) as number)} />
-                    </td>
                     {row.readings.map((r, i) => {
                       const v = valueOf(r, metric)
                       const prev = valueOf(row.readings[i - 1] ?? null, metric)
+                      // A total is incomplete when this day or the one it is
+                      // compared against was missing a department.
+                      const gap = isTotal && (missing[i]?.length || missing[i - 1]?.length)
+                        ? [...new Set([...(missing[i] ?? []), ...(missing[i - 1] ?? [])])]
+                        : []
                       return (
-                        <td key={data.columns[i].date} className="text-right px-2 py-1.5 align-top tabular-nums">
+                        <td key={columns[i].date} className="text-right px-2 py-1.5 align-top tabular-nums"
+                          title={gap.length ? `Not every department was recorded — ${gap.join(', ')} missing. The change is left out rather than counted as a drop.` : undefined}>
                           {/* Blank, not zero: "nobody recorded it" and "there
                               were none" are different facts. */}
                           {v === null ? <span style={{ color: '#C8CDD3' }}>·</span> : (
                             <>
-                              <span className="font-semibold" style={{ color: '#334E68' }}>{v}{unit}</span>
-                              <DeltaChip metric={metric} delta={prev === null ? null : v - prev} />
+                              <span className="font-semibold" style={{ color: '#334E68' }}>
+                                {v}{unit}{gap.length > 0 && <span style={{ color: '#B0453A' }}>*</span>}
+                              </span>
+                              {gap.length > 0
+                                ? <span className="block text-[10px] leading-none mt-0.5" style={{ color: '#9AA0A6' }}>part</span>
+                                : <DeltaChip metric={metric} delta={prev === null ? null : v - prev} />}
                             </>
                           )}
                         </td>
