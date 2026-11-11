@@ -377,7 +377,8 @@ export default function DetailedGl({
   }
 
   // Bulk edit (Hannah 2026-11-11: "allow me to tick all and set the stage in
-  // bulk", then "also allow bulk setting the SOA submission date"). Ticks are row
+  // bulk", then "also allow bulk setting the SOA submission date" and "… the SOA
+  // resubmission date"). Ticks are row
   // keys; only ticked rows still on screen are changed, so a filter that hides a
   // ticked row also leaves it alone. Paid letters can be ticked for the SOA date,
   // but keep PAID as their stage.
@@ -385,6 +386,7 @@ export default function DetailedGl({
   const [picked, setPicked] = useState<string[]>([])
   const [bulkStage, setBulkStage] = useState('')
   const [bulkSoa, setBulkSoa] = useState('')
+  const [bulkResoa, setBulkResoa] = useState('')
   const [bulkBusy, setBulkBusy] = useState(false)
   const togglePick = (k: string) => setPicked(p => (p.includes(k) ? p.filter(x => x !== k) : [...p, k]))
   const idsOf = (list: Row[]) => ({
@@ -394,16 +396,24 @@ export default function DetailedGl({
   const saveBulk = async (targets: Row[]) => {
     const stageTargets = bulkStage ? targets.filter(r => !r.paid) : []
     const glStage = bulkStage === CLEAR_STAGE ? null : bulkStage
-    if (!targets.length || (!bulkStage && !bulkSoa)) return
-    if (bulkStage && !stageTargets.length && !bulkSoa) {
+    if (!targets.length || (!bulkStage && !bulkSoa && !bulkResoa)) return
+    if (bulkStage && !stageTargets.length && !bulkSoa && !bulkResoa) {
       setStageError('Bulk edit: every ticked letter is paid, and a paid letter keeps PAID as its stage.')
       return
     }
     const paidSkipped = bulkStage ? targets.length - stageTargets.length : 0
     const replacing = bulkSoa ? targets.filter(r => r.soaSubmittedAt && dayKey(r.soaSubmittedAt) !== bulkSoa).length : 0
+    const replacingRe = bulkResoa ? targets.filter(r => r.soaResubmittedAt && dayKey(r.soaResubmittedAt) !== bulkResoa).length : 0
+    // A resubmission follows a first submission; say so when the dates won't line up.
+    const firstSoa = (r: Row) => bulkSoa || dayKey(r.soaSubmittedAt)
+    const noFirst = bulkResoa ? targets.filter(r => !firstSoa(r)).length : 0
+    const beforeFirst = bulkResoa ? targets.filter(r => firstSoa(r) && firstSoa(r) > bulkResoa).length : 0
     const lines = [
       ...(bulkStage ? [`• Stage → ${glStage || 'Not set'} on ${stageTargets.length}${paidSkipped ? ` (${paidSkipped} paid keep PAID)` : ''}`] : []),
       ...(bulkSoa ? [`• SOA submitted → ${fmtDate(`${bulkSoa}T00:00:00+08:00`)} on ${targets.length}${replacing ? ` (replaces the date on ${replacing})` : ''}`] : []),
+      ...(bulkResoa ? [`• SOA resubmitted → ${fmtDate(`${bulkResoa}T00:00:00+08:00`)} on ${targets.length}${replacingRe ? ` (replaces the date on ${replacingRe})` : ''}`] : []),
+      ...(noFirst ? [`⚠ ${noFirst} ha${noFirst === 1 ? 's' : 've'} no SOA submission date yet`] : []),
+      ...(beforeFirst ? [`⚠ on ${beforeFirst} the resubmission would be before the SOA submission date`] : []),
     ]
     if (!confirm(`Update ${targets.length} letter${targets.length === 1 ? '' : 's'}?\n${lines.join('\n')}`)) return
     setStageError(''); setBulkBusy(true)
@@ -415,11 +425,12 @@ export default function DetailedGl({
         body: JSON.stringify({
           ...(stageTargets.length ? { glStage: { value: glStage ?? '', ...idsOf(stageTargets) } } : {}),
           ...(bulkSoa ? { soaSubmittedAt: { value: bulkSoa, ...idsOf(targets) } } : {}),
+          ...(bulkResoa ? { soaResubmittedAt: { value: bulkResoa, ...idsOf(targets) } } : {}),
         }),
       })
       if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'Could not save')
-      setPicked([]); setBulkStage(''); setBulkSoa('')
-      if (bulkSoa) onSaved() // reload: SOA date drives the SOA columns, AR days and the row colour
+      setPicked([]); setBulkStage(''); setBulkSoa(''); setBulkResoa('')
+      if (bulkSoa || bulkResoa) onSaved() // reload: the SOA dates drive the SOA columns, AR days and the row colour
     } catch (e) {
       setStageEdits(m => {
         const n = { ...m }
@@ -581,7 +592,7 @@ export default function DetailedGl({
                 <span className="flex items-center gap-1">
                   <input type="checkbox" checked={picked.includes(r.key)} disabled={!canTick(r)} onChange={() => togglePick(r.key)}
                     aria-label={`Tick ${r.patientName}`}
-                    title={canTick(r) ? (r.paid ? 'Tick to set the SOA date in bulk (paid — the stage stays PAID)' : 'Tick to set the stage or SOA date in bulk') : 'No entry or wallet to save on'}
+                    title={canTick(r) ? (r.paid ? 'Tick to set the SOA dates in bulk (paid — the stage stays PAID)' : 'Tick to set the stage or SOA dates in bulk') : 'No entry or wallet to save on'}
                     className="w-3.5 h-3.5 cursor-pointer disabled:cursor-not-allowed disabled:opacity-30" style={{ accentColor: 'var(--teal)' }} />
                   <button
                     onClick={() => (r.source ? setEditingCase(r.source) : setEditing(r.wallet))}
@@ -901,7 +912,15 @@ export default function DetailedGl({
               className="px-2 py-1 rounded-lg border text-xs outline-none bg-white"
               style={{ borderColor: 'var(--light-gray)', color: bulkSoa ? 'var(--charcoal)' : 'var(--mid-gray)' }} />
           </label>
-          <button onClick={() => saveBulk(pickedRows)} disabled={(!bulkStage && !bulkSoa) || (!!bulkSoa && bulkSoa > manilaToday()) || bulkBusy}
+          <label className="flex items-center gap-1.5 text-xs" style={{ color: 'var(--mid-gray)' }}>
+            SOA resubmitted
+            <input type="date" value={bulkResoa} max={manilaToday()} onChange={e => setBulkResoa(e.target.value)} disabled={bulkBusy}
+              title="SOA Resubmission Date — only for SOAs returned for errors; can't be in the future"
+              className="px-2 py-1 rounded-lg border text-xs outline-none bg-white"
+              style={{ borderColor: 'var(--light-gray)', color: bulkResoa ? 'var(--charcoal)' : 'var(--mid-gray)' }} />
+          </label>
+          <button onClick={() => saveBulk(pickedRows)}
+            disabled={(!bulkStage && !bulkSoa && !bulkResoa) || [bulkSoa, bulkResoa].some(d => !!d && d > manilaToday()) || bulkBusy}
             className="px-3 py-1 rounded-lg text-xs font-semibold text-white disabled:opacity-40"
             style={{ background: 'var(--teal)' }}>
             {bulkBusy ? 'Saving…' : 'Apply'}
