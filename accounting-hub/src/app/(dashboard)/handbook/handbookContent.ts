@@ -465,7 +465,7 @@ export const SECTIONS: Section[] = [
       ] },
       { k: 'sub', t: 'HMO Directory' },
       { k: 'ul', items: [
-        `One row per HMO showing its MOA status; click it to see the details: accredited branches, the accreditation, submission and collection contacts, how the HMO takes our SOAs (email, courier, or both — set under the submission contact in **Edit**), who is paid for medical doctors, the early submission discount, the LOA application link, and PDFs of the signed MOA and the price list submitted.`,
+        `One row per HMO showing its MOA status; click it to see the details: accredited branches, the accreditation, submission and collection contacts, how the HMO takes our SOAs (email, courier, or both — set under the submission contact in **Edit**), who is paid for medical doctors, the early submission discount, the LOA application link, and PDFs of the signed MOA and the price lists submitted — one for East and one for Greenhills, uploaded under each branch in **Edit** (older copies stay listed).`,
         `**Category in Services Section**: click **Edit** and choose the HMO's category. Its services and current prices show right there and in the HMO's details, to check against the price list submitted.`,
         `**MOA valid until**: from 30 days before that date and every day after it, HMO officers, the main user and accounting get a popup and a bell item. To stop it, click **Renew**, enter the new date and upload the new signed MOA.`,
         `The doctor-payment tick is a record of what the MOA says. It does not change what posts to the GL or what shows in AR.`,

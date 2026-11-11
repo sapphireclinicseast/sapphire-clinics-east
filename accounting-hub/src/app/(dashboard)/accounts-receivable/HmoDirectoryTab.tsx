@@ -10,7 +10,8 @@ import { ScanUpload } from '@/components/ScanUpload'
 import { NameCombobox } from '@/components/NameCombobox'
 import { formatCurrency } from '@/lib/utils'
 import {
-  ACCREDITABLE_BRANCHES, MD_PAYMENT_LABEL, MOA_ALERT_DAYS, SOA_SUBMISSION_LABEL, categoriesMatching, missingInfo, moaDaysLeft, moaNeedsRenewal, moaStatusText, type MdPayment, type SoaSubmission,
+  ACCREDITABLE_BRANCHES, MD_PAYMENT_LABEL, MOA_ALERT_DAYS, SOA_SUBMISSION_LABEL, categoriesMatching, missingInfo, moaDaysLeft, moaNeedsRenewal, moaStatusText, priceListFiles,
+  type AccreditableBranch, type MdPayment, type PriceListFile, type SoaSubmission,
 } from '@/lib/hmo-directory'
 
 // Red for an HMO whose card still has gaps (lib/hmo-directory missingInfo).
@@ -33,7 +34,7 @@ type Entry = Partial<Record<ContactField, string | null>> & {
   accreditedBranches?: string[]
   moaValidUntil?: string | null
   moaFileUrls?: string[]
-  priceListFileUrls?: string[]
+  priceListFileUrls?: unknown[]
   mdPayment?: MdPayment | null
   soaSubmission?: SoaSubmission | null
   earlyDiscountPct?: number | null
@@ -62,7 +63,7 @@ type Form = Record<ContactField, string> & {
   accreditedBranches: string[]
   moaValidUntil: string
   moaFileUrls: string[]
-  priceListFileUrls: string[]
+  priceListFileUrls: PriceListFile[]
   mdPayment: MdPayment | null
   soaSubmission: SoaSubmission | ''
   earlyDiscountPct: string
@@ -87,7 +88,7 @@ function toForm(e: Entry): Form {
     accreditedBranches: e.accreditedBranches || [],
     moaValidUntil: ymd(e.moaValidUntil),
     moaFileUrls: e.moaFileUrls || [],
-    priceListFileUrls: e.priceListFileUrls || [],
+    priceListFileUrls: priceListFiles(e.priceListFileUrls),
     mdPayment: e.mdPayment || null,
     soaSubmission: e.soaSubmission || '',
     earlyDiscountPct: e.earlyDiscountPct != null ? String(e.earlyDiscountPct) : '',
@@ -126,6 +127,26 @@ function FileChips({ label, urls, missing }: { label: string; urls: string[]; mi
           <FileText size={12} /> {i === 0 ? label : `Older ${label}`}
         </a>
       ))}
+    </>
+  )
+}
+
+// Price lists by branch: the newest for each branch first, older copies after.
+function PriceListChips({ files }: { files: PriceListFile[] }) {
+  if (!files.length) return <span className="text-xs font-medium" style={{ color: MISSING_RED }}>No price list</span>
+  const groups: { label: string; files: PriceListFile[] }[] = [
+    ...ACCREDITABLE_BRANCHES.map(b => ({ label: `Price list · ${b.label}`, files: files.filter(f => f.branch === b.value) })),
+    { label: 'Price list', files: files.filter(f => !f.branch) },
+  ]
+  return (
+    <>
+      {groups.flatMap(g => g.files.map((f, i) => (
+        <a key={f.url} href={f.url} target="_blank" rel="noopener noreferrer" title={fileName(f.url)}
+          className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs border"
+          style={{ borderColor: 'var(--light-gray)', color: i === 0 ? 'var(--teal)' : 'var(--mid-gray)' }}>
+          <FileText size={12} /> {i === 0 ? g.label : `Older ${g.label.charAt(0).toLowerCase()}${g.label.slice(1)}`}
+        </a>
+      )))}
     </>
   )
 }
@@ -207,8 +228,8 @@ function ServicePrices({ category }: { category: string }) {
   )
 }
 
-function PdfField({ label, hint, prefix, urls, onChange, onRejected }: {
-  label: string; hint?: string; prefix: string; urls: string[]; onChange: (urls: string[]) => void; onRejected: () => void
+function PdfField({ label, hint, prefix, urls, onChange, onRejected, upload = true }: {
+  label: string; hint?: string; prefix: string; urls: string[]; onChange: (urls: string[]) => void; onRejected: () => void; upload?: boolean
 }) {
   // Uploads can resolve one after another, so each one adds to the latest list.
   const latest = useRef(urls)
@@ -217,12 +238,14 @@ function PdfField({ label, hint, prefix, urls, onChange, onRejected }: {
     <div>
       <p className="text-sm font-medium mb-1" style={{ color: 'var(--charcoal)' }}>{label}</p>
       {hint && <p className="text-[11px] mb-1.5" style={{ color: 'var(--mid-gray)' }}>{hint}</p>}
+      {upload && (
       <ScanUpload prefix={prefix} section="hmo-directory" existingCount={urls.length} accept=".pdf,application/pdf" label="Upload PDF" compact qr={false}
         onUploaded={u => {
           if (!/\.pdf$/i.test(u)) { onRejected(); return }
           latest.current = [u, ...latest.current]
           onChange(latest.current)
         }} />
+      )}
       {urls.length > 0 && (
         <ul className="mt-2 space-y-1">
           {urls.map(u => (
@@ -294,6 +317,12 @@ export default function HmoDirectoryTab({ canEdit, focusWalletId = '' }: { canEd
     const saved = editing?.serviceCategory || ''
     return categories.find(c => c.name.toUpperCase() === text)?.name ?? (saved && saved.toUpperCase() === text ? saved : undefined)
   }
+
+  // Replace one branch's price lists (newest first), leaving the other branch's alone.
+  const setPriceLists = (branch: AccreditableBranch | null, urls: string[]) => setForm(f => (f ? {
+    ...f,
+    priceListFileUrls: [...urls.map(url => ({ url, branch })), ...f.priceListFileUrls.filter(x => x.branch !== branch)],
+  } : f))
 
   const save = async () => {
     if (!form) return
@@ -392,7 +421,7 @@ export default function HmoDirectoryTab({ canEdit, focusWalletId = '' }: { canEd
             )}
             <div className="flex flex-wrap items-center gap-2">
               <FileChips label="MOA" urls={e.moaFileUrls || []} missing="No MOA file" />
-              <FileChips label="Price list" urls={e.priceListFileUrls || []} missing="No price list" />
+              <PriceListChips files={priceListFiles(e.priceListFileUrls)} />
               {e.loaApplicationUrl
                 ? <a href={e.loaApplicationUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs border" style={{ borderColor: 'var(--light-gray)', color: 'var(--teal)' }}><ExternalLink size={12} /> LOA application</a>
                 : <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>No LOA link</span>}
@@ -522,8 +551,22 @@ export default function HmoDirectoryTab({ canEdit, focusWalletId = '' }: { canEd
                   <label htmlFor="loa-link" className="text-sm font-medium block mb-1" style={{ color: 'var(--charcoal)' }}>Link of LOA application</label>
                   <input id="loa-link" placeholder="https://…" value={form.loaApplicationUrl} onChange={ev => setForm({ ...form, loaApplicationUrl: ev.target.value })} className={inputClass} style={inputStyle} />
                 </div>
-                <PdfField label="Price list submitted to the HMO" prefix={`PRICELIST-${form.hmoName}`} urls={form.priceListFileUrls}
-                  onChange={urls => setForm(f => (f ? { ...f, priceListFileUrls: urls } : f))} onRejected={() => setFormError('The price list must be a PDF.')} />
+                <div>
+                  <p className="text-sm font-medium mb-1" style={{ color: 'var(--charcoal)' }}>Price list submitted to the HMO</p>
+                  <p className="text-[11px] mb-1.5" style={{ color: 'var(--mid-gray)' }}>One for each branch. Older copies stay listed.</p>
+                  <div className="space-y-2 pl-2 border-l-2" style={{ borderColor: 'var(--light-gray)' }}>
+                    {ACCREDITABLE_BRANCHES.map(b => (
+                      <PdfField key={b.value} label={b.label} prefix={`PRICELIST-${form.hmoName}-${b.label}`}
+                        urls={form.priceListFileUrls.filter(f => f.branch === b.value).map(f => f.url)}
+                        onChange={urls => setPriceLists(b.value, urls)} onRejected={() => setFormError('The price list must be a PDF.')} />
+                    ))}
+                    {form.priceListFileUrls.some(f => !f.branch) && (
+                      <PdfField label="Not tagged to a branch" prefix={`PRICELIST-${form.hmoName}`} upload={false}
+                        urls={form.priceListFileUrls.filter(f => !f.branch).map(f => f.url)}
+                        onChange={urls => setPriceLists(null, urls)} onRejected={() => setFormError('The price list must be a PDF.')} />
+                    )}
+                  </div>
+                </div>
               </div>
             </section>
 

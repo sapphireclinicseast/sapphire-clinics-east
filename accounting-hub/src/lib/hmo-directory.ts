@@ -30,6 +30,28 @@ export const ACCREDITABLE_BRANCHES = [
   { value: 'SANDBOX_GREENHILLS', label: 'Greenhills' },
 ] as const
 
+export type AccreditableBranch = typeof ACCREDITABLE_BRANCHES[number]['value']
+const isAccreditable = (v: unknown): v is AccreditableBranch =>
+  typeof v === 'string' && ACCREDITABLE_BRANCHES.some(b => b.value === v)
+
+// A price list PDF and the branch it is for (Hannah 11/11: East and Greenhills
+// each submit their own). Stored in HmoDirectory.priceListFileUrls as
+// { url, branch } objects; a bare URL string (none existed when this landed)
+// counts as untagged, i.e. for every branch.
+export type PriceListFile = { url: string; branch: AccreditableBranch | null }
+const isPdfUrl = (u: unknown): u is string => typeof u === 'string' && u.startsWith('/api/files/') && /\.pdf$/i.test(u)
+
+export function priceListFiles(v: unknown): PriceListFile[] {
+  return (Array.isArray(v) ? v : []).flatMap((x): PriceListFile[] => {
+    if (isPdfUrl(x)) return [{ url: x, branch: null }]
+    if (x && typeof x === 'object' && isPdfUrl((x as { url?: unknown }).url)) {
+      const branch = (x as { branch?: unknown }).branch
+      return [{ url: (x as { url: string }).url, branch: isAccreditable(branch) ? branch : null }]
+    }
+    return []
+  }).slice(0, 40)
+}
+
 const DAY_MS = 86_400_000
 
 export function moaDaysLeft(validUntil: string, today = todayManila()): number {
@@ -69,7 +91,7 @@ export interface HmoDirectoryFields {
   collectionNumber: string | null
   moaValidUntil: Date | null
   moaFileUrls: string[]
-  priceListFileUrls: string[]
+  priceListFileUrls: PriceListFile[]
   mdPayment: MdPayment | null
   soaSubmission: SoaSubmission | null
   earlyDiscountPct: number | null
@@ -89,7 +111,7 @@ type CompletenessInput = Partial<Record<`${'accreditation' | 'submission' | 'col
   accreditedBranches?: string[] | null
   moaValidUntil?: string | Date | null
   moaFileUrls?: string[] | null
-  priceListFileUrls?: string[] | null
+  priceListFileUrls?: unknown[] | null
   mdPayment?: string | null
   soaSubmission?: string | null
   serviceCategory?: string | null
@@ -111,7 +133,14 @@ export function missingInfo(e: CompletenessInput): string[] {
   if (!e.mdPayment) out.push('Doctor payment')
   if (!e.moaValidUntil) out.push('MOA validity date')
   if (!e.moaFileUrls?.length) out.push('Signed MOA')
-  if (!e.priceListFileUrls?.length) out.push('Price list')
+  // One price list per accredited branch (an untagged one covers every branch).
+  const lists = priceListFiles(e.priceListFileUrls)
+  if (!lists.length) out.push('Price list')
+  else {
+    for (const b of ACCREDITABLE_BRANCHES) {
+      if ((e.accreditedBranches || []).includes(b.value) && !lists.some(f => !f.branch || f.branch === b.value)) out.push(`Price list (${b.label})`)
+    }
+  }
   if (blankText(e.serviceCategory)) out.push('Category in Services Section')
   return out
 }
@@ -124,9 +153,7 @@ const TEXT_FIELDS = [
 ] as const
 
 const isBlank = (v: unknown) => v === null || v === undefined || (typeof v === 'string' && !v.trim())
-const pdfUrls = (v: unknown) => (Array.isArray(v) ? v : [])
-  .filter((u): u is string => typeof u === 'string' && u.startsWith('/api/files/') && /\.pdf$/i.test(u))
-  .slice(0, 20)
+const pdfUrls = (v: unknown) => (Array.isArray(v) ? v : []).filter(isPdfUrl).slice(0, 20)
 
 /**
  * Only the fields present in the body are touched, so picking a category on the
@@ -147,7 +174,7 @@ export function cleanDirectoryInput(body: Record<string, unknown>): { data: Part
     else return { data, error: 'Choose how SOAs are submitted: email, courier, or both' }
   }
   if ('moaFileUrls' in body) data.moaFileUrls = pdfUrls(body.moaFileUrls)
-  if ('priceListFileUrls' in body) data.priceListFileUrls = pdfUrls(body.priceListFileUrls)
+  if ('priceListFileUrls' in body) data.priceListFileUrls = priceListFiles(body.priceListFileUrls)
   if ('earlyDiscountNotes' in body) {
     data.earlyDiscountNotes = typeof body.earlyDiscountNotes === 'string' && body.earlyDiscountNotes.trim() ? body.earlyDiscountNotes.trim().slice(0, 500) : null
   }
