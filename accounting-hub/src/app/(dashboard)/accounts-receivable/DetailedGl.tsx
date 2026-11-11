@@ -124,6 +124,7 @@ function StageTickFilter({ value, onChange }: { value: string[]; onChange: (v: s
 }
 
 const CLEAR_STAGE = '__clear'
+const manilaToday = () => new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' })
 
 /** Tick-all box for the Detailed GL bulk stage; a dash while only some are ticked. */
 function TickAll({ checked, some, disabled, onChange, title }: { checked: boolean; some: boolean; disabled: boolean; onChange: () => void; title: string }) {
@@ -375,39 +376,57 @@ export default function DetailedGl({
     }
   }
 
-  // Bulk stage (Hannah 2026-11-11: "allow me to tick all and set the stage in
-  // bulk"). Ticks are row keys; only ticked rows still on screen are changed, so
-  // a filter that hides a ticked row also leaves it alone.
-  const canSetStage = (r: Row) => canWrite && !!(r.caseId || r.wallet) && !r.paid
+  // Bulk edit (Hannah 2026-11-11: "allow me to tick all and set the stage in
+  // bulk", then "also allow bulk setting the SOA submission date"). Ticks are row
+  // keys; only ticked rows still on screen are changed, so a filter that hides a
+  // ticked row also leaves it alone. Paid letters can be ticked for the SOA date,
+  // but keep PAID as their stage.
+  const canTick = (r: Row) => canWrite && !!(r.caseId || r.wallet)
   const [picked, setPicked] = useState<string[]>([])
   const [bulkStage, setBulkStage] = useState('')
+  const [bulkSoa, setBulkSoa] = useState('')
   const [bulkBusy, setBulkBusy] = useState(false)
   const togglePick = (k: string) => setPicked(p => (p.includes(k) ? p.filter(x => x !== k) : [...p, k]))
-  const saveStageBulk = async (targets: Row[], value: string) => {
-    const glStage = value === CLEAR_STAGE ? null : value
-    const label = glStage || 'no stage'
-    if (!targets.length || !confirm(`Set ${targets.length} letter${targets.length === 1 ? '' : 's'} to ${label}?`)) return
+  const idsOf = (list: Row[]) => ({
+    caseIds: list.filter(r => r.caseId).map(r => r.caseId as string),
+    walletIds: list.filter(r => !r.caseId && r.wallet).map(r => r.wallet!.id),
+  })
+  const saveBulk = async (targets: Row[]) => {
+    const stageTargets = bulkStage ? targets.filter(r => !r.paid) : []
+    const glStage = bulkStage === CLEAR_STAGE ? null : bulkStage
+    if (!targets.length || (!bulkStage && !bulkSoa)) return
+    if (bulkStage && !stageTargets.length && !bulkSoa) {
+      setStageError('Bulk edit: every ticked letter is paid, and a paid letter keeps PAID as its stage.')
+      return
+    }
+    const paidSkipped = bulkStage ? targets.length - stageTargets.length : 0
+    const replacing = bulkSoa ? targets.filter(r => r.soaSubmittedAt && dayKey(r.soaSubmittedAt) !== bulkSoa).length : 0
+    const lines = [
+      ...(bulkStage ? [`• Stage → ${glStage || 'Not set'} on ${stageTargets.length}${paidSkipped ? ` (${paidSkipped} paid keep PAID)` : ''}`] : []),
+      ...(bulkSoa ? [`• SOA submitted → ${fmtDate(`${bulkSoa}T00:00:00+08:00`)} on ${targets.length}${replacing ? ` (replaces the date on ${replacing})` : ''}`] : []),
+    ]
+    if (!confirm(`Update ${targets.length} letter${targets.length === 1 ? '' : 's'}?\n${lines.join('\n')}`)) return
     setStageError(''); setBulkBusy(true)
-    const before = Object.fromEntries(targets.map(r => [r.key, r.key in stageEdits ? stageEdits[r.key] : undefined]))
-    setStageEdits(m => ({ ...m, ...Object.fromEntries(targets.map(r => [r.key, glStage])) }))
+    const before = Object.fromEntries(stageTargets.map(r => [r.key, r.key in stageEdits ? stageEdits[r.key] : undefined]))
+    if (stageTargets.length) setStageEdits(m => ({ ...m, ...Object.fromEntries(stageTargets.map(r => [r.key, glStage])) }))
     try {
-      const res = await fetch('/api/accounts-receivable/gl-case/stage', {
+      const res = await fetch('/api/accounts-receivable/gl-case/bulk', {
         method: 'PUT', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          glStage,
-          caseIds: targets.filter(r => r.caseId).map(r => r.caseId),
-          walletIds: targets.filter(r => !r.caseId && r.wallet).map(r => r.wallet!.id),
+          ...(stageTargets.length ? { glStage: { value: glStage ?? '', ...idsOf(stageTargets) } } : {}),
+          ...(bulkSoa ? { soaSubmittedAt: { value: bulkSoa, ...idsOf(targets) } } : {}),
         }),
       })
-      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'Could not save the stages')
-      setPicked([]); setBulkStage('')
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'Could not save')
+      setPicked([]); setBulkStage(''); setBulkSoa('')
+      if (bulkSoa) onSaved() // reload: SOA date drives the SOA columns, AR days and the row colour
     } catch (e) {
       setStageEdits(m => {
         const n = { ...m }
         for (const [k, v] of Object.entries(before)) { if (v === undefined) delete n[k]; else n[k] = v }
         return n
       })
-      setStageError(`Bulk stage: ${e instanceof Error ? e.message : 'Could not save the stages'}`)
+      setStageError(`Bulk edit: ${e instanceof Error ? e.message : 'Could not save'}`)
     } finally { setBulkBusy(false) }
   }
 
@@ -490,7 +509,7 @@ export default function DetailedGl({
     })
   }, [baseRows, toneTicks, writtenOffOnly, sortKey, sortDir])
 
-  const pickable = useMemo(() => rows.filter(canSetStage), [rows]) // eslint-disable-line react-hooks/exhaustive-deps
+  const pickable = useMemo(() => rows.filter(canTick), [rows]) // eslint-disable-line react-hooks/exhaustive-deps
   const pickedRows = useMemo(() => { const set = new Set(picked); return pickable.filter(r => set.has(r.key)) }, [pickable, picked])
   const allPicked = pickable.length > 0 && pickedRows.length === pickable.length
   const pickAll = () => setPicked(allPicked ? [] : pickable.map(r => r.key))
@@ -518,7 +537,7 @@ export default function DetailedGl({
           {canWrite && (
             <th className="px-2 py-2 w-14 align-top">
               <TickAll checked={allPicked} some={pickedRows.length > 0} disabled={!pickable.length} onChange={pickAll}
-                title={allPicked ? 'Untick every letter' : `Tick every letter shown whose stage can be set (${pickable.length})`} />
+                title={allPicked ? 'Untick every letter' : `Tick every letter shown (${pickable.length})`} />
             </th>
           )}
           {COLS.map(c => (
@@ -560,9 +579,9 @@ export default function DetailedGl({
             {canWrite && (
               <td className="px-2 py-1.5">
                 <span className="flex items-center gap-1">
-                  <input type="checkbox" checked={picked.includes(r.key)} disabled={!canSetStage(r)} onChange={() => togglePick(r.key)}
+                  <input type="checkbox" checked={picked.includes(r.key)} disabled={!canTick(r)} onChange={() => togglePick(r.key)}
                     aria-label={`Tick ${r.patientName}`}
-                    title={canSetStage(r) ? 'Tick to set the stage in bulk' : r.paid ? 'Paid — the stage is PAID' : 'No entry or wallet to save a stage on'}
+                    title={canTick(r) ? (r.paid ? 'Tick to set the SOA date in bulk (paid — the stage stays PAID)' : 'Tick to set the stage or SOA date in bulk') : 'No entry or wallet to save on'}
                     className="w-3.5 h-3.5 cursor-pointer disabled:cursor-not-allowed disabled:opacity-30" style={{ accentColor: 'var(--teal)' }} />
                   <button
                     onClick={() => (r.source ? setEditingCase(r.source) : setEditing(r.wallet))}
@@ -865,15 +884,24 @@ export default function DetailedGl({
           <span className="text-xs font-semibold" style={{ color: 'var(--deep-teal)' }}>
             {pickedRows.length} letter{pickedRows.length === 1 ? '' : 's'} ticked
           </span>
-          <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>Set stage to</span>
-          <select value={bulkStage} onChange={e => setBulkStage(e.target.value)} disabled={bulkBusy}
-            className="px-2 py-1 rounded-lg border text-xs font-semibold outline-none bg-white"
-            style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}>
-            <option value="">— choose —</option>
-            {GL_STAGES.map(s => <option key={s} value={s}>{s}</option>)}
-            <option value={CLEAR_STAGE}>Clear the stage (Not set)</option>
-          </select>
-          <button onClick={() => saveStageBulk(pickedRows, bulkStage)} disabled={!bulkStage || bulkBusy}
+          <label className="flex items-center gap-1.5 text-xs" style={{ color: 'var(--mid-gray)' }}>
+            Stage
+            <select value={bulkStage} onChange={e => setBulkStage(e.target.value)} disabled={bulkBusy}
+              className="px-2 py-1 rounded-lg border text-xs font-semibold outline-none bg-white"
+              style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}>
+              <option value="">— no change —</option>
+              {GL_STAGES.map(s => <option key={s} value={s}>{s}</option>)}
+              <option value={CLEAR_STAGE}>Clear the stage (Not set)</option>
+            </select>
+          </label>
+          <label className="flex items-center gap-1.5 text-xs" style={{ color: 'var(--mid-gray)' }}>
+            SOA submitted
+            <input type="date" value={bulkSoa} max={manilaToday()} onChange={e => setBulkSoa(e.target.value)} disabled={bulkBusy}
+              title="Date submission of SOA — can't be in the future"
+              className="px-2 py-1 rounded-lg border text-xs outline-none bg-white"
+              style={{ borderColor: 'var(--light-gray)', color: bulkSoa ? 'var(--charcoal)' : 'var(--mid-gray)' }} />
+          </label>
+          <button onClick={() => saveBulk(pickedRows)} disabled={(!bulkStage && !bulkSoa) || (!!bulkSoa && bulkSoa > manilaToday()) || bulkBusy}
             className="px-3 py-1 rounded-lg text-xs font-semibold text-white disabled:opacity-40"
             style={{ background: 'var(--teal)' }}>
             {bulkBusy ? 'Saving…' : 'Apply'}
