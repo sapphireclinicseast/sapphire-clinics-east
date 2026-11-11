@@ -255,6 +255,70 @@ const STAGE_STYLE: Record<string, { bg: string; fg: string; bar: string }> = {
 const stageIndex = (s?: string | null) => (GL_STAGES as readonly string[]).indexOf(s || '')
 
 /** One segment per step, filled up to the letter's stage, each in its own step colour. */
+// Stage column filter: tick any number of stages (Hannah 2026-11-11 — "allow this to
+// be a tickbox so i can have more than 1"). Empty = every stage. The list opens in a
+// fixed-position popover so a short table cannot clip it.
+const STAGE_FILTER_OPTIONS = [...GL_STAGES.map(s => ({ key: s as string, label: s as string })), { key: '—', label: 'Not set' }]
+function StageTickFilter({ value, onChange }: { value: string[]; onChange: (v: string[]) => void }) {
+  const [at, setAt] = useState<{ top: number; left: number } | null>(null)
+  const boxRef = useRef<HTMLDivElement>(null)
+  const btnRef = useRef<HTMLButtonElement>(null)
+  useEffect(() => {
+    if (!at) return
+    const outside = (e: MouseEvent) => {
+      if (!boxRef.current?.contains(e.target as Node) && !btnRef.current?.contains(e.target as Node)) setAt(null)
+    }
+    const close = () => setAt(null)
+    document.addEventListener('mousedown', outside)
+    window.addEventListener('scroll', close, true)
+    window.addEventListener('resize', close)
+    return () => {
+      document.removeEventListener('mousedown', outside)
+      window.removeEventListener('scroll', close, true)
+      window.removeEventListener('resize', close)
+    }
+  }, [at])
+  const label = !value.length ? 'All'
+    : value.length === 1 ? (STAGE_FILTER_OPTIONS.find(o => o.key === value[0])?.label ?? value[0])
+    : `${value.length} stages`
+  const toggle = (k: string) => onChange(value.includes(k) ? value.filter(x => x !== k) : [...value, k])
+  return (
+    <>
+      <button ref={btnRef} type="button"
+        onClick={e => {
+          if (at) { setAt(null); return }
+          const r = e.currentTarget.getBoundingClientRect()
+          setAt({ top: r.bottom + 4, left: r.left })
+        }}
+        className="mt-1 w-full min-w-[110px] flex items-center justify-between gap-1 px-1.5 py-0.5 rounded border text-[10px] font-normal bg-white"
+        style={{ borderColor: value.length ? 'var(--deep-teal, #14532d)' : 'var(--light-gray)', color: 'var(--charcoal)' }}
+        title={value.length ? `Showing: ${value.map(k => STAGE_FILTER_OPTIONS.find(o => o.key === k)?.label ?? k).join(', ')}` : 'Filter by stage'}>
+        <span className="truncate">{label}</span>
+        <ChevronDown size={10} />
+      </button>
+      {at && (
+        <div ref={boxRef} className="fixed z-50 w-44 rounded-xl border bg-white shadow-lg p-1.5 text-xs font-normal normal-case"
+          style={{ top: at.top, left: at.left, borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}>
+          <label className="flex items-center gap-2 px-2 py-1.5 rounded-lg cursor-pointer hover:bg-gray-50">
+            <input type="checkbox" checked={!value.length} onChange={() => onChange([])} className="accent-current" />
+            All
+          </label>
+          <div className="my-1 border-t" style={{ borderColor: 'var(--light-gray)' }} />
+          {STAGE_FILTER_OPTIONS.map(o => {
+            const st = STAGE_STYLE[o.key]
+            return (
+              <label key={o.key} className="flex items-center gap-2 px-2 py-1.5 rounded-lg cursor-pointer hover:bg-gray-50">
+                <input type="checkbox" checked={value.includes(o.key)} onChange={() => toggle(o.key)} className="accent-current" />
+                <span className="font-semibold" style={{ color: st ? st.fg : 'var(--mid-gray)' }}>{o.label}</span>
+              </label>
+            )
+          })}
+        </div>
+      )}
+    </>
+  )
+}
+
 function StageSteps({ stage }: { stage?: string | null }) {
   const at = stageIndex(stage)
   return (
@@ -497,6 +561,9 @@ export default function DetailedGl({
   const [toneTicks, setToneTicks] = useState<Exclude<RowTone, null>[]>([])
   const [writtenOffOnly, setWrittenOffOnly] = useState(false)
   const [filters, setFilters] = useState<Partial<Record<ColKey, string>>>({})
+  // Stage filter: any number of stages at once ('—' = not set); none ticked = all (Hannah 2026-11-11).
+  const [stageTicks, setStageTicks] = useState<string[]>([])
+  const toggleStage = (k: string) => setStageTicks(prev => (prev.includes(k) ? prev.filter(x => x !== k) : [...prev, k]))
   const [sortKey, setSortKey] = useState<ColKey>('name')
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
   const [editing, setEditing] = useState<GlCaseWallet | null>(null)
@@ -571,11 +638,12 @@ export default function DetailedGl({
       if (!needle) continue
       out = out.filter(r => cellText(r, k as ColKey).toLowerCase().includes(needle))
     }
+    if (stageTicks.length) out = out.filter(r => stageTicks.includes(r.glStage || '—'))
     return out
-  }, [allRows, search, filters, ticked, branchOptions, noSoaOnly])
+  }, [allRows, search, filters, ticked, branchOptions, noSoaOnly, stageTicks])
 
   const baseRowsNoStage = useMemo(() => {
-    if (!(filters.stage || '').trim()) return baseRows
+    if (!stageTicks.length) return baseRows
     const q = search.trim().toLowerCase()
     let out = allRows
     if (ticked.length !== branchOptions.length) out = out.filter(r => ticked.includes(r.branch || ''))
@@ -587,7 +655,7 @@ export default function DetailedGl({
       out = out.filter(r => cellText(r, k as ColKey).toLowerCase().includes(needle))
     }
     return out
-  }, [baseRows, allRows, search, filters, ticked, branchOptions, noSoaOnly])
+  }, [baseRows, allRows, search, filters, ticked, branchOptions, noSoaOnly, stageTicks])
 
   const rows = useMemo(() => {
     let out = baseRows
@@ -607,7 +675,7 @@ export default function DetailedGl({
     else { setSortKey(k); setSortDir('asc') }
   }
 
-  const activeFilters = Object.values(filters).filter(v => (v || '').trim()).length
+  const activeFilters = Object.values(filters).filter(v => (v || '').trim()).length + (stageTicks.length ? 1 : 0)
   const exportRows = () => rows.map(r => COLS.map(c => cellText(r, c.key)))
 
   /** Wallets already spoken for. The picker excludes these, except the one the
@@ -634,13 +702,7 @@ export default function DetailedGl({
                   : <ArrowUpDown size={10} style={{ opacity: 0.35 }} />}
               </button>
               {c.key === 'stage' ? (
-                <select value={filters.stage || ''} onChange={e => setFilters(f => ({ ...f, stage: e.target.value }))}
-                  className="mt-1 w-full min-w-[110px] px-1 py-0.5 rounded border text-[10px] outline-none font-normal bg-white"
-                  style={{ borderColor: 'var(--light-gray)' }}>
-                  <option value="">All</option>
-                  {GL_STAGES.map(s => <option key={s} value={s}>{s}</option>)}
-                  <option value="—">Not set</option>
-                </select>
+                <StageTickFilter value={stageTicks} onChange={setStageTicks} />
               ) : (
               <input
                 value={filters[c.key] || ''}
@@ -885,7 +947,7 @@ export default function DetailedGl({
           </button>
         )}
         {activeFilters > 0 && (
-          <button onClick={() => setFilters({})}
+          <button onClick={() => { setFilters({}); setStageTicks([]) }}
             className="text-xs font-semibold px-2.5 py-1.5 rounded-lg"
             style={{ background: 'var(--pale-teal)', color: 'var(--deep-teal)' }}>
             Clear {activeFilters} filter{activeFilters === 1 ? '' : 's'}
@@ -926,15 +988,15 @@ export default function DetailedGl({
           <div className="flex items-stretch gap-1 flex-wrap mb-2">
             {steps.map((x, i) => {
               const st = STAGE_STYLE[x.key]
-              const on = (filters.stage || '') === x.key
+              const on = stageTicks.includes(x.key)
               // PAID counts the cash that came in; the steps before it, what the SOA asks for.
               const amt = x.rows.reduce((t, r) => t + (x.key === 'PAID' ? r.received : num(r.soaAmount || r.approved)), 0)
               return (
                 <div key={x.key} className="flex items-center gap-1">
-                  <button onClick={() => setFilters(f => ({ ...f, stage: on ? '' : x.key }))}
+                  <button onClick={() => toggleStage(x.key)}
                     className="px-3 py-1.5 rounded-xl border text-left"
                     style={{ background: st ? st.bg : 'white', borderColor: on ? (st ? st.bar : 'var(--charcoal)') : 'var(--light-gray)', borderWidth: on ? 2 : 1 }}
-                    title={on ? 'Show every stage' : `Show only ${x.label}`}>
+                    title={!stageTicks.length ? `Show only ${x.label}` : on ? `Stop showing ${x.label}` : `Also show ${x.label}`}>
                     <span className="block text-[10px] font-bold uppercase tracking-wide" style={{ color: st ? st.fg : 'var(--mid-gray)' }}>
                       {st ? `${i + 1}. ` : ''}{x.label}
                     </span>
