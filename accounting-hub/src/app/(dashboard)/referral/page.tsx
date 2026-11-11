@@ -7,6 +7,7 @@ import { Users, UserPlus, Loader2, X, Trash2, Search, ChevronDown, Download, Bar
 import ReferrerSettingsPanel, { REFERRER_TYPE_LABEL } from '@/components/ReferrerSettingsPanel'
 import { AlertBanner, EmptyState, LoadingNote, display, ink, muted } from '@/components/ReferralUi'
 import { AccountPicker, type PickableAccount } from '@/components/AccountPicker'
+import { MedrepRecipientPicker, type IncentiveStaff } from '@/components/MedrepRecipientPicker'
 import { HR_PAGE_CLASS, HR_PAGE_STYLE, HrShimmerStyle, StatCard, hrBtn } from '@/components/ui/hr-look'
 import { branchLabel } from '@/lib/branch'
 import { departmentLabel } from '@/lib/department'
@@ -708,18 +709,56 @@ function ReferralCommissionPanel() {
   const [effectiveFrom, setEffectiveFrom] = useState('')
   const [commissionStart, setCommissionStart] = useState('')
   const [medrep, setMedrep] = useState<MedrepBlock | null>(null)
-  const [medrepOpen, setMedrepOpen] = useState(false)
+  // Open by default so the recipient is set where the incentive shows (Hannah 2026-11-11).
+  const [medrepOpen, setMedrepOpen] = useState(true)
+  // Med rep incentive settings, edited right here: recipient (searchable staff
+  // list) and ₱ per new patient. Payroll then adds the unpaid ones to that
+  // person's payslip automatically when it is generated.
+  const [incStaff, setIncStaff] = useState<IncentiveStaff[]>([])
+  const [incStaffId, setIncStaffId] = useState<string | null>(null)
+  const [incAmount, setIncAmount] = useState('50')
+  const [incSaving, setIncSaving] = useState(false)
+  useEffect(() => {
+    fetch('/api/referrers/incentive-settings')
+      .then(r => (r.ok ? r.json() : null))
+      .then(d => { if (d) { setIncStaff(d.staff || []); setIncStaffId(d.staffId || null); setIncAmount(String(d.amount ?? 50)) } })
+      .catch(() => {})
+  }, [])
+  const saveIncentive = async (patch: { staffId?: string | null; staffName?: string | null; amount?: number }) => {
+    setIncSaving(true)
+    try {
+      const r = await fetch('/api/referrers/incentive-settings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(patch) })
+      if (!r.ok) { alert((await r.json().catch(() => ({}))).error || 'Could not save the incentive settings'); return }
+      const d = await r.json()
+      setIncStaffId(d.staffId || null); setIncAmount(String(d.amount ?? 50))
+      await load()
+    } finally { setIncSaving(false) }
+  }
+  // In-house doctors with referred sessions but no rate: payroll pays them nothing.
+  const [bulkRateBusy, setBulkRateBusy] = useState(false)
 
   // RFP payout for EXTERNAL referrers (outside doctors, law firms, partner
   // schools — not staff → no payroll): one expense RFP per referrer covering
   // their unclaimed sessions, claim-ledger stamped. First built 10/07, rolled
   // back on Hannah's call; reinstated on her call 2026-10-16 with the expense
   // account configurable below.
-  const [rfpOpen, setRfpOpen] = useState(false)
+  const [rfpOpen, setRfpOpen] = useState(true)
   const [rfpBranch, setRfpBranch] = useState('SANDBOX_EAST')
   const [rfpUpTo, setRfpUpTo] = useState(() => new Date().toISOString().slice(0, 10))
   const [rfpBusy, setRfpBusy] = useState(false)
   const [rfpResult, setRfpResult] = useState<{ created: { referrer: string; refNumber: string; sessions: number; basis?: string; amount: number }[]; note?: string; error?: string } | null>(null)
+  // What Generate would create right now (GET preview — nothing is written).
+  const [rfpPreview, setRfpPreview] = useState<{ referrerId: string; referrer: string; basis: string; units: number; rate: number; amount: number }[] | null>(null)
+  const [previewTick, setPreviewTick] = useState(0)
+  useEffect(() => {
+    if (!rfpOpen || !rfpUpTo) return
+    let alive = true
+    fetch(`/api/referrers/commission/rfp?upTo=${rfpUpTo}`)
+      .then(r => (r.ok ? r.json() : { preview: [] }))
+      .then(d => { if (alive) setRfpPreview(d.preview || []) })
+      .catch(() => { if (alive) setRfpPreview([]) })
+    return () => { alive = false }
+  }, [rfpOpen, rfpUpTo, previewTick])
   // Payout settings: the expense account the RFPs book under (persisted on the
   // incentive-settings singleton; picking an account saves immediately).
   const [payoutAccount, setPayoutAccount] = useState<string | null>(null)
@@ -771,6 +810,7 @@ function ReferralCommissionPanel() {
       if (!r.ok) { setRfpResult({ created: [], error: d.error || 'Failed to generate' }); return }
       setRfpResult(d)
       load()
+      setPreviewTick(t => t + 1)
     } catch { setRfpResult({ created: [], error: 'Failed to generate' }) }
     finally { setRfpBusy(false) }
   }
@@ -842,6 +882,22 @@ function ReferralCommissionPanel() {
 
   const extCommission = sum(external, 'commission')
   const inCommission = sum(inhouse, 'commission')
+  // In-house doctors with referred sessions in range but no rate: payroll's
+  // automatic line skips them. Listed so it's never a silent ₱0.
+  const inhouseNoRate = rows.filter(r => r.isInhouse && r.rate == null && r.sessions > 0)
+  const inhouseRated = rows.filter(r => r.isInhouse && r.rate != null)
+  const setInhouseRate = async (rate: number) => {
+    const names = inhouseNoRate.map(r => `${r.name} (${r.sessions} session${r.sessions === 1 ? '' : 's'})`).join('\n')
+    if (!confirm(`Set ₱${rate.toLocaleString('en-PH')} per session for these in-house doctors?\n\n${names}\n\nTheir next consultant payroll cutoff then adds every unpaid referred session since the scheme started. You can untick anyone on their card in Referrers.`)) return
+    setBulkRateBusy(true)
+    try {
+      for (const r of inhouseNoRate) {
+        const res = await fetch('/api/referrers', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: r.referrerId, commissionPerSession: rate, commissionBasis: 'SESSION' }) })
+        if (!res.ok) { alert(`Could not set the rate for ${r.name}.`); break }
+      }
+      await load()
+    } finally { setBulkRateBusy(false) }
+  }
   const shownCommission = sum(shown, 'commission')
 
   return (
@@ -905,12 +961,37 @@ function ReferralCommissionPanel() {
                 <ChevronDown size={14} style={{ color: 'var(--mid-gray)', transform: medrepOpen ? 'none' : 'rotate(-90deg)', transition: 'transform .15s' }} />
                 <span className="text-sm font-bold" style={{ color: '#92400e', ...display }}>Medical representative incentive</span>
                 <span className="text-xs" style={muted}>
-                  one-time per new patient from an external doctor · {medrep.staffName ? `recipient: ${medrep.staffName}` : 'no recipient set — Referrers → Incentive settings'}
+                  one-time per new patient from an external doctor · {medrep.staffName ? `recipient: ${medrep.staffName} · added to their payslip automatically` : 'no recipient set — pick one below'}
                 </span>
                 <span className="ml-auto text-sm font-mono font-semibold whitespace-nowrap" style={{ color: '#92400e' }}>
                   {medrep.count} × {peso(medrep.amount)} = {peso(medrep.total)}
                 </span>
               </button>
+              {medrepOpen && (
+                <div className="border-t px-4 py-3 flex flex-wrap items-end gap-3" style={{ borderColor: 'var(--light-gray)', background: '#fffbeb' }}>
+                  <div className="w-80 max-w-full">
+                    <p className="text-[11px] font-bold uppercase tracking-[.4px] mb-1" style={muted}>Med rep (recipient)</p>
+                    <MedrepRecipientPicker staff={incStaff} staffId={incStaffId} staffName={medrep.staffName} disabled={!canMarkPaid || incSaving}
+                      onPick={st => saveIncentive({ staffId: st?.id || null, staffName: st?.name || null })} />
+                  </div>
+                  <div>
+                    <p className="text-[11px] font-bold uppercase tracking-[.4px] mb-1" style={muted}>Per new patient</p>
+                    <div className="relative w-28">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm font-semibold" style={muted}>₱</span>
+                      <input type="number" min={0} step="1" value={incAmount} disabled={!canMarkPaid || incSaving}
+                        onChange={e => setIncAmount(e.target.value)}
+                        onBlur={() => { const n = Math.max(0, Number(incAmount) || 0); if (n !== medrep.amount) saveIncentive({ amount: n }) }}
+                        className="w-full pl-7 pr-2 py-2 rounded-xl border text-sm font-mono bg-white" style={{ borderColor: 'var(--light-gray)' }} />
+                    </div>
+                  </div>
+                  {incSaving && <Loader2 size={14} className="animate-spin mb-2.5" style={muted} />}
+                  <p className="text-xs flex-1 min-w-[240px] mb-1" style={muted}>
+                    {medrep.staffName
+                      ? <>Paid automatically: when {medrep.staffName}&apos;s payslip for a cutoff is generated, every new patient not yet paid up to that cutoff is added as a taxable allowance (&ldquo;New-referred-patient incentive&rdquo;). Use <b>Mark paid</b> only for one paid outside payroll.</>
+                      : <>No one gets this yet. Pick the med rep and their next generated payslip carries every unpaid new patient since the scheme started.</>}
+                  </p>
+                </div>
+              )}
               {medrepOpen && (
                 <div className="border-t overflow-x-auto" style={{ borderColor: 'var(--light-gray)' }}>
                   {medrep.patients.length === 0 ? (
@@ -988,18 +1069,52 @@ function ReferralCommissionPanel() {
                         through
                         <input type="date" value={rfpUpTo} onChange={e => setRfpUpTo(e.target.value)} className={`${hrInput} px-2 text-xs`} style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }} />
                       </label>
-                      <button onClick={generateRfps} disabled={rfpBusy} className={hrBtn.primary} style={{ background: 'var(--teal)' }}>
-                        {rfpBusy && <Loader2 size={13} className="animate-spin" />} {rfpBusy ? 'Generating…' : 'Generate commission payment'}
+                      <button onClick={generateRfps} disabled={rfpBusy || (rfpPreview !== null && rfpPreview.length === 0)} className={`${hrBtn.primary} disabled:opacity-50`} style={{ background: 'var(--teal)' }}>
+                        {rfpBusy && <Loader2 size={13} className="animate-spin" />}
+                        {rfpBusy ? 'Generating…' : rfpPreview && rfpPreview.length
+                          ? `Generate ${rfpPreview.length} RFP${rfpPreview.length === 1 ? '' : 's'} · ${peso(rfpPreview.reduce((t, p) => t + p.amount, 0))}`
+                          : 'Generate commission payment'}
                       </button>
                     </div>
                   </>
                 ) : <p className="text-xs" style={muted}>Only Admin, Accountant, Bookkeeper or a branch admin can change the account and generate payouts.</p>}
+                {/* What Generate would create now — one RFP per referrer, payable to them, under Expenses → RFP. */}
+                {rfpPreview === null ? (
+                  <p className="text-xs flex items-center gap-1.5" style={muted}><Loader2 size={12} className="animate-spin" /> Checking unpaid commissions…</p>
+                ) : rfpPreview.length === 0 ? (
+                  <p className="text-xs" style={muted}>Nothing unpaid for external referrers through {rfpUpTo} — every commission is already on an RFP.</p>
+                ) : (
+                  <div className="rounded-lg border overflow-x-auto" style={{ borderColor: 'var(--light-gray)' }}>
+                    <table className="w-full text-xs" style={{ minWidth: 480 }}>
+                      <thead>
+                        <tr style={{ background: 'var(--hr-head, #f6f7f3)' }}>
+                          {['To be paid (RFP payable to)', 'Unpaid', 'Rate', 'RFP amount'].map((h, i) => (
+                            <th key={h} className={`px-3 py-1.5 font-semibold ${i === 0 ? 'text-left' : 'text-right'}`} style={muted}>{h}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {rfpPreview.map(p => (
+                          <tr key={p.referrerId} className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
+                            <td className="px-3 py-1.5 font-semibold" style={ink}>{p.referrer}</td>
+                            <td className="px-3 py-1.5 text-right" style={ink}>{p.units} {p.basis === 'PATIENT' ? `patient${p.units === 1 ? '' : 's'}` : `session${p.units === 1 ? '' : 's'}`}</td>
+                            <td className="px-3 py-1.5 text-right font-mono" style={muted}>{peso(p.rate)}/{p.basis === 'PATIENT' ? 'patient' : 'session'}</td>
+                            <td className="px-3 py-1.5 text-right font-mono font-semibold" style={{ color: 'var(--teal)' }}>{peso(p.amount)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
                 {rfpResult && (
                   rfpResult.error ? <p className="text-xs px-3 py-2 rounded-lg" style={{ background: '#fef2f2', color: '#b91c1c' }}>{rfpResult.error}</p>
                   : rfpResult.created.length === 0 ? <p className="text-xs" style={muted}>{rfpResult.note || 'Nothing unpaid in that window.'}</p>
                   : (
                     <div className="rounded-lg border p-3 text-xs space-y-1" style={{ borderColor: 'var(--teal)', background: 'var(--pale-teal)' }}>
-                      <p className="font-bold" style={{ color: 'var(--teal)' }}>Created {rfpResult.created.length} RFP{rfpResult.created.length === 1 ? '' : 's'} — pay them under Expenses → RFP:</p>
+                      <p className="font-bold flex flex-wrap items-center gap-x-2" style={{ color: 'var(--teal)' }}>
+                        Created {rfpResult.created.length} RFP{rfpResult.created.length === 1 ? '' : 's'} — pay them under Expenses → RFP ({rfpBranch === 'SANDBOX_GREENHILLS' ? 'Greenhills' : 'East'}):
+                        <a href="/expenses?tab=rfp" className="underline font-semibold">Open Expenses → RFP</a>
+                      </p>
                       {rfpResult.created.map(c => (
                         <div key={c.refNumber} className="flex justify-between gap-2">
                           <span className="font-mono">{c.refNumber}</span>
@@ -1014,6 +1129,31 @@ function ReferralCommissionPanel() {
               </div>
             )}
           </section>
+
+          {/* In-house doctors are paid by consultant payroll automatically — but only at a rate. */}
+          {includeInhouse && (inhouseNoRate.length > 0 || inhouseRated.length > 0) && (
+            <section className="rounded-lg border px-4 py-3 space-y-2" style={{ borderColor: inhouseNoRate.length ? '#fcd34d' : 'var(--light-gray)', background: inhouseNoRate.length ? '#fffbeb' : '#fff', borderLeft: '4px solid #d97706' }}>
+              <p className="text-sm font-bold" style={{ color: '#92400e', ...display }}>In-house doctors — paid through payroll</p>
+              <p className="text-xs" style={muted}>
+                Each in-house doctor with a rate gets an automatic &ldquo;Referral commission&rdquo; line on their consultant payslip (their own branch) when the cutoff is generated, covering every referred session not yet paid. Saving the payslip marks those sessions paid, so none is paid twice.
+              </p>
+              {inhouseNoRate.length > 0 && (
+                <div className="flex flex-wrap items-center gap-2">
+                  <p className="text-xs font-semibold flex-1 min-w-[260px]" style={{ color: '#92400e' }}>
+                    Not being paid — no rate set: {inhouseNoRate.map(r => `${r.name} (${r.sessions})`).join(' · ')}
+                  </p>
+                  {canMarkPaid && (
+                    <button onClick={() => setInhouseRate(100)} disabled={bulkRateBusy} className={`${hrBtn.primary} disabled:opacity-50`} style={{ background: '#b45309' }}>
+                      {bulkRateBusy && <Loader2 size={13} className="animate-spin" />} Set ₱100/session for {inhouseNoRate.length === 1 ? 'this doctor' : `these ${inhouseNoRate.length}`}
+                    </button>
+                  )}
+                </div>
+              )}
+              {inhouseRated.length > 0 && (
+                <p className="text-xs" style={muted}>With a rate: {inhouseRated.map(r => `${r.name} ${peso(r.rate as number)}/session`).join(' · ')}</p>
+              )}
+            </section>
+          )}
 
           {/* ── Per referrer ── */}
           <section className="rounded-lg border bg-white min-w-0" style={hrCard}>

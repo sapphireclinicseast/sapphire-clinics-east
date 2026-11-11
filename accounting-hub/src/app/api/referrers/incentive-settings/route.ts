@@ -15,15 +15,22 @@ export async function GET() {
     prisma.referralIncentiveSettings.findUnique({ where: { id: 'MAIN' } }),
     fetchHrStaffForSync(),
   ])
+  const list = staff
+    .map(s => ({ id: String(s.id || ''), name: `${String(s.firstName || '').trim()} ${String(s.lastName || '').trim()}`.trim().toUpperCase(), jobTitle: String(s.jobTitle || '') }))
+    .filter(s => s.id && s.name)
+    .sort((a, b) => a.name.localeCompare(b.name))
+  // The incentive reaches a payslip only when the staff member is an active
+  // hub payroll employee linked to that HR record — say so in the picker.
+  const onPayroll = new Set((await prisma.employee.findMany({
+    where: { externalStaffId: { in: list.map(s => s.id) }, isActive: true },
+    select: { externalStaffId: true },
+  }).catch(() => [])).map(e => e.externalStaffId as string))
   return NextResponse.json({
     staffId: settings?.staffId || null,
     staffName: settings?.staffName || null,
     amount: settings ? Number(settings.amount) : 50,
     commissionExpenseAccount: settings?.commissionExpenseAccount || null,
-    staff: staff
-      .map(s => ({ id: String(s.id || ''), name: `${String(s.firstName || '').trim()} ${String(s.lastName || '').trim()}`.trim().toUpperCase(), jobTitle: String(s.jobTitle || '') }))
-      .filter(s => s.id && s.name)
-      .sort((a, b) => a.name.localeCompare(b.name)),
+    staff: list.map(s => ({ ...s, onPayroll: onPayroll.has(s.id) })),
   })
 }
 

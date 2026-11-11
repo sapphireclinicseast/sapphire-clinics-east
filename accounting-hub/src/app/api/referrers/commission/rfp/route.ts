@@ -22,6 +22,23 @@ const DEFAULT_COMMISSION_ACCOUNT = '8120 Marketing and Advertising Expense'
 // (First built 2026-10-07, rolled back the next day on Hannah's call;
 // reinstated 2026-10-16 on her call, widened to law firms/schools with the
 // expense account configurable.)
+// GET ?upTo=YYYY-MM-DD → what POST would create right now, one line per
+// external referrer (nothing is written), so the payout section can show the
+// RFPs before they are generated.
+export async function GET(req: Request) {
+  const session = await auth()
+  if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const upTo = new URL(req.url).searchParams.get('upTo')
+  const to = upTo ? new Date(`${upTo}T23:59:59.999+08:00`) : new Date()
+  if (isNaN(to.getTime())) return NextResponse.json({ error: 'upTo must be YYYY-MM-DD' }, { status: 400 })
+  const rows = await computeDoctorCommissions(prisma, { from: commissionFloor(), to, onlyUnclaimed: true })
+  const preview = rows
+    .filter(r => !r.isInhouse && r.rate != null && r.rate > 0 && r.sessions.length > 0)
+    .map(r => ({ referrerId: r.referrerId, referrer: r.name, basis: r.basis, units: r.sessions.length, rate: r.rate as number, amount: r.sessions.length * (r.rate as number) }))
+    .sort((a, b) => b.amount - a.amount || a.referrer.localeCompare(b.referrer))
+  return NextResponse.json({ preview })
+}
+
 export async function POST(req: Request) {
   const session = await auth()
   if (!session?.user || !WRITE_ROLES.includes(session.user.role as string)) {

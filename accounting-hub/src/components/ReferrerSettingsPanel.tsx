@@ -11,6 +11,7 @@ import {
   AlertBanner, EmptyState, LoadingNote, Modal, Tile, btnPrimary, btnSecondary, btnSecondaryStyle, card, display, ink,
   inputCls, inputStyle, labelCls, muted, pulse, pulseTone,
 } from '@/components/ReferralUi'
+import { MedrepRecipientPicker, type IncentiveStaff } from '@/components/MedrepRecipientPicker'
 
 export const REFERRER_TYPE_LABEL: Record<string, string> = { DOCTOR: 'Doctor', LAW_FIRM: 'Law Firm', PARTNER_SCHOOL: 'Partner School' }
 const REFERRER_TYPES = ['DOCTOR', 'LAW_FIRM', 'PARTNER_SCHOOL'] as const
@@ -70,8 +71,13 @@ function ReferrerCard({ title, type, referrers, onEdit, onDelete, onOpenOrders, 
 }) {
   const [search, setSearch] = useState('')
   const [asc, setAsc] = useState(true)
+  // Doctors only: All / In-house / Outside (Hannah 2026-11-11: "have a filter here for inhouse doctors").
+  const [who, setWho] = useState<'all' | 'inhouse' | 'outside'>('all')
+  const isDoctors = type === 'DOCTOR'
   const all = referrers.filter(r => r.type === type)
+  const inhouseHere = isDoctors ? all.filter(r => r.isInhouse).length : 0
   const rows = all
+    .filter(r => !isDoctors || who === 'all' || (who === 'inhouse' ? !!r.isInhouse : !r.isInhouse))
     .filter(r => !search || r.name.toLowerCase().includes(search.toLowerCase()) || r.affiliation?.toLowerCase().includes(search.toLowerCase()) || r.specialization?.toLowerCase().includes(search.toLowerCase()))
     .sort((a, b) => asc ? a.name.localeCompare(b.name) : b.name.localeCompare(a.name))
   const earning = all.filter(r => commissionOf(r) != null).length
@@ -87,11 +93,22 @@ function ReferrerCard({ title, type, referrers, onEdit, onDelete, onOpenOrders, 
               <span className="px-2 py-0.5 rounded-full text-[11px] font-semibold tabular-nums" style={typeBadgeStyle(type)}>{all.length}</span>
             </h3>
             <p className="text-[11px]" style={muted}>
-              {earning} earn{earning === 1 ? 's' : ''} commission{search && <> · {rows.length} match{rows.length === 1 ? '' : 'es'}</>}
+              {earning} earn{earning === 1 ? 's' : ''} commission{isDoctors && <> · {inhouseHere} in-house</>}{(search || who !== 'all') && <> · {rows.length} shown</>}
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-2 w-full sm:w-auto">
+        <div className="flex items-center gap-2 w-full sm:w-auto flex-wrap sm:flex-nowrap">
+          {isDoctors && (
+            <div className="flex rounded-xl border overflow-hidden shrink-0" style={{ borderColor: 'var(--light-gray)' }} role="group" aria-label="Show doctors">
+              {([['all', 'All'], ['inhouse', 'In-house'], ['outside', 'Outside']] as const).map(([k, label]) => (
+                <button key={k} type="button" onClick={() => setWho(k)} aria-pressed={who === k}
+                  className="px-2.5 py-1.5 text-xs font-semibold whitespace-nowrap"
+                  style={who === k ? { background: 'var(--teal)', color: '#fff' } : { background: '#fff', color: 'var(--charcoal)' }}>
+                  {label}{k === 'inhouse' ? ` ${inhouseHere}` : k === 'outside' ? ` ${all.length - inhouseHere}` : ''}
+                </button>
+              ))}
+            </div>
+          )}
           <div className="relative flex-1 sm:flex-none">
             <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2" style={muted} />
             <input value={search} onChange={e => setSearch(e.target.value)} placeholder={`Search ${title.toLowerCase()}...`} aria-label={`Search ${title.toLowerCase()}`}
@@ -106,7 +123,7 @@ function ReferrerCard({ title, type, referrers, onEdit, onDelete, onOpenOrders, 
       <div className="overflow-y-auto max-h-[60vh]">
         {rows.length === 0 ? (
           <div className="py-10 px-4 text-center text-sm" style={muted}>
-            {search ? <>No {title.toLowerCase()} match &ldquo;{search}&rdquo;. <button onClick={() => setSearch('')} className="underline" style={{ color: 'var(--teal)' }}>Clear search</button></>
+            {search || who !== 'all' ? <>No {who === 'inhouse' ? 'in-house ' : who === 'outside' ? 'outside ' : ''}{title.toLowerCase()}{search ? <> match &ldquo;{search}&rdquo;</> : ''}. <button onClick={() => { setSearch(''); setWho('all') }} className="underline" style={{ color: 'var(--teal)' }}>Show all</button></>
               : <>No {title.toLowerCase()} yet. Use <b>Add referrer</b> to add one.</>}
           </div>
         ) : rows.map((r, i) => (
@@ -228,7 +245,7 @@ export default function ReferrerSettingsPanel() {
   const [showIncentive, setShowIncentive] = useState(false)
   const [incLoading, setIncLoading] = useState(false)
   const [incSaving, setIncSaving] = useState(false)
-  const [incStaff, setIncStaff] = useState<{ id: string; name: string; jobTitle: string }[]>([])
+  const [incStaff, setIncStaff] = useState<IncentiveStaff[]>([])
   const [incForm, setIncForm] = useState<{ staffId: string; staffName: string; amount: string }>({ staffId: '', staffName: '', amount: '50' })
   const openIncentive = async () => {
     setShowIncentive(true); setIncLoading(true)
@@ -651,13 +668,10 @@ export default function ReferrerSettingsPanel() {
             ) : (
               <>
                 <div>
-                  <label className={labelCls} style={muted} htmlFor="incentive-recipient">Recipient (staff)</label>
-                  <select id="incentive-recipient" value={incForm.staffId}
-                    onChange={e => { const s = incStaff.find(x => x.id === e.target.value); setIncForm(f => ({ ...f, staffId: e.target.value, staffName: s?.name || '' })) }}
-                    className={inputCls} style={inputStyle}>
-                    <option value="">— no recipient (incentive off) —</option>
-                    {incStaff.map(s => <option key={s.id} value={s.id}>{s.name}{s.jobTitle ? ` — ${s.jobTitle}` : ''}</option>)}
-                  </select>
+                  <label className={labelCls} style={muted}>Recipient (staff)</label>
+                  <MedrepRecipientPicker staff={incStaff} staffId={incForm.staffId || null} staffName={incForm.staffName}
+                    onPick={st => setIncForm(f => ({ ...f, staffId: st?.id || '', staffName: st?.name || '' }))} />
+                  <p className="text-[11px] mt-1" style={muted}>Type to search the staff list. Clear it to switch the incentive off.</p>
                 </div>
                 <div>
                   <label className={labelCls} style={muted} htmlFor="incentive-amount">Amount per new patient</label>
