@@ -7,8 +7,7 @@ import {
   Users, Mail, BookOpen, ChevronRight, Link2, X, BarChart2,
   UserCog, ListOrdered, CalendarDays, ClipboardCheck, Layers, HeartHandshake,
   UsersRound, FileText, Activity, FileCheck, Building2,
-  MessageSquare, Inbox,
-} from 'lucide-react'
+  MessageSquare, Inbox, Trophy} from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 // ─── Role helpers ────────────────────────────────────────────────────────────
@@ -100,6 +99,7 @@ const FRONT_DESK_NAV = [
       { href: '/loa-submissions', icon: FileCheck, label: 'LOA Submission' },
       { href: '/patient-relationship', icon: HeartHandshake, label: 'Patient Relationship' },
       { href: '/peer-eval', icon: UsersRound, label: 'Peer Evaluation' },
+      { href: '/awards', icon: Trophy, label: 'Annual Awards' },
       { href: '/partner-institutions', icon: Building2, label: 'Partner Institutions' },
     ],
   },
