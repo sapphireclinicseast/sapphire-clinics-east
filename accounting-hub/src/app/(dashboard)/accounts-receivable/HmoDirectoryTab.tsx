@@ -5,7 +5,7 @@
 // renewal popup and the bell read the MOA date saved here.
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import { ExternalLink, FileText, Loader2, MapPin, Pencil, Search, Tag, X } from 'lucide-react'
+import { Download, ExternalLink, FileSpreadsheet, FileText, Loader2, MapPin, Pencil, Search, Tag, X } from 'lucide-react'
 import { ScanUpload } from '@/components/ScanUpload'
 import { NameCombobox } from '@/components/NameCombobox'
 import { formatCurrency } from '@/lib/utils'
@@ -13,6 +13,8 @@ import {
   ACCREDITABLE_BRANCHES, MD_PAYMENT_LABEL, MOA_ALERT_DAYS, SOA_SUBMISSION_LABEL, categoriesMatching, isLogoUrl, missingInfo, moaDaysLeft, moaNeedsRenewal, moaStatusText, priceListFiles,
   type AccreditableBranch, type MdPayment, type PriceListFile, type SoaSubmission,
 } from '@/lib/hmo-directory'
+import { emptyBranchSettings, type CollectionBranchSettings } from '@/lib/collection-report'
+import { directorySheetRows, DIRECTORY_SHEET_COLUMNS, splitDirectory, type PdfImage } from '@/lib/hmo-directory-export'
 
 // Red for an HMO whose card still has gaps (lib/hmo-directory missingInfo).
 const MISSING_RED = '#B91C1C'
@@ -132,6 +134,23 @@ function toForm(e: Entry): Form {
   }
   return form
 }
+
+// An uploaded logo as a PNG data URI for jsPDF, scaled down so the file stays small.
+async function logoForPdf(url: string): Promise<PdfImage | null> {
+  try {
+    const img = new Image()
+    img.src = url
+    await img.decode()
+    const k = Math.min(1, 360 / img.naturalWidth)
+    const w = Math.max(1, Math.round(img.naturalWidth * k)), h = Math.max(1, Math.round(img.naturalHeight * k))
+    const canvas = document.createElement('canvas')
+    canvas.width = w; canvas.height = h
+    canvas.getContext('2d')!.drawImage(img, 0, 0, w, h)
+    return { dataUri: canvas.toDataURL('image/png'), w, h }
+  } catch { return null }
+}
+
+const today = () => new Date(Date.now() + 8 * 3600_000).toISOString().slice(0, 10)
 
 // The HMO's logo on a white tile; nothing when none is saved.
 function HmoLogo({ url, name, size }: { url?: string | null; name: string; size: 'row' | 'card' | 'form' }) {
@@ -327,6 +346,7 @@ export default function HmoDirectoryTab({ canEdit, focusWalletId = '' }: { canEd
   const [saving, setSaving] = useState(false)
   const [formError, setFormError] = useState('')
   const focusedOnce = useRef(false)
+  const [exporting, setExporting] = useState<'' | 'pdf' | 'xlsx'>('')
 
   const load = useCallback(() => {
     return fetch(API)
@@ -366,6 +386,58 @@ export default function HmoDirectoryTab({ canEdit, focusWalletId = '' }: { canEd
   }, [entries, search, renewalOnly, missingOnly, flagged])
 
   const editing = form ? entries?.find(e => e.walletId === form.walletId) : null
+
+  // Downloads of the HMOs on screen (Hannah 11/11): not-yet-accredited HMOs get their own sheet / page.
+  const downloadExcel = async () => {
+    if (!shown.length) return
+    setExporting('xlsx')
+    try {
+      const XLSX = await import('xlsx')
+      const wb = XLSX.utils.book_new()
+      const { accredited, pending } = splitDirectory(shown)
+      const sheet = (rows: Entry[], name: string) => {
+        const ws = XLSX.utils.aoa_to_sheet(directorySheetRows(rows))
+        ws['!cols'] = DIRECTORY_SHEET_COLUMNS.map(c => ({ wch: c.width }))
+        if (ws['!ref']) ws['!autofilter'] = { ref: ws['!ref'] }
+        XLSX.utils.book_append_sheet(wb, ws, name)
+      }
+      sheet(accredited, 'Accredited')
+      if (pending.length) sheet(pending, 'Not yet accredited')
+      XLSX.writeFile(wb, `HMO-Directory-${today()}.xlsx`)
+    } catch (err) {
+      console.error('HMO directory Excel failed:', err)
+      alert('Could not build the Excel file. Try again.')
+    } finally { setExporting('') }
+  }
+
+  const downloadPdf = async () => {
+    if (!shown.length) return
+    setExporting('pdf')
+    try {
+      const [{ jsPDF }, { default: autoTable }, logoMod, { drawHmoDirectoryPdf }, settingsRes] = await Promise.all([
+        import('jspdf'), import('jspdf-autotable'), import('@/lib/scei-logo'), import('@/lib/hmo-directory-export'),
+        fetch('/api/accounts-receivable/collection-settings').catch(() => null),
+      ])
+      // The East branch carries the company's registered details; roles without access get the official ones.
+      const saved = settingsRes?.ok ? ((await settingsRes.json()).branches as CollectionBranchSettings[]).find(b => b.branch === 'SANDBOX_EAST') : null
+      const letterhead = { ...(saved || emptyBranchSettings('SANDBOX_EAST')), tradeName: 'Aura Health Rehab (East and Greenhills)' }
+      const logos = new Map<string, PdfImage>()
+      await Promise.all(shown.filter(e => e.logoUrl).map(async e => {
+        const img = await logoForPdf(e.logoUrl!)
+        if (img) logos.set(e.walletId, img)
+      }))
+      // compress: the SCEI logo is otherwise stored as ~900 KB of raw pixels.
+      const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4', compress: true })
+      drawHmoDirectoryPdf(doc, autoTable, {
+        entries: shown, generatedAt: new Date(), letterhead, logos,
+        logo: { dataUri: logoMod.SCEI_LOGO_DATA_URI, w: logoMod.SCEI_LOGO_W, h: logoMod.SCEI_LOGO_H },
+      })
+      doc.save(`HMO-Directory-${today()}.pdf`)
+    } catch (err) {
+      console.error('HMO directory PDF failed:', err)
+      alert('Could not build the PDF. Try again.')
+    } finally { setExporting('') }
+  }
 
   // A category on the Services page, or the saved one if it has since been renamed there.
   const resolveCategory = (typed: string) => {
@@ -440,6 +512,16 @@ export default function HmoDirectoryTab({ canEdit, focusWalletId = '' }: { canEd
         <span className="text-sm" style={{ color: 'var(--mid-gray)' }}>
           {entries ? `${shown.length} HMO${shown.length === 1 ? '' : 's'}` : 'Loading…'}
         </span>
+        <div className="ml-auto flex items-center gap-2">
+          {([['xlsx', 'Excel', FileSpreadsheet, downloadExcel], ['pdf', 'PDF', Download, downloadPdf]] as const).map(([k, text, Icon, run]) => (
+            <button key={k} type="button" onClick={run} disabled={!shown.length || !!exporting}
+              title={`Download the HMOs shown as ${text}`}
+              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium border bg-white disabled:opacity-50"
+              style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}>
+              {exporting === k ? <Loader2 size={13} className="animate-spin" /> : <Icon size={13} style={{ color: 'var(--teal)' }} />} {text}
+            </button>
+          ))}
+        </div>
       </div>
 
       {loadError && <div className="rounded-lg px-4 py-3 text-sm" style={{ background: '#FEF2F2', color: '#991B1B', border: '1px solid #FCA5A5' }}>{loadError}</div>}
