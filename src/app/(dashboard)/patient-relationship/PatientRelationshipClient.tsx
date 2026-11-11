@@ -46,6 +46,8 @@ const CONTROL_STYLE: CSSProperties = { background: '#fff', border: '1px solid va
 const BTN_PRIMARY = 'inline-flex items-center justify-center gap-1.5 h-9 px-3.5 rounded-lg text-xs font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed'
 const BTN_SECONDARY = 'inline-flex items-center justify-center gap-1.5 h-9 px-3 rounded-lg text-xs font-semibold transition-colors hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed'
 const BTN_SM = 'inline-flex items-center justify-center gap-1.5 h-8 px-3 rounded-lg text-xs font-semibold transition-opacity hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed'
+import type { OutreachState } from '@/lib/waitlist-outreach'
+
 const ICON_BTN = 'inline-flex items-center justify-center w-7 h-7 rounded-lg transition-opacity hover:opacity-80 disabled:opacity-50'
 const LABEL = 'block text-[11px] font-semibold uppercase tracking-wider mb-1.5'
 const SUBTLE_BG = '#F8FAF9'
@@ -1140,6 +1142,11 @@ function WaitlistTab({ branch }: { branch: string }) {
                   <td className="px-4 py-3" style={{ color: 'var(--charcoal)' }}>
                     <div className="flex items-center gap-2">
                       <span className="whitespace-nowrap" style={{ fontVariantNumeric: 'tabular-nums' }}>{fmtDay(item.submitted_at)}</span>
+                      <OutreachBtns item={item}
+                        onSent={(channel, state) => setResponses(prev => prev.map(r =>
+                          r.landing_id === item.landing_id
+                            ? { ...r, _outreach: { ...(r._outreach ?? { EMAIL: null, SMS: null }), [channel]: state } }
+                            : r))} />
                       <button onClick={(e) => { e.stopPropagation(); deleteResponse(item) }} disabled={deleting === item.landing_id}
                         className={`ml-auto ${ICON_BTN}`} title="Remove from waitlist" aria-label="Remove from waitlist"
                         style={{ background: '#FEF2F2', color: '#DC2626', border: '1px solid #FECACA' }}>
@@ -1152,6 +1159,7 @@ function WaitlistTab({ branch }: { branch: string }) {
                   <tr key={item.landing_id + '-detail'}>
                     <td colSpan={COLS.length} className="px-5 sm:pl-12 py-4" style={{ background: SUBTLE_BG, borderBottom: '1px solid var(--light-gray)' }}>
                       <div className="space-y-3 max-w-4xl">
+                        <OutreachHistory item={item} />
                         <p className="text-[11px] font-bold uppercase tracking-wider" style={{ color: 'var(--teal)' }}>Form Responses</p>
                         <dl className="rounded-xl divide-y" style={{ ...CARD_STYLE, borderColor: 'var(--light-gray)' }}>
                         {(item.answers || []).map((a: any, i: number) => {
@@ -2182,6 +2190,196 @@ function DeleteLogModal({ title, reason, onReason, onCancel, onDelete }: {
         className="focus:border-[var(--teal)]"
         style={{ width: '100%', padding: '10px 12px', borderRadius: 10, border: '1px solid var(--light-gray)', fontSize: '0.83rem', lineHeight: 1.5, boxSizing: 'border-box', fontFamily: 'inherit', outline: 'none', color: 'var(--charcoal)', resize: 'vertical' }} />
     </ModalShell>
+  )
+}
+
+/**
+ * "We have slots" — email and SMS, straight off the waitlist row.
+ *
+ * Each icon turns green the first time it sends and stays green, because the
+ * question front desk are answering down a list of three hundred is "have I
+ * already told this family". Hovering says when, and the expanded row lists
+ * every send.
+ *
+ * A second send is allowed — slots open again — but never on one click: the
+ * route answers 409 with the date of the last one, and that date goes into the
+ * confirmation rather than a bare "are you sure".
+ *
+ * Nothing about the message is decided here. The browser sends three ids; the
+ * server re-reads the submission from HR and writes the words. This component
+ * cannot choose a recipient, and that is deliberate.
+ */
+function OutreachBtns({ item, onSent }: {
+  item: any
+  onSent: (channel: 'EMAIL' | 'SMS', state: OutreachState) => void
+}) {
+  const [busy, setBusy] = useState<'EMAIL' | 'SMS' | null>(null)
+  const emailState: OutreachState | null = item._outreach?.EMAIL ?? null
+  const smsState: OutreachState | null = item._outreach?.SMS ?? null
+
+  const who = item._name || 'this family'
+
+  async function send(channel: 'EMAIL' | 'SMS', confirmResend = false) {
+    if (busy) return
+    const label = channel === 'EMAIL' ? 'email' : 'SMS'
+    if (!confirmResend && !confirm(
+      `Send the "we have slots available" ${label} to ${who}?\n\n`
+      + `It goes from the ${item._branch === 'SBGH' ? 'Greenhills' : 'East'} branch `
+      + `${channel === 'EMAIL' ? 'mailbox' : 'mobile number'} and names the services they asked about.`
+    )) return
+
+    setBusy(channel)
+    try {
+      const r = await fetch('/api/patient-relationship/waitlist-outreach', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          formId: item._formId, submissionId: item.landing_id, channel, confirmResend,
+        }),
+      })
+      const d = await r.json()
+
+      if (r.status === 409 && d.needsConfirm) {
+        const when = new Date(d.lastSentAt).toLocaleString('en-PH', {
+          dateStyle: 'medium', timeStyle: 'short',
+        })
+        const by = d.lastSentByName ? ` by ${d.lastSentByName}` : ''
+        setBusy(null)
+        if (confirm(
+          `${who} was already sent this ${label} on ${when}${by}, to ${d.lastSentTo}.\n\n`
+          + `Send it again?`
+        )) await send(channel, true)
+        return
+      }
+
+      if (!r.ok) throw new Error(d.error || `Send failed (${r.status})`)
+
+      const prev = channel === 'EMAIL' ? emailState : smsState
+      onSent(channel, {
+        count: (prev?.count ?? 0) + 1,
+        lastAt: d.sentAt,
+        lastBy: null,
+        history: [...(prev?.history ?? []), { sentAt: d.sentAt, sentTo: d.sentTo, sentByName: null }],
+      })
+    } catch (e) {
+      alert((e as Error).message)
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  function tip(channel: 'EMAIL' | 'SMS', state: OutreachState | null) {
+    const label = channel === 'EMAIL' ? 'Email' : 'SMS'
+    if (!state) return `Send the "we have slots" ${label.toLowerCase()}`
+    const when = new Date(state.lastAt).toLocaleString('en-PH', { dateStyle: 'medium', timeStyle: 'short' })
+    return state.count > 1
+      ? `${label} sent ${state.count}× — last ${when}. Click to send again.`
+      : `${label} sent ${when}. Click to send again.`
+  }
+
+  const style = (sent: boolean) => sent
+    ? { background: '#DCFCE7', color: '#166534', border: '1px solid #86EFAC' }
+    : { background: '#EFF6FF', color: '#1D4ED8', border: '1px solid #BFDBFE' }
+
+  return (
+    <>
+      <button onClick={e => { e.stopPropagation(); send('EMAIL') }} disabled={!!busy}
+        className={ICON_BTN} style={style(!!emailState)}
+        title={tip('EMAIL', emailState)}
+        aria-label={emailState ? `Slots email already sent to ${who}` : `Send slots email to ${who}`}>
+        {busy === 'EMAIL' ? <Loader2 size={12} className="animate-spin" /> : <Mail size={12} />}
+      </button>
+      <button onClick={e => { e.stopPropagation(); send('SMS') }} disabled={!!busy}
+        className={ICON_BTN} style={style(!!smsState)}
+        title={tip('SMS', smsState)}
+        aria-label={smsState ? `Slots SMS already sent to ${who}` : `Send slots SMS to ${who}`}>
+        {busy === 'SMS' ? <Loader2 size={12} className="animate-spin" /> : <MessageSquare size={12} />}
+      </button>
+    </>
+  )
+}
+
+/**
+ * Every "we have slots" message this family has been sent.
+ *
+ * Fetched when the row is opened rather than carried in the list: the list
+ * already ships three hundred submissions and only ever needs the counts and
+ * the last date, which it has. This is the full log, including what was
+ * actually said — templates change, and what this family was told does not.
+ */
+function OutreachHistory({ item }: { item: any }) {
+  const [sends, setSends] = useState<{
+    id: string; channel: string; sentTo: string; subject: string | null
+    message: string; sentByName: string | null; sentAt: string
+  }[] | null>(null)
+  const [failed, setFailed] = useState(false)
+  const [open, setOpen] = useState<string | null>(null)
+
+  const anySent = !!(item._outreach?.EMAIL || item._outreach?.SMS)
+
+  useEffect(() => {
+    if (!anySent) return
+    const ctl = new AbortController()
+    const qs = `formId=${encodeURIComponent(item._formId)}&submissionId=${encodeURIComponent(item.landing_id)}`
+    fetch(`/api/patient-relationship/waitlist-outreach?${qs}`, { signal: ctl.signal })
+      .then(r => r.ok ? r.json() : Promise.reject(new Error(String(r.status))))
+      .then(d => setSends(d.sends ?? []))
+      .catch(err => { if (err.name !== 'AbortError') setFailed(true) })
+    return () => ctl.abort()
+  }, [anySent, item._formId, item.landing_id])
+
+  // Nothing has been sent — no empty panel, the icons already say so.
+  if (!anySent) return null
+
+  return (
+    <div>
+      <p className="text-[11px] font-bold uppercase tracking-wider mb-1.5" style={{ color: 'var(--teal)' }}>
+        Slots messages sent
+      </p>
+      <div className="rounded-xl overflow-hidden" style={{ ...CARD_STYLE, borderColor: 'var(--light-gray)' }}>
+        {failed ? (
+          <p className="px-3 py-2.5 text-[12px]" style={{ color: '#9CA3AF' }}>
+            Couldn&rsquo;t load the history just now — the messages were still sent.
+          </p>
+        ) : !sends ? (
+          <p className="px-3 py-2.5 text-[12px]" style={{ color: '#9CA3AF' }}>Loading…</p>
+        ) : sends.length === 0 ? (
+          <p className="px-3 py-2.5 text-[12px]" style={{ color: '#9CA3AF' }}>No messages recorded.</p>
+        ) : (
+          <ul className="divide-y" style={{ borderColor: 'var(--light-gray)' }}>
+            {sends.map(s => (
+              <li key={s.id} className="px-3 py-2.5">
+                <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[12px]">
+                  <span className="inline-flex items-center gap-1 font-semibold"
+                    style={{ color: s.channel === 'EMAIL' ? '#1D4ED8' : '#166534' }}>
+                    {s.channel === 'EMAIL' ? <Mail size={11} /> : <MessageSquare size={11} />}
+                    {s.channel === 'EMAIL' ? 'Email' : 'SMS'}
+                  </span>
+                  <span style={{ color: 'var(--charcoal)' }}>
+                    {new Date(s.sentAt).toLocaleString('en-PH', { dateStyle: 'medium', timeStyle: 'short' })}
+                  </span>
+                  <span style={{ color: '#9CA3AF' }}>→ {s.sentTo}</span>
+                  {s.sentByName && <span style={{ color: '#9CA3AF' }}>· {s.sentByName}</span>}
+                  <button onClick={() => setOpen(open === s.id ? null : s.id)}
+                    className="ml-auto text-[11px] font-semibold underline underline-offset-2"
+                    style={{ color: 'var(--teal)' }}>
+                    {open === s.id ? 'Hide' : 'What was sent'}
+                  </button>
+                </div>
+                {open === s.id && (
+                  <div className="mt-2 rounded-lg px-3 py-2 text-[12px]" style={{ background: SUBTLE_BG }}>
+                    {s.subject && (
+                      <p className="font-semibold mb-1" style={{ color: 'var(--charcoal)' }}>{s.subject}</p>
+                    )}
+                    <p style={{ color: 'var(--charcoal)', whiteSpace: 'pre-wrap' }}>{s.message}</p>
+                  </div>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </div>
   )
 }
 
