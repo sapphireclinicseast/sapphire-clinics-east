@@ -2299,11 +2299,13 @@ model Employee {
   restDay            String    @default("SUNDAY") // e.g. "SUNDAY", "SATURDAY"
   ignoreTimekeeping  Boolean   @default(false) // If true: pays fixed half-month salary regardless of biometric attendance
   isMWE              Boolean   @default(false) // Statutory Minimum Wage Earner — tax-exempt; drives the 1601-C MWE vs AMWE split
+  wfhDaysPerWeek     Int? // Work-from-home days allowed per week (Payroll → Weekly Accomplishments → WFH settings); null = not WFH
   isActive           Boolean   @default(true)
   createdAt          DateTime  @default(now())
   updatedAt          DateTime  @updatedAt
 
   timekeepingRecords TimekeepingRecord[]
+  wfhDays            WfhDay[]
   requests           EmployeeRequest[]
   benefits           EmployeeBenefit[]
   payslips           EmployeePayslip[]
@@ -4519,4 +4521,27 @@ model PsychTestSettings {
   id        String   @id @default("singleton")
   editToken String   @unique
   updatedAt DateTime @default(now()) @updatedAt
+}
+
+/// A work-from-home day the payroll officer set for an employee's week
+/// (Payroll → Weekly Accomplishments). Paid as hours × hourly rate on the
+/// employee's payslip — never through timekeeping edits — once HR approves
+/// that week's accomplishment report. A week approved after its cutoff's
+/// payslip was made rolls into the next one; payslipId stamps the payslip that
+/// paid it, so it is paid once.
+model WfhDay {
+  id            String   @id @default(cuid())
+  employeeId    String
+  employee      Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  date          String // YYYY-MM-DD
+  weekStart     String // YYYY-MM-DD, the Sunday the HR report week starts
+  hours         Decimal
+  payslipId     String? // EmployeePayslip that paid it
+  paidCutoff    String? // e.g. 2026-11-2
+  createdByName String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@unique([employeeId, date])
+  @@index([payslipId])
 }

@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { commissionFloor, computeMedrepNewPatients, type MedrepNewPatient } from '@/lib/referral-commission'
+import { claimWfhDays, wfhApprovals, wfhPayFor, type WfhPay } from '@/lib/payroll/wfh-pay'
 
 const WRITE_ROLES = ['ADMIN', 'PAYROLL_OFFICER', 'ACCOUNTANT', 'BOOKKEEPER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN']
 const READ_ROLES = [...WRITE_ROLES, 'VIEWER']
@@ -431,6 +432,8 @@ export async function POST(req: Request) {
   })
   const lockedEmployeeIds = new Set(lockedSlips.map(s => s.employeeId))
   let skippedLocked = 0
+  // HR report approvals for every WFH day this run could pay (one HR call).
+  const WFH_APPROVALS = await wfhApprovals({ employeeIds: employees.map(e => e.id), cutoffPeriod, cutoffStart: startDate, cutoffEndExclusive: endDate })
 
   for (const emp of employees) {
     if (lockedEmployeeIds.has(emp.id)) { skippedLocked++; continue }
@@ -652,6 +655,26 @@ export async function POST(req: Request) {
       }
     }
 
+    // ── Work-from-home days (Payroll → Weekly Accomplishments) ──────────────
+    // Paid as hours × hourly rate once HR approves that week's report — no
+    // timekeeping edits. A day with timekeeping hours is already paid above.
+    const wfh: WfhPay | null = await wfhPayFor({
+      emp, cutoffPeriod, qBranch, cutoffStart: startDate, cutoffEndExclusive: endDate,
+      tkDates: new Set(empRecords.filter(r => Number(r.hoursWorked || 0) > 0).map(r => fmtDateStr(r.date))),
+      hourlyRate, approvals: WFH_APPROVALS,
+    })
+    if (wfh) {
+      basicPay += wfh.total
+      daysWorked += standardHours > 0 ? wfh.hours / standardHours : 0
+      totalHoursWorked += wfh.hours
+      for (const d of wfh.days) {
+        dailyBreakdown.basicPay.push({
+          date: d.date, timeIn: 'WFH', timeOut: 'WFH', hours: d.hours, dailyRate, hourlyRate, amount: d.amount, wfh: true,
+          note: d.earlier ? `WFH — report for the week of ${d.weekStart} approved after its cutoff` : 'WFH — weekly accomplishment report approved',
+        })
+      }
+    }
+
     // Deductions — mandatory contributions
     const sssBenefit = emp.benefits.find(b => b.benefitType === 'SSS')
     const philBenefit = emp.benefits.find(b => b.benefitType === 'PHILHEALTH')
@@ -770,7 +793,7 @@ export async function POST(req: Request) {
           overtimeHours: totalOTHours,
           lateMinutes: totalLateMinutes,
           undertimeMinutes: totalUndertimeMinutes,
-          details: { adjustments: adjDetails, dailyBreakdown, taxableIncome: taxablePerCutoff, holidayOvertimePay, holidayOTHours: totalHolidayOTHours, cutoffStart: startDate.toISOString().substring(0, 10), cutoffEnd: new Date(endDate.getTime() - 86400000).toISOString().substring(0, 10), ...(medrepInc ? { referralIncentive: medrepInc.detail } : {}) },
+          details: { adjustments: adjDetails, dailyBreakdown, taxableIncome: taxablePerCutoff, holidayOvertimePay, holidayOTHours: totalHolidayOTHours, cutoffStart: startDate.toISOString().substring(0, 10), cutoffEnd: new Date(endDate.getTime() - 86400000).toISOString().substring(0, 10), ...(medrepInc ? { referralIncentive: medrepInc.detail } : {}), ...(wfh ? { wfh: { hours: wfh.hours, total: wfh.total, days: wfh.days } } : {}) },
           computeTaxNow: empComputeNow,
           status: 'DRAFT',
           createdById: session.user.id as string,
@@ -804,7 +827,7 @@ export async function POST(req: Request) {
           overtimeHours: totalOTHours,
           lateMinutes: totalLateMinutes,
           undertimeMinutes: totalUndertimeMinutes,
-          details: { adjustments: adjDetails, dailyBreakdown, taxableIncome: taxablePerCutoff, holidayOvertimePay, holidayOTHours: totalHolidayOTHours, cutoffStart: startDate.toISOString().substring(0, 10), cutoffEnd: new Date(endDate.getTime() - 86400000).toISOString().substring(0, 10), ...(medrepInc ? { referralIncentive: medrepInc.detail } : {}) },
+          details: { adjustments: adjDetails, dailyBreakdown, taxableIncome: taxablePerCutoff, holidayOvertimePay, holidayOTHours: totalHolidayOTHours, cutoffStart: startDate.toISOString().substring(0, 10), cutoffEnd: new Date(endDate.getTime() - 86400000).toISOString().substring(0, 10), ...(medrepInc ? { referralIncentive: medrepInc.detail } : {}), ...(wfh ? { wfh: { hours: wfh.hours, total: wfh.total, days: wfh.days } } : {}) },
           computeTaxNow: empComputeNow,
           status: 'DRAFT',
           createdById: session.user.id as string,
@@ -813,6 +836,7 @@ export async function POST(req: Request) {
       // Stamp the incentive's patients against this payslip — the unique
       // patient key means a patient another cutoff already paid stays theirs.
       if (medrepInc) await claimMedrepIncentive(medrepInc, cutoffPeriod, payslip.id)
+      if (wfh) await claimWfhDays(wfh, cutoffPeriod, payslip.id)
       payslips.push(payslip)
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e)
@@ -1128,6 +1152,27 @@ export async function PATCH(req: Request) {
       }
     }
 
+    const WFH_APPROVALS = await wfhApprovals({ employeeIds: [emp.id], cutoffPeriod, cutoffStart: startDate, cutoffEndExclusive: endDate })
+    // ── Work-from-home days (Payroll → Weekly Accomplishments) ──────────────
+    // Paid as hours × hourly rate once HR approves that week's report — no
+    // timekeeping edits. A day with timekeeping hours is already paid above.
+    const wfh: WfhPay | null = await wfhPayFor({
+      emp, cutoffPeriod, qBranch, cutoffStart: startDate, cutoffEndExclusive: endDate,
+      tkDates: new Set(empRecords.filter(r => Number(r.hoursWorked || 0) > 0).map(r => fmtDateStr(r.date))),
+      hourlyRate, approvals: WFH_APPROVALS,
+    })
+    if (wfh) {
+      basicPay += wfh.total
+      daysWorked += standardHours > 0 ? wfh.hours / standardHours : 0
+      totalHoursWorked += wfh.hours
+      for (const d of wfh.days) {
+        dailyBreakdown.basicPay.push({
+          date: d.date, timeIn: 'WFH', timeOut: 'WFH', hours: d.hours, dailyRate, hourlyRate, amount: d.amount, wfh: true,
+          note: d.earlier ? `WFH — report for the week of ${d.weekStart} approved after its cutoff` : 'WFH — weekly accomplishment report approved',
+        })
+      }
+    }
+
     const sssBenefit = emp.benefits.find(b => b.benefitType === 'SSS')
     const philBenefit = emp.benefits.find(b => b.benefitType === 'PHILHEALTH')
     const pagBenefit = emp.benefits.find(b => b.benefitType === 'PAGIBIG')
@@ -1218,7 +1263,7 @@ export async function PATCH(req: Request) {
       taxDeduction, lateDeduction, undertimeDeduction, otherDeductions: adjDeductionAmount,
       totalDeductions, netPay, daysWorked, hoursWorked: totalHoursWorked,
       overtimeHours: totalOTHours, lateMinutes: totalLateMinutes, undertimeMinutes: totalUndertimeMinutes,
-      details: { adjustments: adjDetails, dailyBreakdown, taxableIncome: taxablePerCutoff, holidayOvertimePay, holidayOTHours: totalHolidayOTHours, cutoffStart: startDate.toISOString().substring(0, 10), cutoffEnd: new Date(endDate.getTime() - 86400000).toISOString().substring(0, 10), ...(medrepInc ? { referralIncentive: medrepInc.detail } : {}) },
+      details: { adjustments: adjDetails, dailyBreakdown, taxableIncome: taxablePerCutoff, holidayOvertimePay, holidayOTHours: totalHolidayOTHours, cutoffStart: startDate.toISOString().substring(0, 10), cutoffEnd: new Date(endDate.getTime() - 86400000).toISOString().substring(0, 10), ...(medrepInc ? { referralIncentive: medrepInc.detail } : {}), ...(wfh ? { wfh: { hours: wfh.hours, total: wfh.total, days: wfh.days } } : {}) },
       computeTaxNow: shouldComputeNow,
       status: 'DRAFT',
       createdById: session.user.id as string,
@@ -1232,6 +1277,7 @@ export async function PATCH(req: Request) {
     })
 
     if (medrepInc) await claimMedrepIncentive(medrepInc, cutoffPeriod, payslip.id)
+    if (wfh) await claimWfhDays(wfh, cutoffPeriod, payslip.id)
 
     return NextResponse.json(payslip)
   } catch (err) {

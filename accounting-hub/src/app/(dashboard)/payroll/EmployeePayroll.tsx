@@ -4713,7 +4713,7 @@ export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoff
          TAB: PAYSLIP GENERATION
          ═══════════════════════════════════════════════════════════════ */}
       {subTab === 'weekly-accomplishments' && (
-        <WeeklyAccomplishmentsTab cutoffPeriod={cutoffPeriod} branch={branch} />
+        <WeeklyAccomplishmentsTab cutoffPeriod={cutoffPeriod} branch={branch} canWrite={canWrite} />
       )}
 
       {subTab === 'payslips' && (
