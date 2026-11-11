@@ -33,6 +33,7 @@ type Entry = Partial<Record<ContactField, string | null>> & {
   paysClinicForMd: boolean
   accreditedBranches?: string[]
   moaValidUntil?: string | null
+  moaNoEndDate?: boolean
   moaFileUrls?: string[]
   priceListFileUrls?: unknown[]
   mdPayment?: MdPayment | null
@@ -63,6 +64,7 @@ type Form = Record<ContactField, string> & {
   hmoName: string
   accreditedBranches: string[]
   moaValidUntil: string
+  moaNoEndDate: boolean
   moaFileUrls: string[]
   priceListFileUrls: PriceListFile[]
   mdPayment: MdPayment | null
@@ -89,6 +91,7 @@ function toForm(e: Entry): Form {
     hmoName: e.hmoName,
     accreditedBranches: e.accreditedBranches || [],
     moaValidUntil: ymd(e.moaValidUntil),
+    moaNoEndDate: !!e.moaNoEndDate,
     moaFileUrls: e.moaFileUrls || [],
     priceListFileUrls: priceListFiles(e.priceListFileUrls),
     mdPayment: e.mdPayment || null,
@@ -118,7 +121,8 @@ function HmoLogo({ url, name, size }: { url?: string | null; name: string; size:
   )
 }
 
-function MoaBadge({ validUntil }: { validUntil?: string | null }) {
+function MoaBadge({ validUntil, noEndDate }: { validUntil?: string | null; noEndDate?: boolean }) {
+  if (!validUntil && noEndDate) return <span className="px-2 py-0.5 rounded-full text-[11px] font-semibold whitespace-nowrap" style={{ background: '#dcfce7', color: '#166534' }}>MOA has no end date</span>
   if (!validUntil) return <span className="px-2 py-0.5 rounded-full text-[11px] font-semibold" style={{ background: 'var(--off-white)', color: 'var(--mid-gray)' }}>No MOA date</span>
   const days = moaDaysLeft(validUntil)
   const style = days < 0 ? { background: '#fee2e2', color: '#b91c1c' }
@@ -419,7 +423,7 @@ export default function HmoDirectoryTab({ canEdit, focusWalletId = '' }: { canEd
                 {isOpen ? <ChevronDown size={16} style={{ color: 'var(--mid-gray)' }} /> : <ChevronRight size={16} style={{ color: 'var(--mid-gray)' }} />}
                 <HmoLogo url={e.logoUrl} name={e.hmoName} size="row" />
                 <span>{e.hmoName}</span>
-                <MoaBadge validUntil={e.moaValidUntil} />
+                <MoaBadge validUntil={e.moaValidUntil} noEndDate={e.moaNoEndDate} />
                 {missing.length > 0 && (
                   <span title={`Missing: ${missing.join(', ')}`} className="px-2 py-0.5 rounded-full text-[11px] font-semibold whitespace-nowrap text-white" style={{ background: MISSING_RED }}>
                     {missing.length} missing
@@ -588,8 +592,16 @@ export default function HmoDirectoryTab({ canEdit, focusWalletId = '' }: { canEd
               <div className="space-y-3">
                 <div>
                   <label htmlFor="moa-valid-until" className="text-sm font-medium block mb-1" style={{ color: 'var(--charcoal)' }}>MOA valid until</label>
-                  <input id="moa-valid-until" type="date" value={form.moaValidUntil} onChange={ev => setForm({ ...form, moaValidUntil: ev.target.value })} className={inputClass} style={inputStyle} />
-                  {moaNeedsRenewal(editing?.moaValidUntil) ? (
+                  <input id="moa-valid-until" type="date" value={form.moaValidUntil} disabled={form.moaNoEndDate}
+                    onChange={ev => setForm({ ...form, moaValidUntil: ev.target.value })} className={`${inputClass} disabled:opacity-50`} style={inputStyle} />
+                  <label className="flex items-center gap-2 text-sm mt-1.5" style={{ color: 'var(--charcoal)' }}>
+                    <input type="checkbox" checked={form.moaNoEndDate}
+                      onChange={ev => setForm({ ...form, moaNoEndDate: ev.target.checked, moaValidUntil: ev.target.checked ? '' : form.moaValidUntil })} />
+                    Until terminated (no end date)
+                  </label>
+                  {form.moaNoEndDate ? (
+                    <p className="text-[11px] mt-1" style={{ color: 'var(--mid-gray)' }}>The MOA runs until either side ends it, so there is no renewal reminder.</p>
+                  ) : moaNeedsRenewal(editing?.moaValidUntil) ? (
                     <p className="text-[11px] mt-1" style={{ color: '#92400e' }}>To renew, enter the new validity date and upload the new signed MOA below. The daily reminder stops once the date is more than {MOA_ALERT_DAYS} days away.</p>
                   ) : (
                     <p className="text-[11px] mt-1" style={{ color: 'var(--mid-gray)' }}>A daily reminder starts {MOA_ALERT_DAYS} days before this date.</p>

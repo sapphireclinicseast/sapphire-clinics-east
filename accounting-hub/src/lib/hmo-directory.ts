@@ -92,6 +92,8 @@ export interface HmoDirectoryFields {
   collectionEmail: string | null
   collectionNumber: string | null
   moaValidUntil: Date | null
+  // The MOA runs until terminated (Hannah 11/11: Amaphil, AsianCare), so there is no date to renew by.
+  moaNoEndDate: boolean
   moaFileUrls: string[]
   priceListFileUrls: PriceListFile[]
   mdPayment: MdPayment | null
@@ -113,6 +115,7 @@ export interface HmoDirectoryFields {
 type CompletenessInput = Partial<Record<`${'accreditation' | 'submission' | 'collection'}${'Name' | 'Email' | 'Number'}`, string | null>> & {
   accreditedBranches?: string[] | null
   moaValidUntil?: string | Date | null
+  moaNoEndDate?: boolean | null
   moaFileUrls?: string[] | null
   priceListFileUrls?: unknown[] | null
   mdPayment?: string | null
@@ -134,7 +137,7 @@ export function missingInfo(e: CompletenessInput): string[] {
   }
   if (!e.accreditedBranches?.length) out.push('Accredited branches')
   if (!e.mdPayment) out.push('Doctor payment')
-  if (!e.moaValidUntil) out.push('MOA validity date')
+  if (!e.moaValidUntil && !e.moaNoEndDate) out.push('MOA validity date')
   if (!e.moaFileUrls?.length) out.push('Signed MOA')
   // One price list per accredited branch (an untagged one covers every branch).
   const lists = priceListFiles(e.priceListFileUrls)
@@ -191,8 +194,9 @@ export function cleanDirectoryInput(body: Record<string, unknown>): { data: Part
     else if (body.mdPayment === 'DOCTOR_DIRECT' || body.mdPayment === 'CLINIC') data.mdPayment = body.mdPayment
     else return { data, error: 'Choose who is paid for medical doctors' }
   }
+  if ('moaNoEndDate' in body) data.moaNoEndDate = body.moaNoEndDate === true
   if ('moaValidUntil' in body) {
-    if (isBlank(body.moaValidUntil)) data.moaValidUntil = null
+    if (isBlank(body.moaValidUntil) || data.moaNoEndDate) data.moaValidUntil = null
     else {
       const v = body.moaValidUntil
       const d = isYmd(v) ? new Date(`${v}T00:00:00Z`) : null

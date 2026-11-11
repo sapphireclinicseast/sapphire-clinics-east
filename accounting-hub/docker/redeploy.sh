@@ -1157,6 +1157,7 @@ ALTER TABLE "Order" ADD COLUMN IF NOT EXISTS "hmoCoursedThroughClinic" BOOLEAN N
 ALTER TABLE "ClinicianHmoPayment" ADD COLUMN IF NOT EXISTS "coursedThroughClinic" BOOLEAN NOT NULL DEFAULT false;
 ALTER TABLE "ClinicianHmoPayment" ADD COLUMN IF NOT EXISTS "rfpId" TEXT;
 ALTER TABLE "HmoDirectory" ADD COLUMN IF NOT EXISTS "logoUrl" TEXT;
+ALTER TABLE "HmoDirectory" ADD COLUMN IF NOT EXISTS "moaNoEndDate" BOOLEAN NOT NULL DEFAULT false;
 SQL
 
 echo "Redeploy complete."
