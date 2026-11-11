@@ -923,6 +923,22 @@ model DeckingSlot {
   /// drawn by weekday, and a dated slot whose day disagreed would render on the
   /// wrong column.
   date            DateTime?
+  /// Keep this dated slot OUT of the Google Sheet, while leaving it on the
+  /// board.
+  ///
+  /// A one-off date is drawn as its own block under the weekly grid, and the
+  /// blocks accumulate: a date that has come and gone still takes up the same
+  /// room as a date that matters, and a sheet with a term's worth of lapsed
+  /// visits down it is one nobody can read.
+  ///
+  /// Hidden rather than deleted, and set by hand rather than by the calendar.
+  /// A lapsed date is still the record of what happened that day — who was
+  /// seen, by whom, and what they paid — and the clinic decides when it has
+  /// stopped being worth the space, because "past" and "finished with" are
+  /// not the same thing.
+  ///
+  /// Only ever read by the sheet. The Decking module shows these normally.
+  sheetHidden     Boolean  @default(false)
   startTime       String // "10:00"
   endTime         String // "11:00"
   branch          String

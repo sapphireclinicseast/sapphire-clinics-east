@@ -245,7 +245,11 @@ async function loadDepartment(branch: string, department: string) {
       // grid, and the one-offs get their own dated blocks underneath it. A
       // one-off left out of the sheet entirely — which is what happened before
       // this — exists in the hub and nowhere front desk can see it.
-      where: { branch, department, isClass: false },
+      // A one-off the clinic has hidden is left out here rather than filtered
+      // later, so it never reaches the grid, the map, or the pull. Weekly
+      // slots are unaffected — the flag only ever applies to a dated one, and
+      // `sheetHidden` is false on everything else.
+      where: { branch, department, isClass: false, sheetHidden: false },
       select: {
         id: true, staffId: true, dayOfWeek: true, startTime: true, disabled: true,
         paymentType: true, hmoProvider: true, notes: true, patientId: true, date: true, endTime: true,

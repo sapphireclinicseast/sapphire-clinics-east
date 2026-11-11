@@ -1,0 +1,12 @@
+-- Keep a one-off date out of the Google Sheet while leaving it on the board.
+--
+-- One-off dates are drawn as their own blocks under the weekly grid and they
+-- accumulate: a lapsed date takes the same room as a live one, and a sheet
+-- with a term of past visits down it is one nobody reads.
+--
+-- Hidden, never deleted — a lapsed date is still the record of who was seen
+-- and what they paid — and set by hand, because "past" and "finished with"
+-- are not the same thing.
+--
+-- Guarded throughout — the deploy replays every migration on every run.
+ALTER TABLE "DeckingSlot" ADD COLUMN IF NOT EXISTS "sheetHidden" BOOLEAN NOT NULL DEFAULT false;
