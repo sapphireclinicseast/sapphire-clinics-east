@@ -87,7 +87,10 @@ export async function GET(req: Request) {
       total: newPatients.length * incentiveAmount,
       patients: newPatients.map(p => {
         const c = claimByKey.get(p.patientKey)
-        return { ...p, paid: c ? { cutoffPeriod: c.cutoffPeriod, viaPayroll: !!c.payslipId, at: c.createdAt } : null }
+        // state: recorded = picked for a cutoff, waiting for that payslip; payroll =
+        // on a payslip; manual = paid outside payroll.
+        const state = c ? (c.payslipId ? 'payroll' : /^\d{4}-\d{2}-[12]$/.test(c.cutoffPeriod) ? 'recorded' : 'manual') : null
+        return { ...p, paid: c ? { cutoffPeriod: c.cutoffPeriod, viaPayroll: !!c.payslipId, at: c.createdAt, state } : null }
       }),
     },
   })

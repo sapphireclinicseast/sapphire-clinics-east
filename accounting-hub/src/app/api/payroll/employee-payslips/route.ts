@@ -192,23 +192,27 @@ export async function GET(req: Request) {
 // Generate payslips for a cutoff period
 // ── New-referred-patient incentive (the medical representative's one-time
 // ₱amount per new patient from an EXTERNAL referrer) ─────────────────────────
-// Computed for the recipient configured in Referral → Incentive settings:
-// unclaimed new patients swept from the scheme start up to the cutoff's end.
-// This payslip's own prior claims are RELEASED first, so regenerating shows the
-// same patients again, while other cutoffs' claims keep excluding theirs — the
-// ledger's unique patient key makes double-paying impossible. The caller adds
-// the total to allowances (taxable) and stamps the claims after the save.
+// For the recipient configured in Referral → Incentive settings: the new
+// patients recorded for this cutoff in Referral → Commission (see below). The
+// caller adds the total to allowances (taxable) and stamps the claims after
+// the save.
 export interface MedrepIncentive {
   count: number
   amount: number
   total: number
   patients: MedrepNewPatient[]
+  itemIds: string[]
   detail: { count: number; amount: number; total: number; patients: { patientName: string; referrerName: string; referrerType: string | null; firstDate: string; branch: string; orderNumber: number }[] }
 }
+// Only the new patients RECORDED for this cutoff in Referral → Commission go on
+// the med rep's payslip (Hannah 2026-11-11: pick the payroll it is added to,
+// like HMO PF Adjustments — nothing is swept in on its own). Regenerating
+// releases this payslip's stamps and re-stamps the same records, so a patient
+// is paid once; a LOCKED payslip is left alone.
 async function medrepIncentiveFor(
   incSettings: { staffId: string | null; amount: unknown } | null,
   emp: { id: string; externalStaffId: string | null },
-  cutoffPeriod: string, qBranch: string, cutoffEndExclusive: Date,
+  cutoffPeriod: string, qBranch: string, _cutoffEndExclusive: Date,
 ): Promise<MedrepIncentive | null> {
   if (!incSettings?.staffId || !emp.externalStaffId || emp.externalStaffId !== incSettings.staffId) return null
   const prior = await prisma.employeePayslip.findUnique({
@@ -216,24 +220,27 @@ async function medrepIncentiveFor(
     select: { id: true, status: true },
   })
   if (prior?.status === 'LOCKED') return null
-  if (prior) await prisma.referralCommissionItem.deleteMany({ where: { kind: 'MEDREP', payslipId: prior.id } })
-  const patients = await computeMedrepNewPatients(prisma, { from: commissionFloor(), to: new Date(cutoffEndExclusive.getTime() - 1), onlyUnclaimed: true })
-  if (!patients.length) return null
-  const amount = Number(incSettings.amount) || 0
-  if (amount <= 0) return null
+  if (prior) await prisma.referralCommissionItem.updateMany({ where: { kind: 'MEDREP', payslipId: prior.id }, data: { payslipId: null } })
+  const items = await prisma.referralCommissionItem.findMany({
+    where: { kind: 'MEDREP', cutoffPeriod, payslipId: null, patientKey: { not: null } },
+    select: { id: true, patientKey: true, amount: true },
+  })
+  if (!items.length) return null
+  const known = new Map((await computeMedrepNewPatients(prisma, { from: commissionFloor(), to: new Date() })).map(p => [p.patientKey, p]))
+  const patients = items.map(i => known.get(i.patientKey as string)).filter((p): p is MedrepNewPatient => !!p)
+  const total = items.reduce((t, i) => t + Number(i.amount), 0)
+  if (total <= 0) return null
+  const amount = Number(items[0].amount)
   return {
-    count: patients.length, amount, total: patients.length * amount, patients,
+    count: items.length, amount, total, patients, itemIds: items.map(i => i.id),
     detail: {
-      count: patients.length, amount, total: patients.length * amount,
+      count: items.length, amount, total,
       patients: patients.map(p => ({ patientName: p.patientName, referrerName: p.referrerName, referrerType: p.referrerType, firstDate: p.firstDate.toISOString(), branch: p.branch, orderNumber: p.orderNumber })),
     },
   }
 }
-async function claimMedrepIncentive(inc: MedrepIncentive, cutoffPeriod: string, payslipId: string) {
-  await prisma.referralCommissionItem.createMany({
-    data: inc.patients.map(p => ({ kind: 'MEDREP', patientKey: p.patientKey, referrerId: p.referrerId, amount: inc.amount, cutoffPeriod, payslipId })),
-    skipDuplicates: true,
-  })
+async function claimMedrepIncentive(inc: MedrepIncentive, _cutoffPeriod: string, payslipId: string) {
+  await prisma.referralCommissionItem.updateMany({ where: { id: { in: inc.itemIds }, payslipId: null }, data: { payslipId } })
 }
 
 export async function POST(req: Request) {
@@ -725,7 +732,7 @@ export async function POST(req: Request) {
     const medrepInc = await medrepIncentiveFor(incSettings, emp, cutoffPeriod, qBranch, endDate)
     if (medrepInc) {
       allowanceAmount += medrepInc.total
-      adjDetails.push({ allowanceLabel: `New-referred-patient incentive — ${medrepInc.count} × ₱${medrepInc.amount.toLocaleString('en-PH')}`, allowanceType: 'TAXABLE', allowanceAmount: medrepInc.total })
+      adjDetails.push({ allowanceLabel: `New-referred-patient incentive — ${medrepInc.count} patient${medrepInc.count === 1 ? '' : 's'}${medrepInc.total === medrepInc.count * medrepInc.amount ? ` × ₱${medrepInc.amount.toLocaleString('en-PH')}` : ''}`, allowanceType: 'TAXABLE', allowanceAmount: medrepInc.total })
     }
 
     const grossPay = basicPay + leavePay + overtimePay + holidayOvertimePay + holidayPay + restDayPay + nightDiffPay + allowanceAmount
@@ -1212,7 +1219,7 @@ export async function PATCH(req: Request) {
     const medrepInc = await medrepIncentiveFor(incSettings, emp, cutoffPeriod, qBranch, endDate)
     if (medrepInc) {
       allowanceAmount += medrepInc.total
-      adjDetails.push({ allowanceLabel: `New-referred-patient incentive — ${medrepInc.count} × ₱${medrepInc.amount.toLocaleString('en-PH')}`, allowanceType: 'TAXABLE', allowanceAmount: medrepInc.total })
+      adjDetails.push({ allowanceLabel: `New-referred-patient incentive — ${medrepInc.count} patient${medrepInc.count === 1 ? '' : 's'}${medrepInc.total === medrepInc.count * medrepInc.amount ? ` × ₱${medrepInc.amount.toLocaleString('en-PH')}` : ''}`, allowanceType: 'TAXABLE', allowanceAmount: medrepInc.total })
     }
 
     const grossPay = basicPay + leavePay + overtimePay + holidayOvertimePay + holidayPay + restDayPay + nightDiffPay + allowanceAmount

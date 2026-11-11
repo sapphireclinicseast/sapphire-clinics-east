@@ -1,6 +1,6 @@
 'use client'
 
-import { Fragment, useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useSession } from 'next-auth/react'
 import { redirect } from 'next/navigation'
 import { Users, UserPlus, Loader2, X, Trash2, Search, ChevronDown, Download, BarChart3, HandCoins, ChevronRight, ArrowUp, ArrowDown, ArrowUpDown, Trophy, Stethoscope, Scale, GraduationCap } from 'lucide-react'
@@ -57,6 +57,22 @@ interface DashRow { referrerId: string; name: string; type: string | null; refer
 
 // Label a claim-ledger cutoff for humans: payroll "2026-10-2" → "Oct 2026 · 2nd
 // cutoff"; a hand-mark "MANUAL-2026-10-13" → "marked Oct 13, 2026".
+/** Payroll cutoffs from three months back to two ahead, newest first ("2026-11-2"). */
+function cutoffChoices(today = new Date()): string[] {
+  const out: string[] = []
+  for (let k = 2; k >= -3; k--) {
+    const d = new Date(today.getFullYear(), today.getMonth() + k, 1)
+    const p = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+    out.push(`${p}-2`, `${p}-1`)
+  }
+  return out
+}
+/** "2026-11-2" → "Nov 2026 · 2nd cutoff". */
+function cutoffName(c: string): string {
+  const m = c.match(/^(\d{4})-(\d{2})-([12])$/)
+  if (!m) return c
+  return `${new Date(Number(m[1]), Number(m[2]) - 1, 1).toLocaleDateString('en-PH', { month: 'short', year: 'numeric' })} · ${m[3] === '1' ? '1st' : '2nd'} cutoff`
+}
 function paidLabel(paid: { cutoffPeriod: string; viaPayroll: boolean }): string {
   const m = paid.cutoffPeriod.match(/^(\d{4})-(\d{2})-([12])$/)
   if (m) {
@@ -684,7 +700,7 @@ function MedrepPill({ r }: { r: DashRow }) {
 
 interface ComSession { id: string; orderNumber: number; date: string; branch: string; patientName: string | null; net: number; paymentStatus: string | null; via: 'tag' | 'link' }
 interface ComRow { referrerId: string; name: string; specialization: string | null; isInhouse: boolean; basis?: 'SESSION' | 'PATIENT'; rate: number | null; patients: number; sessions: number; commission: number; orders: ComSession[] }
-interface MedrepBlock { staffName: string | null; amount: number; count: number; total: number; patients: { patientKey: string; patientName: string; referrerId: string; referrerName: string; referrerType: string | null; firstDate: string; branch: string; orderNumber: number; paid: { cutoffPeriod: string; viaPayroll: boolean; at: string } | null }[] }
+interface MedrepBlock { staffName: string | null; amount: number; count: number; total: number; patients: { patientKey: string; patientName: string; referrerId: string; referrerName: string; referrerType: string | null; firstDate: string; branch: string; orderNumber: number; paid: { cutoffPeriod: string; viaPayroll: boolean; at: string; state?: 'recorded' | 'payroll' | 'manual' | null } | null }[] }
 
 // Per-session referral commission for doctors, each at the ₱ rate set on their
 // card in Referrers (no rate = listed but earns nothing, so unticked doctors
@@ -746,16 +762,24 @@ function ReferralCommissionPanel() {
   const [rfpBranch, setRfpBranch] = useState('SANDBOX_EAST')
   const [rfpUpTo, setRfpUpTo] = useState(() => new Date().toISOString().slice(0, 10))
   const [rfpBusy, setRfpBusy] = useState(false)
-  const [rfpResult, setRfpResult] = useState<{ created: { referrer: string; refNumber: string; sessions: number; basis?: string; amount: number }[]; note?: string; error?: string } | null>(null)
+  const [rfpResult, setRfpResult] = useState<{ created: { referrer: string; refNumber: string; sessions: number; basis?: string; amount: number; balanceAfter?: number }[]; note?: string; error?: string } | null>(null)
   // What Generate would create right now (GET preview — nothing is written).
-  const [rfpPreview, setRfpPreview] = useState<{ referrerId: string; referrer: string; basis: string; units: number; rate: number; amount: number }[] | null>(null)
+  const [rfpPreview, setRfpPreview] = useState<{ referrerId: string; referrer: string; basis: string; units: number; rate: number | null; earned: number; carry: number; owed: number; amount: number }[] | null>(null)
+  // Who to pay this run and how much (Hannah 2026-11-11): unticked = skipped;
+  // paying less than owed leaves the rest as the referrer's balance.
+  const [payPick, setPayPick] = useState<Record<string, { on: boolean; pay: string }>>({})
   const [previewTick, setPreviewTick] = useState(0)
   useEffect(() => {
     if (!rfpOpen || !rfpUpTo) return
     let alive = true
     fetch(`/api/referrers/commission/rfp?upTo=${rfpUpTo}`)
       .then(r => (r.ok ? r.json() : { preview: [] }))
-      .then(d => { if (alive) setRfpPreview(d.preview || []) })
+      .then(d => {
+        if (!alive) return
+        const list = d.preview || []
+        setRfpPreview(list)
+        setPayPick(Object.fromEntries(list.map((p: { referrerId: string; owed: number }) => [p.referrerId, { on: true, pay: p.owed.toFixed(2) }])))
+      })
       .catch(() => { if (alive) setRfpPreview([]) })
     return () => { alive = false }
   }, [rfpOpen, rfpUpTo, previewTick])
@@ -799,12 +823,15 @@ function ReferralCommissionPanel() {
   }, [from, to, branch])
   useEffect(() => { const t = setTimeout(load, 300); return () => clearTimeout(t) }, [load])
 
+  const payItems = (rfpPreview || []).filter(p => payPick[p.referrerId]?.on).map(p => ({ referrerId: p.referrerId, pay: Number(payPick[p.referrerId]?.pay) || 0 }))
+  const payTotal = payItems.reduce((t, i) => t + i.pay, 0)
+  const payInvalid = (rfpPreview || []).some(p => payPick[p.referrerId]?.on && (!(Number(payPick[p.referrerId]?.pay) > 0) || Number(payPick[p.referrerId]?.pay) > p.owed + 0.005))
   const generateRfps = async () => {
     setRfpBusy(true); setRfpResult(null)
     try {
       const r = await fetch('/api/referrers/commission/rfp', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ branch: rfpBranch, upTo: rfpUpTo }),
+        body: JSON.stringify({ branch: rfpBranch, upTo: rfpUpTo, items: payItems }),
       })
       const d = await r.json()
       if (!r.ok) { setRfpResult({ created: [], error: d.error || 'Failed to generate' }); return }
@@ -815,25 +842,41 @@ function ReferralCommissionPanel() {
     finally { setRfpBusy(false) }
   }
 
-  // Mark / unmark a med-rep incentive as paid out (manual claim-ledger row).
+  // Med rep incentive per patient (Hannah 2026-11-11, like HMO PF Adjustments):
+  // pick the payroll cutoff and Record — that cutoff's payslip for the med rep
+  // carries it when generated. "Paid outside payroll" marks it by hand; Undo
+  // reverses either (or a payslip line still in draft).
   const [marking, setMarking] = useState<string | null>(null)
-  const markPaid = async (p: { patientKey: string; referrerId: string }) => {
+  const [cutoffFor, setCutoffFor] = useState<Record<string, string>>({})
+  const choices = useMemo(() => cutoffChoices(), [])
+  const recordMedrep = async (p: { patientKey: string; referrerId: string }, cutoff?: string, byHand = false): Promise<void> => {
     setMarking(p.patientKey)
     try {
       const r = await fetch('/api/referrers/commission/medrep-paid', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ patientKey: p.patientKey, referrerId: p.referrerId }),
+        body: JSON.stringify({ patientKey: p.patientKey, referrerId: p.referrerId, ...(cutoff ? { cutoff } : {}), ...(byHand ? { byHand: true } : {}) }),
       })
-      if (!r.ok) alert((await r.json()).error || 'Failed to mark as paid')
+      if (r.status === 409 && cutoff && !byHand) {
+        const d = await r.json().catch(() => ({}))
+        if (d.closed && confirm(`${d.error}\n\nOK = it was already added on that payslip by hand. Cancel = pick another cutoff.`)) {
+          setMarking(null)
+          return await recordMedrep(p, cutoff, true)
+        }
+        if (!d.closed) alert(d.error || 'Could not record it')
+      } else if (!r.ok) alert((await r.json().catch(() => ({}))).error || 'Could not record it')
       await load()
     } finally { setMarking(null) }
   }
-  const unmarkPaid = async (patientKey: string) => {
-    if (!confirm('Remove the manual “paid” mark for this incentive?')) return
+  const markPaid = (p: { patientKey: string; referrerId: string }) => {
+    if (!confirm('Mark this incentive as paid outside payroll? It will never be added to a payslip.')) return
+    void recordMedrep(p)
+  }
+  const unmarkPaid = async (patientKey: string, what: string) => {
+    if (!confirm(`Undo this ${what}? The patient goes back to unpaid so you can record it again.`)) return
     setMarking(patientKey)
     try {
       const r = await fetch(`/api/referrers/commission/medrep-paid?patientKey=${encodeURIComponent(patientKey)}`, { method: 'DELETE' })
-      if (!r.ok) alert((await r.json()).error || 'Failed to unmark')
+      if (!r.ok) alert((await r.json()).error || 'Could not undo it')
       await load()
     } finally { setMarking(null) }
   }
@@ -961,7 +1004,7 @@ function ReferralCommissionPanel() {
                 <ChevronDown size={14} style={{ color: 'var(--mid-gray)', transform: medrepOpen ? 'none' : 'rotate(-90deg)', transition: 'transform .15s' }} />
                 <span className="text-sm font-bold" style={{ color: '#92400e', ...display }}>Medical representative incentive</span>
                 <span className="text-xs" style={muted}>
-                  one-time per new patient from an external doctor · {medrep.staffName ? `recipient: ${medrep.staffName} · added to their payslip automatically` : 'no recipient set — pick one below'}
+                  one-time per new patient from an external doctor · {medrep.staffName ? `recipient: ${medrep.staffName} · record each patient into a payroll cutoff` : 'no recipient set — pick one below'}
                 </span>
                 <span className="ml-auto text-sm font-mono font-semibold whitespace-nowrap" style={{ color: '#92400e' }}>
                   {medrep.count} × {peso(medrep.amount)} = {peso(medrep.total)}
@@ -987,8 +1030,8 @@ function ReferralCommissionPanel() {
                   {incSaving && <Loader2 size={14} className="animate-spin mb-2.5" style={muted} />}
                   <p className="text-xs flex-1 min-w-[240px] mb-1" style={muted}>
                     {medrep.staffName
-                      ? <>Paid automatically: when {medrep.staffName}&apos;s payslip for a cutoff is generated, every new patient not yet paid up to that cutoff is added as a taxable allowance (&ldquo;New-referred-patient incentive&rdquo;). Use <b>Mark paid</b> only for one paid outside payroll.</>
-                      : <>No one gets this yet. Pick the med rep and their next generated payslip carries every unpaid new patient since the scheme started.</>}
+                      ? <>Pick the payroll cutoff on each patient and press <b>Record</b>: {medrep.staffName}&apos;s payslip for that cutoff adds it as a taxable allowance (&ldquo;New-referred-patient incentive&rdquo;) when it is generated. Nothing is added until it is recorded. <b>Undo</b> takes it back off.</>
+                      : <>No one gets this yet. Pick the med rep, then record each new patient into a payroll cutoff.</>}
                   </p>
                 </div>
               )}
@@ -1007,21 +1050,39 @@ function ReferralCommissionPanel() {
                             <td className="py-2 pr-3 border-b" style={{ ...hrLine, ...muted }}>first session #{p.orderNumber} · {branchLabel(p.branch)}</td>
                             <td className="py-2 pr-4 border-b text-right whitespace-nowrap" style={hrLine}>
                               {p.paid ? (
-                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold" style={{ background: '#dcfce7', color: '#166534' }}
-                                  title={p.paid.viaPayroll ? 'Carried on the med rep’s payslip' : 'Marked paid by hand'}>
-                                  ✓ Paid · {paidLabel(p.paid)}
-                                  {!p.paid.viaPayroll && canMarkPaid && (
-                                    <button onClick={() => unmarkPaid(p.patientKey)} disabled={marking === p.patientKey} title="Remove the manual paid mark" className="ml-0.5 hover:opacity-70">
-                                      <X size={11} />
-                                    </button>
+                                <span className="inline-flex items-center gap-2">
+                                  {p.paid.state === 'recorded' ? (
+                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold" style={{ background: '#ccfbf1', color: '#0f766e' }}
+                                      title={`On ${medrep.staffName || 'the med rep'}'s payslip for this cutoff when it is generated`}>
+                                      ✓ {cutoffName(p.paid.cutoffPeriod)} · added when that payslip is generated
+                                    </span>
+                                  ) : (
+                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold" style={{ background: '#dcfce7', color: '#166534' }}
+                                      title={p.paid.viaPayroll ? 'Carried on the med rep’s payslip' : 'Paid outside payroll'}>
+                                      ✓ Paid · {p.paid.viaPayroll ? `payslip · ${cutoffName(p.paid.cutoffPeriod)}` : paidLabel(p.paid)}
+                                    </span>
+                                  )}
+                                  {canMarkPaid && (
+                                    <button onClick={() => unmarkPaid(p.patientKey, p.paid!.state === 'recorded' ? 'cutoff record' : p.paid!.viaPayroll ? 'payslip line (regenerate that payslip after)' : 'paid mark')}
+                                      disabled={marking === p.patientKey} className="text-[11px] underline" style={muted}>Undo</button>
                                   )}
                                 </span>
                               ) : canMarkPaid ? (
-                                <button onClick={() => markPaid(p)} disabled={marking === p.patientKey}
-                                  className="px-2.5 py-0.5 rounded-full text-[11px] font-semibold border disabled:opacity-50 hover:bg-[#fef3c7]"
-                                  style={{ borderColor: '#fcd34d', background: '#fffbeb', color: '#b45309' }}>
-                                  {marking === p.patientKey ? '…' : 'Mark paid'}
-                                </button>
+                                <span className="inline-flex items-center gap-1.5">
+                                  <select value={cutoffFor[p.patientKey] || ''} onChange={e => setCutoffFor(m => ({ ...m, [p.patientKey]: e.target.value }))}
+                                    aria-label={`Payroll cutoff for ${p.patientName}`}
+                                    className="px-1.5 py-1 rounded-lg border text-[11px] bg-white" style={{ borderColor: '#fcd34d' }}>
+                                    <option value="">Choose cutoff…</option>
+                                    {choices.map(c => <option key={c} value={c}>{cutoffName(c)}</option>)}
+                                  </select>
+                                  <button onClick={() => recordMedrep(p, cutoffFor[p.patientKey])} disabled={marking === p.patientKey || !cutoffFor[p.patientKey] || !medrep.staffName}
+                                    title={!medrep.staffName ? 'Pick the med rep first' : undefined}
+                                    className="px-2 py-1 rounded-lg text-[11px] font-semibold text-white flex items-center gap-1 disabled:opacity-50" style={{ background: '#b45309' }}>
+                                    {marking === p.patientKey && <Loader2 size={11} className="animate-spin" />} Record
+                                  </button>
+                                  <button onClick={() => markPaid(p)} disabled={marking === p.patientKey} className="text-[11px] underline" style={muted}
+                                    title="Paid outside payroll — never added to a payslip">paid outside payroll</button>
+                                </span>
                               ) : (
                                 <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold" style={{ background: '#fef3c7', color: '#92400e' }}>Unpaid</span>
                               )}
@@ -1048,7 +1109,7 @@ function ReferralCommissionPanel() {
             {rfpOpen && (
               <div className="px-4 sm:px-10 pt-3 pb-4 space-y-3 border-t" style={{ borderColor: 'var(--light-gray)' }}>
                 <p className="text-xs max-w-4xl" style={muted}>
-                  Creates one RFP per external referrer — outside doctors, law firms and partner schools with a commission rate ticked — payable to the referrer and booked as an audited expense entry under the account below, covering every commission session (per-session referrers) or newly referred patient (per-patient referrers) not yet paid by payroll or an earlier RFP, from the scheme start through the chosen date. In-house doctors are paid through payroll, never here. Deleting a generated RFP (Expenses → RFP) releases its sessions for the next run.
+                  Creates one RFP per ticked external referrer — outside doctors, law firms and partner schools with a commission rate — payable to the referrer and booked as an audited expense entry under the account below. It covers every commission session (per-session referrers) or newly referred patient (per-patient referrers) not yet paid, from the scheme start through the chosen date, plus any balance left from an earlier RFP. Pay less than owed and the rest stays as their balance. In-house doctors are paid through payroll, never here. Deleting a generated RFP (Expenses → RFP) releases its sessions and its balance.
                 </p>
                 {canMarkPaid ? (
                   <>
@@ -1069,11 +1130,11 @@ function ReferralCommissionPanel() {
                         through
                         <input type="date" value={rfpUpTo} onChange={e => setRfpUpTo(e.target.value)} className={`${hrInput} px-2 text-xs`} style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }} />
                       </label>
-                      <button onClick={generateRfps} disabled={rfpBusy || (rfpPreview !== null && rfpPreview.length === 0)} className={`${hrBtn.primary} disabled:opacity-50`} style={{ background: 'var(--teal)' }}>
+                      <button onClick={generateRfps} disabled={rfpBusy || !payItems.length || payInvalid} className={`${hrBtn.primary} disabled:opacity-50`} style={{ background: 'var(--teal)' }}>
                         {rfpBusy && <Loader2 size={13} className="animate-spin" />}
-                        {rfpBusy ? 'Generating…' : rfpPreview && rfpPreview.length
-                          ? `Generate ${rfpPreview.length} RFP${rfpPreview.length === 1 ? '' : 's'} · ${peso(rfpPreview.reduce((t, p) => t + p.amount, 0))}`
-                          : 'Generate commission payment'}
+                        {rfpBusy ? 'Generating…' : payItems.length
+                          ? `Generate ${payItems.length} RFP${payItems.length === 1 ? '' : 's'} · ${peso(payTotal)}`
+                          : 'Tick who to pay'}
                       </button>
                     </div>
                   </>
@@ -1085,25 +1146,59 @@ function ReferralCommissionPanel() {
                   <p className="text-xs" style={muted}>Nothing unpaid for external referrers through {rfpUpTo} — every commission is already on an RFP.</p>
                 ) : (
                   <div className="rounded-lg border overflow-x-auto" style={{ borderColor: 'var(--light-gray)' }}>
-                    <table className="w-full text-xs" style={{ minWidth: 480 }}>
+                    <table className="w-full text-xs" style={{ minWidth: 720 }}>
                       <thead>
                         <tr style={{ background: 'var(--hr-head, #f6f7f3)' }}>
-                          {['To be paid (RFP payable to)', 'Unpaid', 'Rate', 'RFP amount'].map((h, i) => (
+                          <th className="pl-3 py-1.5 w-8">
+                            <input type="checkbox" aria-label="Tick all" checked={rfpPreview.every(p => payPick[p.referrerId]?.on)}
+                              onChange={e => setPayPick(m => Object.fromEntries(rfpPreview.map(p => [p.referrerId, { on: e.target.checked, pay: m[p.referrerId]?.pay ?? p.owed.toFixed(2) }])))} />
+                          </th>
+                          {['To be paid (RFP payable to)', 'Unpaid', 'Rate', 'Owed', 'Pay now', 'Balance after'].map((h, i) => (
                             <th key={h} className={`px-3 py-1.5 font-semibold ${i === 0 ? 'text-left' : 'text-right'}`} style={muted}>{h}</th>
                           ))}
                         </tr>
                       </thead>
                       <tbody>
-                        {rfpPreview.map(p => (
-                          <tr key={p.referrerId} className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
-                            <td className="px-3 py-1.5 font-semibold" style={ink}>{p.referrer}</td>
-                            <td className="px-3 py-1.5 text-right" style={ink}>{p.units} {p.basis === 'PATIENT' ? `patient${p.units === 1 ? '' : 's'}` : `session${p.units === 1 ? '' : 's'}`}</td>
-                            <td className="px-3 py-1.5 text-right font-mono" style={muted}>{peso(p.rate)}/{p.basis === 'PATIENT' ? 'patient' : 'session'}</td>
-                            <td className="px-3 py-1.5 text-right font-mono font-semibold" style={{ color: 'var(--teal)' }}>{peso(p.amount)}</td>
-                          </tr>
-                        ))}
+                        {rfpPreview.map(p => {
+                          const pick = payPick[p.referrerId] || { on: false, pay: p.owed.toFixed(2) }
+                          const pay = Number(pick.pay)
+                          const bad = pick.on && (!(pay > 0) || pay > p.owed + 0.005)
+                          const balance = pick.on && !bad ? Math.max(0, p.owed - pay) : p.owed
+                          return (
+                            <tr key={p.referrerId} className="border-t" style={{ borderColor: 'var(--light-gray)', opacity: pick.on ? 1 : 0.55 }}>
+                              <td className="pl-3 py-1.5">
+                                <input type="checkbox" checked={pick.on} aria-label={`Pay ${p.referrer} in this run`}
+                                  onChange={e => setPayPick(m => ({ ...m, [p.referrerId]: { ...pick, on: e.target.checked } }))} />
+                              </td>
+                              <td className="px-3 py-1.5 font-semibold" style={ink}>{p.referrer}</td>
+                              <td className="px-3 py-1.5 text-right" style={ink}>
+                                {p.units ? `${p.units} ${p.basis === 'PATIENT' ? `patient${p.units === 1 ? '' : 's'}` : `session${p.units === 1 ? '' : 's'}`}` : '—'}
+                                {Math.abs(p.carry) >= 0.005 && <div className="text-[10.5px]" style={{ color: p.carry > 0 ? '#b45309' : '#047857' }}>{p.carry > 0 ? '+ balance' : '− credit'} {peso(Math.abs(p.carry))}</div>}
+                              </td>
+                              <td className="px-3 py-1.5 text-right font-mono" style={muted}>{p.rate != null ? `${peso(p.rate)}/${p.basis === 'PATIENT' ? 'patient' : 'session'}` : '—'}</td>
+                              <td className="px-3 py-1.5 text-right font-mono" style={ink}>{peso(p.owed)}</td>
+                              <td className="px-3 py-1.5 text-right">
+                                <span className="inline-flex items-center gap-1">
+                                  <span style={muted}>₱</span>
+                                  <input type="number" min={0.01} step="0.01" max={p.owed} value={pick.pay} disabled={!pick.on || !canMarkPaid}
+                                    onChange={e => setPayPick(m => ({ ...m, [p.referrerId]: { ...pick, pay: e.target.value } }))}
+                                    aria-label={`Amount to pay ${p.referrer} now`}
+                                    className="w-28 px-2 py-1 rounded-lg border text-right font-mono text-xs bg-white disabled:bg-transparent"
+                                    style={{ borderColor: bad ? '#dc2626' : 'var(--light-gray)' }} />
+                                </span>
+                                {bad && <div className="text-[10.5px]" style={{ color: '#dc2626' }}>{pay > p.owed ? `at most ${peso(p.owed)}` : 'enter an amount'}</div>}
+                              </td>
+                              <td className="px-3 py-1.5 text-right font-mono font-semibold" style={{ color: balance >= 0.005 ? '#b45309' : 'var(--teal)' }}>
+                                {balance >= 0.005 ? peso(balance) : '—'}
+                              </td>
+                            </tr>
+                          )
+                        })}
                       </tbody>
                     </table>
+                    <p className="px-3 py-2 text-[11px] border-t" style={{ ...muted, borderColor: 'var(--light-gray)' }}>
+                      Tick who to pay this run. Paying less than what&apos;s owed keeps the rest as that referrer&apos;s balance — it shows here next time, added to anything new. The expense entry books what is paid now.
+                    </p>
                   </div>
                 )}
                 {rfpResult && (
@@ -1121,6 +1216,7 @@ function ReferralCommissionPanel() {
                           <span className="truncate flex-1">{c.referrer}</span>
                           <span>{c.sessions} {c.basis === 'PATIENT' ? `patient${c.sessions === 1 ? '' : 's'}` : 'sess.'}</span>
                           <span className="font-mono font-semibold">{peso(c.amount)}</span>
+                          {c.balanceAfter ? <span className="font-mono" style={{ color: '#b45309' }}>balance {peso(c.balanceAfter)}</span> : null}
                         </div>
                       ))}
                     </div>
