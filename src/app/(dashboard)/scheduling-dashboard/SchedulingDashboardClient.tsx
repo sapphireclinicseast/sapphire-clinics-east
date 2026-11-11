@@ -8,7 +8,7 @@ import { DAYS } from '@/lib/decking-days'
 import {
   BarChart2, CalendarDays, Users, Settings, Star, Filter, Lock, Activity,
   ChevronDown, ChevronUp, Columns2, TrendingUp, LineChart as LineChartIcon,
-  Grid3x3, AlertTriangle, RefreshCw, Loader2, X, Search,
+  Grid3x3, AlertTriangle, RefreshCw, Loader2, X, Search, Gauge,
 } from 'lucide-react'
 import {
   AreaChart, Area, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine,
@@ -379,6 +379,47 @@ function DashboardContent({ role }: { role: string }) {
 
   const utilization = totalCapacity > 0 ? (totalSessions / totalCapacity) * 100 : 0
   const avgPerTherapist = uniqueStaff > 0 ? totalSessions / uniqueStaff : 0
+
+  // ── How full the clinicians are ───────────────────────────────────────────
+  //
+  // Beside clinic utilization because the pair is the point. Utilization is
+  // sessions against the daily caps in Settings — the building's capacity.
+  // This is decked slots against the slots each consultant personally gave us.
+  // Low utilization with full consultants means the rooms have room and the
+  // people do not, and that is a hiring decision rather than a marketing one.
+  //
+  // Its own request: the therapist panel further down carries its own branch
+  // and department filters, so its data is not scoped to this toolbar and
+  // cannot be reused for a headline that must follow it. summaryOnly keeps the
+  // names out of this one.
+  const [fill, setFill] = useState<{
+    avgPct: number | null; pooledPct: number | null; fullCount: number; counted: number
+  } | null>(null)
+  // Distinguishes "not loaded" from "this account may not read it" — the route
+  // is closed to roles that can still see this page, and a tile reading 0%
+  // would be worse than no tile.
+  const [fillDenied, setFillDenied] = useState(false)
+
+  useEffect(() => {
+    const ctl = new AbortController()
+    const params = new URLSearchParams({
+      startDate, endDate, branch,
+      department: allDepts ? 'all' : selectedDepts.join(','),
+      summaryOnly: '1',
+    })
+    fetch(`/api/scheduling-dashboard/therapist-utilization?${params}`, { signal: ctl.signal })
+      .then(async r => {
+        if (r.status === 401 || r.status === 403) { setFillDenied(true); return }
+        if (!r.ok) throw new Error(String(r.status))
+        const d = await r.json()
+        setFillDenied(false)
+        setFill(d.fill ?? null)
+      })
+      .catch(err => { if (err.name !== 'AbortError') setFill(null) })
+    return () => ctl.abort()
+  }, [startDate, endDate, branch, allDepts, selectedDepts])
+
+  const showFill = !fillDenied
   // Avg sessions per OPERATING day — uses the same workingDays denominator as
   // the utilization calc (Saturday excluded), so the figure represents an
   // average over days the clinic actually operates. Reacts to the same
@@ -726,9 +767,10 @@ function DashboardContent({ role }: { role: string }) {
       {showMain && (
         <>
           {/* ── KPI Cards ── each jumps to the section that breaks it down. */}
-          <div className="grid grid-cols-1 min-[480px]:grid-cols-2 lg:grid-cols-4 gap-3">
+          <div className={`grid grid-cols-1 min-[480px]:grid-cols-2 gap-3 ${
+            showFill ? 'lg:grid-cols-3 xl:grid-cols-5' : 'lg:grid-cols-4'}`}>
             {initialLoad ? (
-              Array.from({ length: 4 }).map((_, i) => (
+              Array.from({ length: showFill ? 5 : 4 }).map((_, i) => (
                 <div key={i} className="rounded-xl px-4 py-3.5" style={CARD_STYLE}>
                   <Skeleton className="h-3 w-20" />
                   <Skeleton className="h-7 w-24 mt-2" />
@@ -741,6 +783,15 @@ function DashboardContent({ role }: { role: string }) {
                   <KpiCard label="Clinic Utilization" icon={<BarChart2 size={16} />}
                     value={`${utilization.toFixed(1)}%`} sub="of daily caps set in Settings" />
                 </KpiLink>
+                {showFill && (
+                  <KpiLink target="therapist-utilization" title="Jump to the clinician breakdown">
+                    <KpiCard label="Avg clinician fill" icon={<Gauge size={16} />} accent="#166534"
+                      value={fill?.avgPct == null ? '—' : `${fill.avgPct.toFixed(1)}%`}
+                      sub={fill?.avgPct == null
+                        ? 'no consultant has set their days yet'
+                        : `${fill.fullCount} of ${fill.counted} clinicians 90%+ full · current week`} />
+                  </KpiLink>
+                )}
                 <KpiLink target="daily-breakdown" title="Jump to the daily breakdown">
                   <KpiCard label="Total Sessions" icon={<CalendarDays size={16} />} accent="var(--bright-teal)"
                     value={totalSessions.toLocaleString()} sub={`${STATUS_LABELS[status] ?? status} · ${rangeLabel}`} />
@@ -1258,8 +1309,10 @@ function DashboardContent({ role }: { role: string }) {
         </div>
       )}
 
-      {/* Therapist Utilization */}
-      <TherapistUtilizationSection startDate={startDate} endDate={endDate} role={role} />
+      {/* Therapist Utilization — the anchor the "Avg clinician fill" tile jumps to. */}
+      <div id="therapist-utilization" className="scroll-mt-4">
+        <TherapistUtilizationSection startDate={startDate} endDate={endDate} role={role} />
+      </div>
 
       {/* Settings Modal */}
       {settingsOpen && (
@@ -1476,7 +1529,9 @@ function DeckingVsAttendance({ rosteredPerWeek, deckedPerWeek, deckedOffRoster, 
         label="Decking fill"
         frame="current week — decking has no history"
         value={fillPct}
-        detail={`${deckedPerWeek} of ${rosteredPerWeek} rostered hours held by a permanent patient`}
+        // "Slots", not "hours": a consultant can set a slot length or a number
+        // of slots per day, so a rostered slot is not always an hour long.
+        detail={`${deckedPerWeek} of ${rosteredPerWeek} rostered slots held by a permanent patient`}
       />
       <Meter
         label="Show-up rate"
@@ -1489,7 +1544,9 @@ function DeckingVsAttendance({ rosteredPerWeek, deckedPerWeek, deckedOffRoster, 
           <div className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: '#be123c' }}>
             Off-roster decking
           </div>
-          <div className="text-sm font-bold" style={{ color: '#be123c' }}>{deckedOffRoster}h</div>
+          <div className="text-sm font-bold" style={{ color: '#be123c' }}>
+            {deckedOffRoster} slot{deckedOffRoster === 1 ? '' : 's'}
+          </div>
           <div className="text-[10px] mt-0.5" style={{ color: 'var(--charcoal)' }}>
             decked on days no longer in the roster — usually left behind when someone reduces their days
           </div>
