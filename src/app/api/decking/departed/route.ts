@@ -13,10 +13,14 @@
 // arithmetic and invisible to the people who could act on them. Sixty-three of
 // them across nine departed consultants when this was written.
 //
-// Read-only. Moving a child is done through the existing PATCH on
-// /api/decking/slots, which already checks the replacement is active, works
-// that department, and works that branch — so the decision stays a decision
-// and this route never writes.
+// Moving a child is done through the existing PATCH on /api/decking/slots,
+// which already checks the replacement is active, works that department, and
+// works that branch — so that decision stays where its rules live and the GET
+// here never writes.
+//
+// The POST and DELETE below are the OTHER outcome: a family who are not
+// continuing at all. They write a tag beside the booking and never touch the
+// booking itself — see DeckingBookingDiscontinued for why nothing is deleted.
 
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
@@ -39,6 +43,14 @@ export interface DepartedBooking {
 export interface Replacement {
   id: string
   name: string
+}
+
+/** A booking the family has said they are not continuing. */
+export interface DiscontinuedTag {
+  remarks: string
+  setByName: string | null
+  /** ISO. When the decision was last recorded. */
+  at: string
 }
 
 export async function GET(req: NextRequest) {
@@ -122,5 +134,80 @@ export async function GET(req: NextRequest) {
     }))
   }))
 
-  return NextResponse.json({ rows, replacements })
+  // Who has already been marked as not continuing. One query for the whole
+  // page; a failure leaves the rows untagged rather than failing the list,
+  // because the bookings are the point and the tags are an overlay.
+  let discontinued: Record<string, DiscontinuedTag> = {}
+  try {
+    const tags = await prisma.deckingBookingDiscontinued.findMany({
+      where: { slotId: { in: rows.map(r => r.slotId) } },
+      select: { slotId: true, remarks: true, setByName: true, updatedAt: true },
+    })
+    discontinued = Object.fromEntries(tags.map(t => [t.slotId, {
+      remarks: t.remarks, setByName: t.setByName, at: t.updatedAt.toISOString(),
+    }]))
+  } catch (err) {
+    console.error('[decking/departed] discontinued lookup failed:', err)
+  }
+
+  return NextResponse.json({ rows, replacements, discontinued })
+}
+
+/**
+ * Mark a booking as not continuing, or update its remark.
+ *
+ * An upsert, so pressing it twice corrects the note rather than erroring or
+ * stacking a second row. Nothing about the booking or the patient changes —
+ * the family may be back next year, and this has to be undoable without
+ * having to reconstruct what they were having.
+ */
+export async function POST(req: NextRequest) {
+  const session = await auth()
+  if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const setByName = (session.user as { name?: string } | undefined)?.name ?? null
+
+  const body = await req.json().catch(() => ({}))
+  const slotId = String(body.slotId ?? '')
+  const remarks = String(body.remarks ?? '').trim().slice(0, 1000)
+  if (!slotId) return NextResponse.json({ error: 'slotId is required' }, { status: 400 })
+
+  // The slot has to be a real booking under a departed consultant — the same
+  // set this page lists. Without this the route would tag any slot id at all.
+  const slot = await prisma.deckingSlot.findFirst({
+    where: { id: slotId, isClass: false, disabled: false, patientId: { not: null }, staff: { active: false } },
+    select: { id: true, branch: true, patientId: true },
+  })
+  if (!slot) {
+    return NextResponse.json(
+      { error: 'That booking is not one of the departed-consultant bookings' }, { status: 404 })
+  }
+
+  const tag = await prisma.deckingBookingDiscontinued.upsert({
+    where: { slotId },
+    create: { slotId, patientId: slot.patientId, branch: slot.branch, remarks, setByName },
+    update: { remarks, setByName },
+  })
+
+  return NextResponse.json({
+    ok: true,
+    discontinued: { remarks: tag.remarks, setByName: tag.setByName, at: tag.updatedAt.toISOString() },
+  })
+}
+
+/**
+ * Put a booking back on the rehoming list.
+ *
+ * The family changed their mind, or somebody tagged the wrong row. Deleting
+ * the tag restores the booking exactly as it was, which is the whole reason
+ * the booking was never touched.
+ */
+export async function DELETE(req: NextRequest) {
+  const session = await auth()
+  if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  const slotId = req.nextUrl.searchParams.get('slotId') ?? ''
+  if (!slotId) return NextResponse.json({ error: 'slotId is required' }, { status: 400 })
+
+  await prisma.deckingBookingDiscontinued.deleteMany({ where: { slotId } })
+  return NextResponse.json({ ok: true })
 }
