@@ -3,6 +3,16 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
 import Image from 'next/image'
 
+/** Seconds of slack past a video's own length before the watchdog steps in. */
+const VIDEO_GRACE_S = 8
+/**
+ * The longest a video may hold the screen when we never learn its length.
+ * A minute is longer than any advert the clinic runs, so this only ever fires
+ * for a video that is not playing at all.
+ */
+const VIDEO_MAX_WAIT_S = 60
+
+
 // ─── Department colours (TV dark theme) ──────────────────────────────────────
 const DEPT_COLORS: Record<string, { bg: string; text: string }> = {
   OT:         { bg: '#0D9488', text: '#fff' },
@@ -90,6 +100,9 @@ export default function QueueDisplay({ branch, clinicName }: { branch: string; c
   const [items, setItems]     = useState<QueueItem[]>([])
   const [ads, setAds]         = useState<Ad[]>([])
   const [adIdx, setAdIdx]     = useState(0)
+  // How long the current video says it runs for, once its metadata loads.
+  // 0 means "not known yet", which the watchdog treats as the worst case.
+  const [videoSeconds, setVideoSeconds] = useState(0)
   const [fadingOut, setFadingOut] = useState(false)
   const [clock, setClock]     = useState('')
   const [dateLabel, setDateLabel] = useState('')
@@ -121,6 +134,8 @@ export default function QueueDisplay({ branch, clinicName }: { branch: string; c
   const [showAnnouncements, setShowAnnouncements] = useState(false)
   // Configurable image slide duration (seconds), set in Ads Manager
   const [adSlideDuration, setAdSlideDuration] = useState(12)
+  /** Play the adverts with sound. Set in Queueing › Ads Manager. */
+  const [adAudio, setAdAudio] = useState(false)
 
   const COMPLAINT_FORM_URL = 'https://hr.sapphireclinicseast.org/patient-complaint-form.html'
   // QR colour matches brand Narra so the code reads as "official"
@@ -172,6 +187,7 @@ export default function QueueDisplay({ branch, clinicName }: { branch: string; c
         setLbEnabled(settings.showLeaderboard ?? false)
         setCfEnabled(settings.showComplaintForm ?? false)
         setAdSlideDuration(settings.adSlideDuration ?? 12)
+        setAdAudio(settings.adAudio ?? false)
         if (!settings.showLeaderboard) {
           setLeaderboard(null)
           setShowLeaderboard(false)
@@ -282,6 +298,10 @@ export default function QueueDisplay({ branch, clinicName }: { branch: string; c
   // ── Image ads & leaderboard & complaint QR: auto-advance timer ────────────
   const currentAd = ads[adIdx]
   const isImage = currentAd?.mimeType.startsWith('image/')
+  // Forget the previous video's length the moment the slide changes, or the
+  // watchdog for a stalled 60-second advert would inherit the 10 seconds of
+  // the one before it and cut a working video short.
+  useEffect(() => { setVideoSeconds(0) }, [currentAd?.id])
   useEffect(() => {
     if (showLeaderboard) {
       const id = setTimeout(() => advanceAd(ads.length), 15_000)
@@ -307,10 +327,28 @@ export default function QueueDisplay({ branch, clinicName }: { branch: string; c
       }
       return
     }
-    if (!isImage) return
+    if (!isImage) {
+      // ── The video watchdog ───────────────────────────────────────────────
+      //
+      // A video slide used to advance ONLY on its own `ended` event. That is
+      // fine until the video does not end: a stream request that hangs, a
+      // decode the TV cannot do, an autoplay rejection after the browser
+      // backgrounds the tab. None of those fire `ended`, so the panel held
+      // the same dark rectangle indefinitely while the queue beside it kept
+      // updating — which is exactly how this was found, a photo of the East
+      // TV with a live clock and a black advert.
+      //
+      // So: nothing may hold the screen without a deadline. The real duration
+      // is used once the metadata says what it is, with a margin for slow
+      // decoding; until then a fixed ceiling covers a video whose metadata
+      // never arrives at all.
+      const seconds = videoSeconds > 0 ? videoSeconds + VIDEO_GRACE_S : VIDEO_MAX_WAIT_S
+      const id = setTimeout(() => advanceAd(ads.length), seconds * 1_000)
+      return () => clearTimeout(id)
+    }
     const id = setTimeout(() => advanceAd(ads.length), adSlideDuration * 1_000)
     return () => clearTimeout(id)
-  }, [adIdx, isImage, ads.length, advanceAd, showLeaderboard, showComplaintQR, showAnnouncements, anns.length, adSlideDuration])
+  }, [adIdx, isImage, ads.length, advanceAd, showLeaderboard, showComplaintQR, showAnnouncements, anns.length, adSlideDuration, videoSeconds])
 
   // ── Fade back in once the incoming slide is ready ─────────────────────────
   const finishFadeIn = useCallback(() => {
@@ -834,11 +872,49 @@ export default function QueueDisplay({ branch, clinicName }: { branch: string; c
                   }}>
                     {currentAd.mimeType.startsWith('video/') ? (
                       <video
+                        // Keyed by the ad, so switching slides builds a NEW
+                        // element. Without this React reuses the old one and
+                        // swapping only the <source> does not reliably make a
+                        // video element reload — a known way to end up with a
+                        // black panel holding the previous frame.
+                        key={currentAd.id}
                         ref={videoRef}
-                        autoPlay muted playsInline
+                        autoPlay playsInline
                         loop={ads.length === 1 && (!lbEnabled || !leaderboard)}
                         style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+                        // Muted in the MARKUP even when sound is wanted, then
+                        // unmuted below. A video element that starts unmuted
+                        // is refused autoplay outright by every modern
+                        // browser; one that starts muted plays, and can then
+                        // be asked for sound.
+                        muted={!adAudio}
+                        onLoadedMetadata={e => {
+                          const v = e.currentTarget as HTMLVideoElement
+                          const d = v.duration
+                          if (Number.isFinite(d) && d > 0) setVideoSeconds(d)
+                          if (!adAudio) return
+                          // Ask for sound. A device that does not allow
+                          // autoplay with audio rejects this, and the answer
+                          // is to carry on SILENTLY rather than let the panel
+                          // sit on a video that will not start — a waiting
+                          // room notices a black screen, not a quiet advert.
+                          v.muted = false
+                          v.volume = 1
+                          void v.play().catch(() => {
+                            v.muted = true
+                            void v.play().catch(() => advanceAd(ads.length))
+                          })
+                        }}
                         onEnded={() => advanceAd(ads.length)}
+                        // A file the TV cannot fetch or cannot decode. Skipping
+                        // it is always better than showing it: one advert
+                        // missing is invisible to the room, a frozen panel is
+                        // the whole screen.
+                        onError={() => advanceAd(ads.length)}
+                        // Buffering that never recovers looks identical to a
+                        // dead slide. The watchdog above would catch it
+                        // eventually; this catches it sooner.
+                        onStalled={() => { if (videoSeconds === 0) advanceAd(ads.length) }}
                       >
                         <source src={`/api/queue-ads/stream/${currentAd.id}`} type={currentAd.mimeType} />
                       </video>
