@@ -2395,7 +2395,6 @@ function OutreachPreview({ preview, who, sending, onCancel, onSend }: {
                   ['From', preview.fromName ? `${preview.fromName} <${preview.from}>` : preview.from],
                   ...(isEmail ? [['Subject', preview.subject ?? '']] : []),
                   ...(!isEmail && preview.length ? [['Length', `${preview.length} characters · ${preview.segments} SMS segment${preview.segments === 1 ? '' : 's'}${preview.encoding === 'UCS-2' ? ' (UCS-2 — a special character halved the budget)' : ''}`]] : []),
-                  ...(preview.services?.length ? [['Services named', preview.services.join(', ')]] : []),
                 ].map(([k, v]) => (
                   <div key={String(k)} className="flex gap-3 px-3 py-2"
                     style={{ borderBottom: '1px solid var(--light-gray)' }}>

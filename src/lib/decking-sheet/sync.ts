@@ -1046,7 +1046,24 @@ async function pushTab(
   const mine = after.data.sheets?.find(x => x.properties?.sheetId === sheetId)
   const post: sheets_v4.Schema$Request[] = []
   for (let i = (mine?.conditionalFormats?.length ?? 0) - 1; i >= 0; i--) post.push({ deleteConditionalFormatRule: { sheetId, index: i } })
-  const ranges = grid.editable.map(r => ({ sheetId, ...r }))
+  const ranges: Array<{
+    sheetId: number
+    startRowIndex?: number; endRowIndex?: number
+    startColumnIndex?: number; endColumnIndex?: number
+  }> = grid.editable.map(r => ({ sheetId, ...r }))
+
+  // Front desk's own columns, left editable.
+  //
+  // grid.ts reserves everything from SAFE_COL (column AA) outwards for the
+  // clinic's own working notes, and refuses to generate a board that would
+  // reach it — but the protection below covers the WHOLE tab and exempted
+  // only the slot cells, so that reserved space was locked along with
+  // everything else. east@ and the branch accounts could not type a single
+  // character in AA onwards, in columns that exist for them.
+  //
+  // No end column and no row bounds: everything from AA to the right-hand
+  // edge, for every row, whatever the tab grows to.
+  ranges.push({ sheetId, startColumnIndex: SAFE_COL })
   const nameRanges = grid.validate.filter(v => v.kind === 'name')
     .map(v => ({ sheetId, startRowIndex: v.row, endRowIndex: v.row + 1, startColumnIndex: v.col, endColumnIndex: v.col + 1 }))
   // A slot closed to N/A or BREAK greys its payment and notes lines AT ONCE.
