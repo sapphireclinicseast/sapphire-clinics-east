@@ -49,7 +49,7 @@ export async function POST(req: NextRequest) {
   const session = await auth()
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const { staffId, patientId, dayOfWeek, startTime, endTime, branch, department, notes, disabled, paymentType, isClass , deliveryMode, supervisorId, date } = await req.json()
+  const { staffId, patientId, dayOfWeek, startTime, endTime, branch, department, notes, disabled, paymentType, isClass , deliveryMode, supervisorId, date, isMakeup } = await req.json()
   if (!staffId || !dayOfWeek || !startTime || !endTime)
     return NextResponse.json({ error: 'staffId, dayOfWeek, startTime, endTime are required' }, { status: 400 })
 
@@ -108,6 +108,12 @@ export async function POST(req: NextRequest) {
       staffId, dayOfWeek, startTime, endTime, branch, department,
       patientId: isDisabled ? null : (patientId || null),
       date: parsedDate,
+      // A make-up is a one-off with a reason: a session replacing one the
+      // patient missed, on a day outside the clinician's weekly schedule.
+      // Only meaningful WITH a date — a weekly slot is never a make-up, and
+      // honouring the flag without one would put a permanent "make-up" on the
+      // board every week.
+      isMakeup: parsedDate ? isMakeup === true : false,
       // Who supervises, when this hour belongs to an intern. A reference, not
       // a booking — the supervisor's own hour stays sellable.
       supervisorId: supervisorId || null,

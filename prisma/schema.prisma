@@ -939,6 +939,17 @@ model DeckingSlot {
   ///
   /// Only ever read by the sheet. The Decking module shows these normally.
   sheetHidden     Boolean  @default(false)
+  /// This dated slot is a MAKE-UP: a session replacing one the patient missed,
+  /// run on a day that is not part of the clinician's weekly schedule.
+  ///
+  /// The same shape as any other one-off — a date, an hour, a patient — and
+  /// deliberately so, because it is the same thing to the board. The flag
+  /// exists because it is NOT the same thing to the people reading it: front
+  /// desk need to see at a glance which of tomorrow's sessions are make-ups,
+  /// and the clinic needs to be able to count them.
+  ///
+  /// Only meaningful with a date. A weekly slot is never a make-up.
+  isMakeup        Boolean  @default(false)
   startTime       String // "10:00"
   endTime         String // "11:00"
   branch          String
