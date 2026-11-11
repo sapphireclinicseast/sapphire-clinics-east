@@ -9,6 +9,7 @@ export async function GET() {
     showLeaderboard:  settings?.showLeaderboard  ?? false,
     showComplaintForm: settings?.showComplaintForm ?? false,
     adSlideDuration:  settings?.adSlideDuration  ?? 12,
+    adAudio:          settings?.adAudio            ?? false,
   })
 }
 
@@ -21,6 +22,7 @@ export async function PATCH(req: NextRequest) {
   const data: Record<string, boolean | number> = {}
   if (typeof body.showLeaderboard  === 'boolean') data.showLeaderboard  = body.showLeaderboard
   if (typeof body.showComplaintForm === 'boolean') data.showComplaintForm = body.showComplaintForm
+  if (typeof body.adAudio === 'boolean') data.adAudio = body.adAudio
   if (typeof body.adSlideDuration  === 'number' && body.adSlideDuration >= 5 && body.adSlideDuration <= 120) {
     data.adSlideDuration = Math.round(body.adSlideDuration)
   }
@@ -35,5 +37,6 @@ export async function PATCH(req: NextRequest) {
     showLeaderboard:   settings.showLeaderboard,
     showComplaintForm: settings.showComplaintForm,
     adSlideDuration:   settings.adSlideDuration,
+    adAudio:           settings.adAudio,
   })
 }

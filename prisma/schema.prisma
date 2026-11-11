@@ -1013,6 +1013,20 @@ model SurveySettings {
   weightSatisfaction Int      @default(50) // % weight for avg satisfaction score
   showLeaderboard    Boolean  @default(false) // Show leaderboard on TV queue display
   showComplaintForm  Boolean  @default(false) // Show patient complaint form QR on TV display
+  /// Seconds an IMAGE ad holds the screen. Videos run to their own length.
+  ///
+  /// The column has existed in the database since the Ads Manager gained the
+  /// control, but was never added to this model — so Prisma did not know the
+  /// field, every read fell through to the default of 12 whatever front desk
+  /// had set, and saving it threw. Adding it here is the fix.
+  adSlideDuration    Int      @default(12)
+  /// Play the TV adverts with sound.
+  ///
+  /// Off by default: a waiting room is a shared space and silence is the safe
+  /// state to ship. Note that a browser will not autoplay audio unless the
+  /// device allows it — see the player, which falls back to muted rather than
+  /// letting a blocked video stall the screen.
+  adAudio            Boolean  @default(false)
   updatedAt          DateTime @updatedAt
 }
 

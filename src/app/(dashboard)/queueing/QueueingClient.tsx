@@ -7,8 +7,7 @@ import {
   UserPlus, Trash2, ChevronUp, ChevronDown, GripVertical, Upload, Tv2,
   X, Plus, ExternalLink, ImageIcon, Film, RefreshCw,
   ListOrdered, Megaphone, CalendarDays, CalendarCheck, CheckCircle2, AlertTriangle,
-  Loader2, Building2, Info, Clock, Users, Trophy, MessageSquareWarning, Timer, XCircle,
-} from 'lucide-react'
+  Loader2, Building2, Info, Clock, Users, Trophy, MessageSquareWarning, Timer, XCircle, Volume2} from 'lucide-react'
 import { CARD_STYLE, DashCard, KpiCard, Skeleton, EmptyState } from '../patients/dashboard/ui'
 
 // ─── Department colours (light theme) ────────────────────────────────────────
@@ -630,6 +629,8 @@ function AdsManager({ role }: { role: string }) {
   const [showComplaintForm, setShowComplaintForm] = useState(false)
   const [togglingCf, setTogglingCf] = useState(false)
   const [adSlideDuration, setAdSlideDuration] = useState(12)
+  const [adAudio, setAdAudio] = useState(false)
+  const [togglingAudio, setTogglingAudio] = useState(false)
   const [savingDuration, setSavingDuration] = useState(false)
   const durationTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
@@ -732,6 +733,7 @@ function AdsManager({ role }: { role: string }) {
       setShowLeaderboard(data.showLeaderboard ?? false)
       setShowComplaintForm(data.showComplaintForm ?? false)
       setAdSlideDuration(data.adSlideDuration ?? 12)
+      setAdAudio(data.adAudio ?? false)
     }
   }, [])
 
@@ -761,6 +763,17 @@ function AdsManager({ role }: { role: string }) {
       body: JSON.stringify({ showComplaintForm: checked }),
     })
     setTogglingCf(false)
+  }
+
+  async function handleToggleAudio(checked: boolean) {
+    setTogglingAudio(true)
+    setAdAudio(checked)
+    await fetch('/api/queue-ads/settings', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ adAudio: checked }),
+    })
+    setTogglingAudio(false)
   }
 
   function handleSlideDurationChange(val: number) {
@@ -1252,6 +1265,25 @@ function AdsManager({ role }: { role: string }) {
                 aria-label="Show Patient Complaint Form"
               />
               <SwitchVisual on={showComplaintForm} busy={togglingCf} />
+            </label>
+          </SettingRow>
+
+          <div style={{ borderTop: '1px solid var(--light-gray)' }} />
+
+          {/* Sound */}
+          <SettingRow icon={<Volume2 size={15} />} tone={{ bg: 'rgba(26,123,138,0.12)', fg: 'var(--teal)' }}
+            title="Play adverts with sound"
+            hint="Off, the TV is silent. On, videos play their own audio — but the TV's browser has to allow autoplay with sound, and if it does not the advert still plays, just muted.">
+            <label className="relative inline-flex items-center cursor-pointer flex-shrink-0 mt-1">
+              <input
+                type="checkbox"
+                checked={adAudio}
+                onChange={e => handleToggleAudio(e.target.checked)}
+                disabled={togglingAudio}
+                className="sr-only peer"
+                aria-label="Play adverts with sound"
+              />
+              <SwitchVisual on={adAudio} busy={togglingAudio} />
             </label>
           </SettingRow>
 
