@@ -136,6 +136,16 @@ export default function QueueDisplay({ branch, clinicName }: { branch: string; c
   const [adSlideDuration, setAdSlideDuration] = useState(12)
   /** Play the adverts with sound. Set in Queueing › Ads Manager. */
   const [adAudio, setAdAudio] = useState(false)
+  /**
+   * Sound is wanted but the browser refused to start it.
+   *
+   * Chrome will not autoplay audio until the page has been interacted with,
+   * and a TV driven by a laptop browser is never interacted with. Rather than
+   * leave it silently silent — front desk turn sound ON and nothing happens,
+   * with no way to tell whether the setting or the file is at fault — the
+   * panel says so and one click fixes it for the rest of the session.
+   */
+  const [audioBlocked, setAudioBlocked] = useState(false)
 
   const COMPLAINT_FORM_URL = 'https://hr.sapphireclinicseast.org/patient-complaint-form.html'
   // QR colour matches brand Narra so the code reads as "official"
@@ -871,6 +881,7 @@ export default function QueueDisplay({ branch, clinicName }: { branch: string; c
                     overflow: 'hidden',
                   }}>
                     {currentAd.mimeType.startsWith('video/') ? (
+                      <>
                       <video
                         // Keyed by the ad, so switching slides builds a NEW
                         // element. Without this React reuses the old one and
@@ -900,10 +911,16 @@ export default function QueueDisplay({ branch, clinicName }: { branch: string; c
                           // room notices a black screen, not a quiet advert.
                           v.muted = false
                           v.volume = 1
-                          void v.play().catch(() => {
-                            v.muted = true
-                            void v.play().catch(() => advanceAd(ads.length))
-                          })
+                          void v.play()
+                            .then(() => setAudioBlocked(false))
+                            .catch(() => {
+                              // Refused. Carry on muted — a waiting room
+                              // notices a black screen, not a quiet advert —
+                              // and raise the prompt so somebody can unlock it.
+                              setAudioBlocked(true)
+                              v.muted = true
+                              void v.play().catch(() => advanceAd(ads.length))
+                            })
                         }}
                         onEnded={() => advanceAd(ads.length)}
                         // A file the TV cannot fetch or cannot decode. Skipping
@@ -918,6 +935,49 @@ export default function QueueDisplay({ branch, clinicName }: { branch: string; c
                       >
                         <source src={`/api/queue-ads/stream/${currentAd.id}`} type={currentAd.mimeType} />
                       </video>
+                      {/* ── Unlock sound ──────────────────────────────────
+                          Browsers refuse to start audio until the page has
+                          been interacted with, and a TV driven from a laptop
+                          never is. One click anywhere on this panel satisfies
+                          that for the whole session, so this appears only when
+                          sound was asked for and refused, and goes as soon as
+                          it works.
+
+                          Deliberately visible rather than a silent fallback:
+                          without it, turning sound on in Ads Manager appears
+                          to do nothing, with no way to tell whether the
+                          setting, the file or the television is at fault. */}
+                      {adAudio && audioBlocked && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const v = videoRef.current
+                            if (!v) return
+                            v.muted = false
+                            v.volume = 1
+                            void v.play()
+                              .then(() => setAudioBlocked(false))
+                              .catch(() => { v.muted = true; void v.play().catch(() => {}) })
+                          }}
+                          style={{
+                            position: 'absolute', inset: 0, display: 'flex',
+                            alignItems: 'flex-end', justifyContent: 'center',
+                            padding: '0 0 3vh', background: 'transparent',
+                            border: 'none', cursor: 'pointer',
+                          }}
+                        >
+                          <span style={{
+                            display: 'inline-flex', alignItems: 'center', gap: '0.6vw',
+                            padding: '0.9vh 1.6vw', borderRadius: 999,
+                            background: 'rgba(15,23,42,0.72)', color: '#fff',
+                            fontSize: 'clamp(12px, 1.4vw, 22px)', fontWeight: 700,
+                            backdropFilter: 'blur(6px)',
+                          }}>
+                            <span aria-hidden>🔊</span> Click once for sound
+                          </span>
+                        </button>
+                      )}
+                      </>
                     ) : (
                       // eslint-disable-next-line @next/next/no-img-element
                       <img
