@@ -39,7 +39,7 @@ export const DECK_SECTIONS: { key: DeckSection; label: string; blurb: string; gr
   // ── Analysis: the same slots, read back ──
   { key: 'perday',      label: 'Per Day',     blurb: 'Weekly totals by day, all departments — for setting a daily target', group: 'analysis' },
   { key: 'crosssell',   label: 'Interdepartment', blurb: 'Patients seeing more than one department, and the ones who could be', group: 'analysis' },
-  { key: 'history',     label: 'History',     blurb: 'Filled and open slots over time, per department', group: 'analysis' },
+  { key: 'history',     label: 'History',     blurb: 'Filled slots each day, with a day-on-day table per department', group: 'analysis' },
   // Not a cut of the board but a list of what fell off it: bookings still
   // attached to consultants who have left, which the board cannot show
   // precisely because it hides inactive staff.
