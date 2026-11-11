@@ -3,7 +3,7 @@
 import { Fragment, useEffect, useState, useRef, useCallback } from 'react'
 import { daySlots, dayStarts, hourlySlots, slotMinutes, splitSpan, toMinutes, fromMinutes, isCustomLength } from '@/lib/decking-slots'
 import { internWindowCovers, internWindowLabel } from '@/lib/intern-window'
-import { ChevronDown, Plus, X, Settings2, Ban, Search, Users, UserPlus, CalendarCheck, CalendarPlus, CalendarDays, Percent, BarChart3, Info, Lock, Loader2, Clock, Rows3, Rows4, ChevronsDownUp, ChevronsUpDown, GraduationCap, UserCheck, AlertTriangle, MapPin, Video, Home, Building2 } from 'lucide-react'
+import { ChevronDown, Plus, X, Settings2, Ban, Search, Users, UserPlus, CalendarCheck, CalendarPlus, CalendarDays, Percent, BarChart3, Info, Lock, Loader2, Clock, Rows3, Rows4, ChevronsDownUp, ChevronsUpDown, GraduationCap, UserCheck, AlertTriangle, MapPin, Video, Home, Building2, Trash2} from 'lucide-react'
 import { DashCard, KpiCard, Skeleton, EmptyState, DeptChip, CARD_STYLE } from '../patients/dashboard/ui'
 import {
   CONTROL, CONTROL_SM, CONTROL_STYLE, LABEL, BTN_PRIMARY, BTN_SECONDARY, BTN_SM, SUBTLE_BG, TEAL_HEX, DECK_CSS,
@@ -838,6 +838,9 @@ function TherapistRow({ staff, activeBranch, sectionMode, config, slots, default
   const [showDatedModal, setShowDatedModal] = useState(false)
   /** Which one-off is having its patient set, if any. */
   const [fillingDated, setFillingDated] = useState<string | null>(null)
+  // Which one-off day is being removed, so its button can say so and the
+  // others stay clickable.
+  const [deletingDated, setDeletingDated] = useState<string | null>(null)
   /** Which date's slots are open in the window, if any. */
   const [openDatedDate, setOpenDatedDate] = useState<string | null>(null)
   // Past one-offs are folded away so the coming ones lead. Display only.
@@ -1775,11 +1778,74 @@ function TherapistRow({ staff, activeBranch, sectionMode, config, slots, default
                                 bury the board they sit under. The tile says
                                 what the day holds; the window is where it is
                                 filled in, a row per slot like the grid. */}
-                            <button type="button" onClick={() => setOpenDatedDate(dateKey)}
-                              className="dk-btn text-[11.5px] font-semibold rounded-md px-2 py-1"
-                              style={{ border: `1px solid ${ONEOFF_FG}`, color: ONEOFF_FG, background: '#fff' }}>
-                              Open the day &rarr;
-                            </button>
+                            <div className="flex flex-wrap items-center gap-1.5">
+                              <button type="button" onClick={() => setOpenDatedDate(dateKey)}
+                                className="dk-btn text-[11.5px] font-semibold rounded-md px-2 py-1"
+                                style={{ border: `1px solid ${ONEOFF_FG}`, color: ONEOFF_FG, background: '#fff' }}>
+                                Open the day &rarr;
+                              </button>
+                              {/* Removing the whole day, not a slot at a time.
+                                  A one-off is something a consultant offered
+                                  and can withdraw; sixteen half-hours is one
+                                  decision, not sixteen. Quiet, because the
+                                  usual reason to be here is to fill the day. */}
+                              <button type="button" disabled={deletingDated === dateKey}
+                                title={`Remove ${d.toLocaleDateString('en-PH', { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'UTC' })}`}
+                                onClick={async () => {
+                                  const booked = mine.filter(x => x.patient).length
+                                  const when = d.toLocaleDateString('en-PH',
+                                    { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'UTC' })
+                                  // The children are named, not counted. "3
+                                  // booked" is a number you click past; three
+                                  // names are three families with an
+                                  // appointment.
+                                  const who = mine.filter(x => x.patient)
+                                    .map(x => `  · ${x.startTime} ${x.patient?.firstName ?? ''} ${x.patient?.lastName ?? ''}`.trimEnd())
+                                    .join('\n')
+                                  const msg = booked > 0
+                                    ? `Remove ${when}?\n\nThis deletes all ${mine.length} slot${mine.length === 1 ? '' : 's'}, including ${booked} booking${booked === 1 ? '' : 's'}:\n${who}\n\nThose children lose this session. Move them first if they should keep it.`
+                                    : `Remove ${when}? This deletes ${mine.length} empty slot${mine.length === 1 ? '' : 's'}.`
+                                  if (!confirm(msg)) return
+                                  setDeletingDated(dateKey)
+                                  try {
+                                    const res = await fetch('/api/decking/slots', {
+                                      method: 'DELETE', headers: { 'Content-Type': 'application/json' },
+                                      body: JSON.stringify({ staffId: staff.id, date: dateKey, confirmBooked: booked > 0 }),
+                                    })
+                                    let data = await res.json().catch(() => ({}))
+                                    // The server counts the bookings again,
+                                    // and disagrees when somebody has filled
+                                    // a slot since this page loaded. It
+                                    // refuses rather than deleting a child
+                                    // nobody on screen could see — so ask
+                                    // again, with ITS number.
+                                    if (res.status === 409 && data.needsConfirm) {
+                                      if (!confirm(
+                                        `${when} now has ${data.booked} booking${data.booked === 1 ? '' : 's'}`
+                                        + ` — someone has filled a slot since this page loaded.\n\nRemove the day anyway?`
+                                      )) return
+                                      const again = await fetch('/api/decking/slots', {
+                                        method: 'DELETE', headers: { 'Content-Type': 'application/json' },
+                                        body: JSON.stringify({ staffId: staff.id, date: dateKey, confirmBooked: true }),
+                                      })
+                                      data = await again.json().catch(() => ({}))
+                                      if (!again.ok) throw new Error(data.error ?? `Could not remove that date (${again.status})`)
+                                    } else if (!res.ok) {
+                                      throw new Error(data.error ?? `Could not remove that date (${res.status})`)
+                                    }
+                                    onDatedChanged?.()
+                                  } catch (err) {
+                                    alert(err instanceof Error ? err.message : 'Could not remove that date')
+                                  } finally {
+                                    setDeletingDated(null)
+                                  }
+                                }}
+                                className="dk-btn text-[11.5px] font-semibold rounded-md px-2 py-1 inline-flex items-center gap-1"
+                                style={{ border: '1px solid var(--light-gray)', color: 'var(--mid-gray)', background: '#fff' }}>
+                                <Trash2 size={11} aria-hidden />
+                                {deletingDated === dateKey ? 'Removing…' : 'Remove'}
+                              </button>
+                            </div>
                           </div>
                         </div>
                       )
