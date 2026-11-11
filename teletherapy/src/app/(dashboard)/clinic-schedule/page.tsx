@@ -17,6 +17,7 @@ import {
 } from 'lucide-react'
 import { useSession } from 'next-auth/react'
 import { cn } from '@/lib/utils'
+import { branchLabel } from '@/lib/branch-label'
 import { useBranchSwitcher } from '@/components/BranchSwitcher'
 import SessionTrends from '@/components/SessionTrends'
 import {
@@ -67,6 +68,19 @@ const MONTHS = [
 
 // Date helpers — all UTC to match what the API returns.
 function isoDay(d: Date) { return d.toISOString().slice(0, 10) }
+/* Today in Manila as a UTC-midnight Date. Using the browser's UTC date put
+   "today" on YESTERDAY between midnight and 8 AM Manila time. */
+function manilaToday(): Date {
+  const ymd = new Date(Date.now() + 8 * 3600 * 1000).toISOString().slice(0, 10)
+  return new Date(ymd + 'T00:00:00Z')
+}
+/* Names are stored ALL CAPS; title-case for display. \p{L} + u keeps ñ. */
+function niceName(name: string | null | undefined): string {
+  const n = (name || '').trim()
+  if (!n || n !== n.toUpperCase()) return n
+  return n.toLowerCase().replace(/(^|[\s\-'.(])(\p{L})/gu, (_m, sep: string, ch: string) => sep + ch.toUpperCase())
+}
+const STATUS_ORDER = ['CONFIRMED', 'PENDING', 'COMPLETED', 'CANCELLED', 'RESCHEDULED'] as const
 function addDays(d: Date, n: number) { const x = new Date(d); x.setUTCDate(x.getUTCDate() + n); return x }
 function startOfWeek(d: Date) { const x = new Date(d); x.setUTCDate(x.getUTCDate() - x.getUTCDay()); return x }
 function startOfMonth(d: Date) { return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1)) }
@@ -111,10 +125,7 @@ function statusClass(status: string): string {
 
 export default function ClinicSchedulePage() {
   const [view, setView] = useState<ViewMode>('week')
-  const [anchor, setAnchor] = useState<Date>(() => {
-    const now = new Date()
-    return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()))
-  })
+  const [anchor, setAnchor] = useState<Date>(() => manilaToday())
   const [schedules, setSchedules] = useState<ScheduleItem[]>([])
   const [summary, setSummary] = useState<Summary>({ confirmedSessions: 0, uniquePatients: 0, avgPatientsPerDay: 0, activeDays: 0 })
   const [loading, setLoading] = useState(true)
@@ -171,8 +182,7 @@ export default function ClinicSchedulePage() {
     }
   }
   function goToday() {
-    const now = new Date()
-    setAnchor(new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate())))
+    setAnchor(manilaToday())
   }
 
   // Bucket schedules by ISO day for fast lookup.
@@ -182,8 +192,23 @@ export default function ClinicSchedulePage() {
       if (!m.has(s.date)) m.set(s.date, [])
       m.get(s.date)!.push(s)
     }
+    // Earliest first within each day.
+    m.forEach((list) => list.sort((a, b) => a.startTime.localeCompare(b.startTime)))
     return m
   }, [schedules])
+
+  // Sessions inside the visible range (month view fetches the full 6-week grid).
+  const inView = useMemo(() => {
+    if (view !== 'month') return schedules
+    const m = anchor.getUTCMonth(), y = anchor.getUTCFullYear()
+    return schedules.filter((s) => { const d = new Date(s.date + 'T00:00:00Z'); return d.getUTCMonth() === m && d.getUTCFullYear() === y })
+  }, [schedules, view, anchor])
+  const statusCounts = useMemo(() => {
+    const c: Record<string, number> = {}
+    inView.forEach((s) => { c[s.status] = (c[s.status] ?? 0) + 1 })
+    return c
+  }, [inView])
+  const rangeWord = view === 'day' ? 'this day' : view === 'week' ? 'this week' : 'this month'
 
   const headerLabel = view === 'day'
     ? fmtDate(isoDay(anchor))
@@ -265,12 +290,12 @@ export default function ClinicSchedulePage() {
         {/* Status legend — explains the coloured chips */}
         <div className="px-3 sm:px-4 py-2.5 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[11.5px] rounded-b-xl"
           style={{ borderTop: '1px solid var(--light-gray)', background: SUBTLE_BG, color: 'var(--mid-gray)' }}>
-          <span className="text-[10.5px] font-semibold uppercase tracking-wider" style={{ fontFamily: 'var(--font-display)' }}>Status</span>
-          <LegendDot status="CONFIRMED" label="Confirmed" />
-          <LegendDot status="PENDING" label="Pending" />
-          <LegendDot status="COMPLETED" label="Completed" />
-          <LegendDot status="CANCELLED" label="Cancelled" />
-          <LegendDot status="RESCHEDULED" label="Rescheduled" />
+          <span className="text-[10.5px] font-semibold" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }} aria-live="polite">
+            {loading ? 'Loading…' : `${inView.length} session${inView.length === 1 ? '' : 's'} ${rangeWord}`}
+          </span>
+          {STATUS_ORDER.map((st) => (
+            <LegendDot key={st} status={st} label={`${st.charAt(0) + st.slice(1).toLowerCase()}${loading ? '' : ` ${statusCounts[st] ?? 0}`}`} />
+          ))}
         </div>
       </section>
 
@@ -279,7 +304,14 @@ export default function ClinicSchedulePage() {
       ) : view === 'day' ? (
         <DayView day={isoDay(anchor)} items={byDay.get(isoDay(anchor)) ?? []} onPatientClick={setProfilePatient} />
       ) : view === 'week' ? (
-        <WeekView start={range.start} byDay={byDay} onPatientClick={setProfilePatient} />
+        <>
+          {inView.length === 0 && (
+            <div className="rounded-xl" style={CARD_STYLE}>
+              <EmptyState icon="calendar" title="No sessions this week." hint="Use the arrows to look at another week, or switch to Month." />
+            </div>
+          )}
+          <WeekView start={range.start} byDay={byDay} onPatientClick={setProfilePatient} />
+        </>
       ) : (
         <MonthView
           anchor={anchor}
@@ -350,7 +382,7 @@ function WeekView({ start, byDay, onPatientClick }: {
   start: Date; byDay: Map<string, ScheduleItem[]>; onPatientClick: (p: PatientInfo) => void
 }) {
   const days = Array.from({ length: 7 }, (_, i) => addDays(start, i))
-  const todayISO = isoDay(new Date())
+  const todayISO = isoDay(manilaToday())
   return (
     <div className="grid grid-cols-1 md:grid-cols-7 gap-2">
       {days.map((d) => {
@@ -396,7 +428,7 @@ function MonthView({ anchor, byDay, onDayClick, onPatientClick, onShowMore }: {
 }) {
   const start = startOfMonthGrid(anchor)
   const cells = Array.from({ length: 42 }, (_, i) => addDays(start, i))
-  const todayISO = isoDay(new Date())
+  const todayISO = isoDay(manilaToday())
   return (
     <div className="rounded-xl p-2 sm:p-3 overflow-x-auto" style={CARD_STYLE}>
       <div className="min-w-[560px]">
@@ -474,7 +506,7 @@ function ScheduleRow({ item, first, onPatientClick }: {
   item: ScheduleItem; first: boolean; onPatientClick: (p: PatientInfo) => void
 }) {
   const hasPatient = !!item.patient
-  const patientLabel = hasPatient ? `${item.patient!.lastName}, ${item.patient!.firstName}` : '— No patient assigned —'
+  const patientLabel = hasPatient ? `${niceName(item.patient!.lastName)}, ${niceName(item.patient!.firstName)}` : '— No patient assigned —'
   return (
     <li className="px-4 sm:px-5 py-3.5 flex items-start gap-3.5" style={{ borderTop: first ? undefined : '1px solid var(--light-gray)' }}>
       <div className="w-14 shrink-0 rounded-lg py-1.5 text-center" style={{ background: SUBTLE_BG, border: '1px solid var(--light-gray)' }}>
@@ -505,10 +537,10 @@ function ScheduleRow({ item, first, onPatientClick }: {
           <span aria-hidden>·</span>
           <span>{item.sessionType}</span>
           <span aria-hidden>·</span>
-          <span>{item.staff.department} · {item.staff.branch}</span>
+          <span>{item.staff.department} · {branchLabel(item.staff.branch)}</span>
           {item.intern && (
             <span className="inline-flex items-center gap-1 font-semibold" style={{ color: '#8A5A3C' }} title="Assigned intern">
-              <GraduationCap size={12} /> {item.intern.firstName} {item.intern.lastName}
+              <GraduationCap size={12} /> {niceName(item.intern.firstName)} {niceName(item.intern.lastName)}
             </span>
           )}
         </div>
@@ -532,7 +564,7 @@ function ScheduleRow({ item, first, onPatientClick }: {
 function CompactScheduleChip({ item, onPatientClick }: {
   item: ScheduleItem; onPatientClick: (p: PatientInfo) => void
 }) {
-  const patient = item.patient ? `${item.patient.firstName} ${item.patient.lastName[0]}.` : 'No patient'
+  const patient = item.patient ? `${niceName(item.patient.firstName)} ${item.patient.lastName[0] ?? ''}.` : 'No patient'
   const Wrapper: 'button' | 'div' = item.patient ? 'button' : 'div'
   return (
     <Wrapper
@@ -545,7 +577,7 @@ function CompactScheduleChip({ item, onPatientClick }: {
       )}
       title={item.patient ? `${item.status.charAt(0) + item.status.slice(1).toLowerCase()} · View patient profile` : item.status}
     >
-      <p className="font-semibold truncate tabular-nums">{fmtTime12h(item.startTime)}</p>
+      <p className="font-semibold truncate tabular-nums">{fmtTime12h(item.startTime)}{item.endTime ? `–${fmtTime12h(item.endTime)}` : ''}</p>
       <p className="truncate opacity-90">{patient}</p>
     </Wrapper>
   )
@@ -554,7 +586,7 @@ function CompactScheduleChip({ item, onPatientClick }: {
 function MonthChip({ item, onPatientClick }: {
   item: ScheduleItem; onPatientClick: (p: PatientInfo) => void
 }) {
-  const patient = item.patient ? `${item.patient.firstName} ${item.patient.lastName[0]}.` : 'No patient'
+  const patient = item.patient ? `${niceName(item.patient.firstName)} ${item.patient.lastName[0] ?? ''}.` : 'No patient'
   const time = fmtTime12h(item.startTime).replace(' ', '').toLowerCase() // e.g. 4:00pm
   const Wrapper: 'button' | 'div' = item.patient ? 'button' : 'div'
   return (
@@ -593,7 +625,7 @@ function fmtDob(dobIso: string | null): string {
 }
 
 function PatientProfileModal({ patient, onClose }: { patient: PatientInfo; onClose: () => void }) {
-  const fullName = `${patient.firstName} ${patient.lastName}`
+  const fullName = `${niceName(patient.firstName)} ${niceName(patient.lastName)}`
   const initials = `${patient.firstName[0] ?? ''}${patient.lastName[0] ?? ''}`.toUpperCase()
   const fields: { icon: React.ReactNode; label: string; value: string }[] = [
     { icon: <Cake size={14} />, label: 'Date of Birth', value: fmtDob(patient.dob) },
@@ -667,7 +699,7 @@ function DayMorePopup({ day, items, onClose, onPatientClick }: {
 
 function DayMoreRow({ item, first, onPatientClick }: { item: ScheduleItem; first: boolean; onPatientClick: (p: PatientInfo) => void }) {
   const hasPatient = !!item.patient
-  const patientLabel = hasPatient ? `${item.patient!.lastName}, ${item.patient!.firstName}` : 'No patient assigned'
+  const patientLabel = hasPatient ? `${niceName(item.patient!.lastName)}, ${niceName(item.patient!.firstName)}` : 'No patient assigned'
   return (
     <li className="flex items-center gap-2.5 px-3 py-2.5" style={{ borderTop: first ? undefined : '1px solid var(--light-gray)' }}>
       <span className="w-16 shrink-0 text-[12px] font-bold tabular-nums" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>
@@ -688,7 +720,7 @@ function DayMoreRow({ item, first, onPatientClick }: { item: ScheduleItem; first
           <span className="text-[13px] italic" style={{ color: 'var(--mid-gray)' }}>{patientLabel}</span>
         )}
         <p className="text-[11px] truncate" style={{ color: 'var(--mid-gray)' }}>
-          {item.sessionType} · {item.staff.department} · {item.staff.branch}
+          {item.sessionType} · {item.staff.department} · {branchLabel(item.staff.branch)}
         </p>
       </div>
       <StatusBadge status={item.status} small />
