@@ -48,7 +48,7 @@ export async function hrFetch(path: string, opts: RequestInit = {}): Promise<Res
 // "History of Psychological Services", which are follow-up questions about a
 // service rather than the service being asked for. Verified to match exactly
 // one field on each of the six waitlist forms.
-const SERVICE_QUESTION = /^\s*what\b.*\bservice/i
+export const SERVICE_QUESTION = /^\s*what\b.*\bservice/i
 
 // HR stores "__other__" as a bare sentinel when someone ticks Other, and does
 // not keep the text they typed alongside it — so there is nothing to show but

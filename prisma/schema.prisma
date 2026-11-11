@@ -58,6 +58,39 @@ model WaitlistFollowUp {
   @@index([formId])
 }
 
+/// One "we have slots" message sent to somebody on the waitlist.
+///
+/// Keyed to the HR form submission, like WaitlistFollowUp, because the waitlist
+/// itself lives in HR Platform and these people are not patients here yet —
+/// there is no Patient row to hang this off.
+///
+/// Deliberately NOT unique per (submission, channel): slots open again, and the
+/// same family may be told twice, months apart. Every send is a row, so the
+/// column can show when it last went out and the row can show the whole
+/// history. The icon turns green on the first one and stays green.
+model WaitlistOutreach {
+  id           String   @id @default(cuid())
+  formId       String
+  submissionId String
+  /// "EMAIL" | "SMS". A string rather than an enum for the same reason
+  /// WaitlistFollowUp.status is one: the next channel front desk asks for
+  /// should not need a migration on a table this small.
+  channel      String
+  branch       String   // "SBEA" | "SBGH"
+  /// The address or number it actually went to, recorded as sent rather than
+  /// re-derived later — a form answer can be corrected afterwards, and the log
+  /// has to say where the message really went.
+  sentTo       String
+  subject      String?  // email only
+  /// The body as sent. Templates change; what this family was told does not.
+  message      String
+  sentByName   String?
+  sentAt       DateTime @default(now())
+
+  @@index([formId, submissionId])
+  @@index([sentAt])
+}
+
 // ── Patient Documents (Progress Reports, Initial Evaluations, etc.) ──────────
 // Created by clinicians via teletherapy.sapphireclinicseast.org. The marketing
 // hub front desk handles the lifecycle: Informed → Paid → Emailed.

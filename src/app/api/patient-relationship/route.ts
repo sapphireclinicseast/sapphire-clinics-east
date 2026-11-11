@@ -9,6 +9,7 @@ import { DEPT_FOLLOWUP, TOLERANCE_DAYS } from '@/lib/followup-groups'
 import {
   WAITLIST_FORM_TYPES, loadWaitlistResponses, attachWaitlistFollowUps, hrFetch,
 } from '@/lib/waitlist-source'
+import { attachWaitlistOutreach } from '@/lib/waitlist-outreach'
 
 // Department-specific follow-up intervals (in days). Defined in
 // lib/followup-groups.ts so this tab and the SMS follow-up audiences read the
@@ -69,7 +70,13 @@ export async function GET(req: NextRequest) {
       })
     }
 
-    await attachWaitlistFollowUps(responses, formKey)
+    // Both stamps are independent of each other and of the fetch above, and
+    // each swallows its own failure — a tag lookup that falls over leaves the
+    // waitlist untagged rather than empty.
+    await Promise.all([
+      attachWaitlistFollowUps(responses, formKey),
+      attachWaitlistOutreach(responses, formKey),
+    ])
 
     return NextResponse.json({
       responses,
