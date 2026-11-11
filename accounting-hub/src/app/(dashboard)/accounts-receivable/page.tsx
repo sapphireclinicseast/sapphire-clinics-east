@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef, Fragment } from 'react'
 import LoaSubmissionsTab from './LoaSubmissionsTab'
 import RevisedSessionsTab from './RevisedSessionsTab'
+import UnmatchedPaymentsTab from './UnmatchedPaymentsTab'
 import ClinicianPaymentsPanel from './ClinicianPaymentsPanel'
 import { useSession } from 'next-auth/react'
 import { userBranchScope } from '@/lib/branch-scope'
@@ -168,6 +169,9 @@ const HMO_SUB_TAB_GROUPS = [
       // HMO sessions — renamed from "Revised Session Amount" to cover both
       // (Hannah 2026-11-09).
       { key: 'revised-amounts', label: 'Session Adjustments' },
+      // Money paid to us that matches none of our sessions — held in 4050 until
+      // the HMO confirms what it is for, or it is refunded (Hannah 2026-11-11).
+      { key: 'unmatched', label: 'Unmatched Payments' },
     ],
   },
 ] as const
@@ -681,7 +685,7 @@ export default function AccountsReceivablePage() {
   // HMO sub-tab state. 'md-consults' and 'submitted-unpaid' are the Per HMO
   // view in fixed shapes (doctor-consult sessions only / on a submitted SOA but
   // still unpaid) — all four render through the same block below.
-  const [hmoSubTab, setHmoSubTab] = useState<'overview' | 'per-hmo' | 'md-consults' | 'soa-report' | 'submitted-soa' | 'submitted-unpaid' | 'loa' | 'follow-up' | 'revised-amounts' | 'payment-history' | 'directory'>(searchParams.get('sub') === 'directory' ? 'directory' : 'overview')
+  const [hmoSubTab, setHmoSubTab] = useState<'overview' | 'per-hmo' | 'md-consults' | 'soa-report' | 'submitted-soa' | 'submitted-unpaid' | 'loa' | 'follow-up' | 'revised-amounts' | 'payment-history' | 'directory' | 'unmatched'>(searchParams.get('sub') === 'directory' ? 'directory' : searchParams.get('sub') === 'unmatched' ? 'unmatched' : 'overview')
   // useSession resolves after the first render, so the initial tab/sub-tab are
   // picked before the role is known. Snap them back once it arrives — a ?type=
   // link or a stale sub-tab must not park a restricted user on a hidden view.
@@ -1741,7 +1745,7 @@ export default function AccountsReceivablePage() {
                 <div key={group.title} className="flex-auto rounded-xl border overflow-hidden" style={{ borderColor: 'var(--light-gray)', background: 'white' }}>
                   <p className="px-3 py-1.5 text-xs font-bold" style={{ background: group.background, color: group.color }}>{group.title}</p>
                   <div className="flex flex-wrap gap-1 p-2">
-                    {group.tabs.map(st => {
+                    {group.tabs.filter(st => !(isFrontdesk && st.key === 'unmatched')).map(st => {
                       const active = hmoSubTab === st.key || (st.key === 'follow-up' && inFollowUp)
                       return (
                         <button key={st.key} onClick={() => setHmoSubTab(st.key)} aria-current={active ? 'page' : undefined}
@@ -2669,6 +2673,7 @@ export default function AccountsReceivablePage() {
       {tab === 'HMO' && hmoSubTab === 'loa' && <LoaSubmissionsTab />}
 
       {tab === 'HMO' && hmoSubTab === 'revised-amounts' && <RevisedSessionsTab branch={branch} />}
+      {tab === 'HMO' && hmoSubTab === 'unmatched' && <UnmatchedPaymentsTab branch={branch} />}
 
       {tab === 'HMO' && hmoSubTab === 'directory' && (
         <HmoDirectoryTab canEdit={DIRECTORY_WRITE_ROLES.includes(role)} focusWalletId={searchParams.get('hmo') || ''} />
