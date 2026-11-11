@@ -688,7 +688,7 @@ export const HANDBOOK_HTML = `<!DOCTYPE html>
               section you expected.</td></tr>
             <tr><td>Per Day</td><td>Weekly totals by day across all departments, for setting a daily target.</td></tr>
             <tr><td>Interdepartment</td><td>Patients already seeing more than one department, and those who could be.</td></tr>
-            <tr><td>History</td><td>Filled and open slots over time, per department.</td></tr>
+            <tr><td>History</td><td>Filled slots each day, drawn as countable bricks, with a day-on-day table per department.</td></tr>
           </table>
           <div class="note"><b>Why somebody appears twice:</b> a consultant tagged "On-site + Teletherapy" genuinely
             appears under both. Two roles, not a mistake and not a third category.</div>
