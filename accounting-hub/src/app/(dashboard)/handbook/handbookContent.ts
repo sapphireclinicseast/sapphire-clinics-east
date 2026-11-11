@@ -457,6 +457,7 @@ export const SECTIONS: Section[] = [
       { k: 'sub', t: 'Tabs' },
       { k: 'ul', items: [
         `**HMO Providers** — **Overview** and **HMO Directory**, then three groups: **Frontdesk and HMO** (Per HMO · Doctor Consults · LOA Submission · Generate SOA · SOA Submissions), **Finance** (For Follow Up, which holds **>180 days** and **Left Out Sessions**), and **Accounting and Payroll** (Payment History · Session Adjustments — HMO sessions whose amount was revised to what the HMO paid, or that were voided, with any PF still to recover).`,
+        `**Per HMO — possible duplicates**: a session with the same patient, day, service, amount and remarks as another shows an amber **possible duplicate · #…** chip. If they are different sessions, click **Not a duplicate**, write what sets it apart, and **Save** — the remark is added to the order's remarks and the flag clears for both (a green **not a duplicate** chip shows the remark). A real duplicate is voided in POS instead.`,
         `**Guarantee Letters (GL)** — with **Overview** and **Detailed GL** (tracks each letter's documents, approval, SOA and payment).`,
         `**Tuition** — Class Hub students: their tuition payments, the promissory notes uploaded in Class Hub, and the payment plan set for each note.`,
         `**Other Customers** — other credit customers, with staggered payment plans.`,

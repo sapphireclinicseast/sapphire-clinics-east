@@ -6,7 +6,7 @@
 // AND the remarks. Orders with no real patient (QuickBooks rows named after the
 // HMO, "HMO - INSULAR") are never compared. Her rule: "if it is stated in the remarks then yes they are
 // different" — so writing what sets one session apart in either order's remarks
-// clears the flag, and voiding the extra copy moves it to Session Adjustments
+// (or the "Not a duplicate" button, which does that for you) clears the flag, and voiding the extra copy moves it to Session Adjustments
 // (lib/hmo-session-void) where any PF already paid on it is recovered.
 
 import { Prisma, type PrismaClient } from '@prisma/client'

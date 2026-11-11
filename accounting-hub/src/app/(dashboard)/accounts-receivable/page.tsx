@@ -31,6 +31,7 @@ import {
 } from '@/lib/collection-report'
 import BreakdownDonut, { type DonutItem } from './BreakdownDonut'
 import { DIRECTORY_WRITE_ROLES } from '@/lib/hmo-directory'
+import { NOT_DUP_ROLES, notDuplicateTwins } from '@/lib/hmo-not-duplicate'
 import ExpandablePanel from './ExpandablePanel'
 import PaymentsCard from './PaymentsCard'
 import { useResizableColumns, ResizableColgroup, ColResizeHandle } from '@/components/useResizableColumns'
@@ -87,6 +88,8 @@ interface AROrder {
   // Order numbers of standing orders with the same HMO, patient, day, services,
   // amount and remarks (lib/hmo-duplicates) — a possible duplicate session.
   possibleDuplicateOf?: number[]
+  // "Not a duplicate" stamp(s) saved from this row (lib/hmo-not-duplicate).
+  notDuplicateNote?: string | null
 }
 
 interface ARSummary {
@@ -1318,6 +1321,45 @@ export default function AccountsReceivablePage() {
   /* ── Reassign (Per HMO): branch whose SOA generation picks up the session.
      SOA scoping only — the order's own branch (sales, payroll, aging, LOA)
      stays untouched. Server normalizes "own branch" back to null. */
+  /* ── "Not a duplicate" (Per HMO, Hannah 2026-11-11): remarks are asked for
+     first, then appended to the order's remarks. Differing remarks clear the
+     possible-duplicate flag for the pair (lib/hmo-duplicates). */
+  const canClearDup = NOT_DUP_ROLES.includes(role)
+  const [notDupFor, setNotDupFor] = useState<AROrder | null>(null)
+  const [notDupRemarks, setNotDupRemarks] = useState('')
+  const [notDupBusy, setNotDupBusy] = useState(false)
+  const [notDupError, setNotDupError] = useState('')
+  const openNotDup = (o: AROrder) => { setNotDupFor(o); setNotDupRemarks(''); setNotDupError('') }
+  const saveNotDup = async () => {
+    if (!notDupFor || !notDupRemarks.trim()) return
+    setNotDupBusy(true)
+    setNotDupError('')
+    try {
+      const res = await fetch('/api/accounts-receivable/not-duplicate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ orderId: notDupFor.id, remarks: notDupRemarks }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) { setNotDupError(data.error || 'Could not save'); return }
+      const dupOf = (data.dupOf || {}) as Record<string, number[]>
+      const savedId = notDupFor.id
+      const apply = (list: AROrder[]) => list.map(o => {
+        const next = o.id in dupOf ? { ...o, possibleDuplicateOf: dupOf[o.id] } : o
+        return o.id === savedId
+          ? { ...next, notDuplicateNote: next.notDuplicateNote ? `${next.notDuplicateNote} | ${data.notDuplicateNote}` : data.notDuplicateNote }
+          : next
+      })
+      setOrders(apply)
+      setPerHmoFetched(prev => prev ? apply(prev) : prev)
+      setNotDupFor(null)
+    } catch {
+      setNotDupError('Could not save — check your connection and try again')
+    } finally {
+      setNotDupBusy(false)
+    }
+  }
+
   const [reassignBusy, setReassignBusy] = useState<string | null>(null)
   const saveSoaBranch = async (orderId: string, soaBranch: string | null) => {
     setReassignBusy(orderId)
@@ -2730,6 +2772,12 @@ export default function AccountsReceivablePage() {
         }
         // Possible duplicates among the rows in view (before the toggle below).
         const perHmoDupCount = perHmoOrders.filter(o => (o.possibleDuplicateOf?.length || 0) > 0).length
+        // Twins of a session marked "Not a duplicate" show the same note.
+        const notDupSeenFrom = new Map<number, { from: number; note: string }>()
+        for (const o of perHmoOrders) {
+          if (!o.notDuplicateNote) continue
+          for (const n of notDuplicateTwins(o.notDuplicateNote)) notDupSeenFrom.set(n, { from: o.orderNumber, note: o.notDuplicateNote })
+        }
         if (perHmoDupOnly && perHmoDupCount > 0) {
           perHmoOrders = perHmoOrders.filter(o => (o.possibleDuplicateOf?.length || 0) > 0)
         }
@@ -3044,7 +3092,7 @@ export default function AccountsReceivablePage() {
                 <span>
                   <strong>{perHmoDupCount} session{perHmoDupCount === 1 ? '' : 's'} flagged as possible duplicate{perHmoDupCount === 1 ? '' : 's'}</strong>
                   {' '}&mdash; same patient, day, service, amount and remarks as another order. If they are different sessions,
-                  say so in the remarks of either order and the flag clears. If one is a duplicate, void it in POS: it moves to
+                  click <strong>Not a duplicate</strong> on the row and write what sets it apart; the flag clears. If one is a duplicate, void it in POS: it moves to
                   {' '}<strong>Session Adjustments</strong>, where any PF already paid out on it is recovered.
                 </span>
                 <button type="button" onClick={() => setPerHmoDupOnly(v => !v)}
@@ -3264,11 +3312,32 @@ export default function AccountsReceivablePage() {
                           )}
                           {(o.possibleDuplicateOf?.length || 0) > 0 && (
                             <span className="ml-1 px-1.5 py-0.5 rounded-full text-[9px] font-semibold whitespace-nowrap"
-                              title={`Possible duplicate of ${o.possibleDuplicateOf!.map(n => `#${n}`).join(', ')} — same patient, day, service, amount and remarks. Different sessions: say so in the remarks. A duplicate: void it in POS (it moves to Session Adjustments).`}
+                              title={`Possible duplicate of ${o.possibleDuplicateOf!.map(n => `#${n}`).join(', ')} — same patient, day, service, amount and remarks. Different sessions: click Not a duplicate and write what sets it apart. A duplicate: void it in POS (it moves to Session Adjustments).`}
                               style={{ background: '#fef3c7', color: '#92400e' }}>
                               possible duplicate · {o.possibleDuplicateOf!.map(n => `#${n}`).join(', ')}
                             </span>
                           )}
+                          {(o.possibleDuplicateOf?.length || 0) > 0 && canClearDup && (
+                            <button type="button" onClick={() => openNotDup(o)}
+                              className="ml-1 mt-1 px-2 py-0.5 rounded-full text-[10px] font-semibold border whitespace-nowrap hover:bg-teal-50"
+                              title="These are different sessions — write what sets this one apart. Saved in the order's remarks; the flag clears."
+                              style={{ borderColor: 'var(--teal)', color: 'var(--teal)', background: 'white' }}>
+                              Not a duplicate
+                            </button>
+                          )}
+                          {(() => {
+                            const own = o.notDuplicateNote
+                            const seen = !own ? notDupSeenFrom.get(o.orderNumber) : undefined
+                            if (!own && !seen) return null
+                            const twins = own ? notDuplicateTwins(own) : [seen!.from]
+                            return (
+                              <span className="ml-1 px-1.5 py-0.5 rounded-full text-[9px] font-semibold whitespace-nowrap"
+                                title={own || `${seen!.note} — saved on #${seen!.from}`}
+                                style={{ background: '#dcfce7', color: '#166534' }}>
+                                not a duplicate · {twins.map(n => `#${n}`).join(', ')}
+                              </span>
+                            )
+                          })()}
                         </td>
                         {/* Change Date cell */}
                         <td className="px-3 py-2 text-center" style={{ minWidth: 130 }}>
@@ -4078,6 +4147,48 @@ export default function AccountsReceivablePage() {
                 </button>
               </div>
             </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Not a duplicate — remarks first, then save (Per HMO possible-duplicate flag) */}
+      {notDupFor && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(15, 23, 42, 0.45)' }}
+          onClick={() => { if (!notDupBusy) setNotDupFor(null) }}>
+          <div className="w-full max-w-md rounded-2xl bg-white shadow-xl" onClick={e => e.stopPropagation()}
+            role="dialog" aria-modal="true" aria-labelledby="not-dup-title">
+            <div className="px-5 pt-5 pb-3 border-b" style={{ borderColor: 'var(--light-gray)' }}>
+              <h3 id="not-dup-title" className="text-base font-semibold" style={{ color: 'var(--charcoal)' }}>Not a duplicate</h3>
+              <p className="text-xs mt-1" style={{ color: 'var(--mid-gray)' }}>
+                #{notDupFor.orderNumber} · {notDupFor.patientName} · {formatDate(notDupFor.transactionDate)} ·{' '}
+                {formatCurrency(notDupFor.payments.reduce((s, p) => s + toNum(p.amount), 0))}
+                {(notDupFor.possibleDuplicateOf?.length || 0) > 0 && <> — flagged with {notDupFor.possibleDuplicateOf!.map(n => `#${n}`).join(', ')}</>}
+              </p>
+            </div>
+            <div className="px-5 py-4">
+              <label htmlFor="not-dup-remarks" className="block text-xs font-semibold mb-1" style={{ color: 'var(--charcoal)' }}>
+                Remarks — what sets this session apart
+              </label>
+              <textarea id="not-dup-remarks" autoFocus rows={3} maxLength={300} value={notDupRemarks}
+                onChange={e => setNotDupRemarks(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) saveNotDup() }}
+                placeholder="e.g. Two sessions that day — 9 AM and 3 PM, separate LOAs"
+                className="w-full rounded-lg border px-3 py-2 text-sm" style={{ borderColor: 'var(--light-gray)' }} />
+              <p className="text-[11px] mt-1" style={{ color: 'var(--mid-gray)' }}>
+                Saved in this order&apos;s remarks with your name and today&apos;s date. The possible-duplicate flag clears for both sessions.
+              </p>
+              {notDupError && <p className="text-xs mt-2 font-medium" style={{ color: '#B91C1C' }}>{notDupError}</p>}
+            </div>
+            <div className="px-5 pb-5 flex justify-end gap-2">
+              <button type="button" onClick={() => setNotDupFor(null)} disabled={notDupBusy}
+                className="px-4 py-2 rounded-lg text-sm border" style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}>
+                Cancel
+              </button>
+              <button type="button" onClick={saveNotDup} disabled={notDupBusy || !notDupRemarks.trim()}
+                className="px-4 py-2 rounded-lg text-sm font-semibold text-white disabled:opacity-50" style={{ background: 'var(--teal)' }}>
+                {notDupBusy ? 'Saving…' : 'Save'}
+              </button>
             </div>
           </div>
         </div>

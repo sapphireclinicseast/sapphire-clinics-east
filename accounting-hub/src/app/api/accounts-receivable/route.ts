@@ -3,6 +3,7 @@ import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { decreaseRowsOnly } from '@/lib/hmo-session-void'
 import { possibleDuplicates } from '@/lib/hmo-duplicates'
+import { notDuplicateNote } from '@/lib/hmo-not-duplicate'
 
 const READ_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'VIEWER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN', 'HMO_OFFICER', 'AHEA_FRONTDESK', 'AHGH_FRONTDESK']
 // This role never sees GL wallets, so ?type= is ignored for it rather than
@@ -143,6 +144,8 @@ export async function GET(req: Request) {
         soaBranch: true,
         netAmount: true,
         arProofUrl: true,
+        // Read only for the "Not a duplicate" stamp; not sent to the page.
+        notes: true,
         createdBy: { select: { name: true } },
         items: { select: { name: true, service: { select: { department: true, hmoPaysClinicianDirect: true } } } },
         payments: {
@@ -455,7 +458,12 @@ export async function GET(req: Request) {
     const dupOf = type === 'HMO' && orders.length
       ? await possibleDuplicates(prisma, orders.map(o => o.id)).catch(err => { console.error('[AR] possible-duplicate check failed:', err); return new Map<string, number[]>() })
       : new Map<string, number[]>()
-    const ordersOut = orders.map(o => ({ ...o, clinicianPayment: cpByOrder.get(o.id) ?? null, possibleDuplicateOf: dupOf.get(o.id) ?? [] }))
+    const ordersOut = orders.map(({ notes, ...o }) => ({
+      ...o,
+      clinicianPayment: cpByOrder.get(o.id) ?? null,
+      possibleDuplicateOf: dupOf.get(o.id) ?? [],
+      notDuplicateNote: type === 'HMO' ? notDuplicateNote(notes) : null,
+    }))
 
     return NextResponse.json({ wallets: walletsOut, orders: ordersOut, arPayments, summary, glCases })
   } catch (err) {
