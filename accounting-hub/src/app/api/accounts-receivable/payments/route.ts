@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { postARPaymentJournal, reverseARPaymentJournal } from '@/lib/accounting/post-ar-payment'
+import { postARPaymentJournal, reverseARPaymentJournal, journalMatchesRecord } from '@/lib/accounting/post-ar-payment'
 
 const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN']
 
@@ -185,10 +185,36 @@ export async function PUT(req: Request) {
 
     const newAmount = Number(amount)
     const newDiscount = Number(discount) || 0
+    const newOverpayIn = Math.max(0, Number(overpayment) || 0)
+
+    // A journal the record cannot reproduce (hand-made lines, e.g. the 10/30
+    // gross-up splitting a 5% discount and the 2% EWT) must not be rebuilt from
+    // the record. Such a payment keeps its journal: tags, notes, proof, SI number
+    // can still change; anything the journal is made of cannot (Hannah 2026-11-11).
+    const c2 = (v: unknown) => Math.round(Number(v || 0) * 100)
+    const day = (d: unknown) => new Date(d as string).toISOString().slice(0, 10)
+    const journalFieldsChanged =
+      walletId !== existing.walletId
+      || day(paymentDate) !== day(existing.paymentDate)
+      || c2(newAmount) !== c2(existing.amount)
+      || c2(newDiscount) !== c2(existing.discount)
+      || c2(newOverpayIn) !== c2(existing.overpayment)
+      || (newDiscount > 0 ? (discountAccountId || null) : null) !== (Number(existing.discount) > 0 ? existing.discountAccountId : null)
+      || (cashAccountId || null) !== existing.cashAccountId
+      || (newOverpayIn > 0 ? (overpaymentAccountId || null) : null) !== (Number(existing.overpayment || 0) > 0 ? existing.overpaymentAccountId : null)
+      || (branch || null) !== existing.branch
+    const matches = await journalMatchesRecord(prisma, id)
+    const keepJournal = matches === false
+    if (keepJournal && journalFieldsChanged) {
+      return NextResponse.json({
+        error: "This payment's journal entry has lines the edit form can't rebuild (for example the HMO's discount and the EWT on separate accounts). You can still change its tagged sessions, notes, proof and SI number — to change the amounts, accounts, date or branch, ask accounting to adjust the journal.",
+      }, { status: 409 })
+    }
+
     // Checked BEFORE the edit reverses the standing journal: a discount with no
     // account cannot re-post, which is how AHEA-AR26-0017 fell out of the ledger
     // on 2026-10-31 (the edit form had blanked the 1140 EWT account).
-    if (newDiscount > 0 && !discountAccountId) {
+    if (!keepJournal && newDiscount > 0 && !discountAccountId) {
       return NextResponse.json({ error: 'Choose the account for the discount / EWT (usually 1140 Creditable Withholding Tax) — without it the payment cannot be posted to the ledger' }, { status: 400 })
     }
     const newOverpay = Math.max(0, Number(overpayment) || 0)
@@ -271,11 +297,14 @@ export async function PUT(req: Request) {
     // Tier 3 Step 4: Reverse the old JE then post the new one (never mutate
     // historical journal entries — always reverse + re-post for an audit trail).
     let updatePostResult: Awaited<ReturnType<typeof postARPaymentJournal>> | null = null
-    try {
-      await reverseARPaymentJournal(prisma, id, session.user.id, 'AR payment edited')
-      updatePostResult = await postARPaymentJournal(prisma, id, session.user.id)
-    } catch (postErr) {
-      console.error(`[GL] AR payment update posting threw for ${id}:`, postErr)
+    // A journal the record cannot reproduce stays exactly as it is (see keepJournal).
+    if (!keepJournal) {
+      try {
+        await reverseARPaymentJournal(prisma, id, session.user.id, 'AR payment edited')
+        updatePostResult = await postARPaymentJournal(prisma, id, session.user.id)
+      } catch (postErr) {
+        console.error(`[GL] AR payment update posting threw for ${id}:`, postErr)
+      }
     }
 
     await prisma.auditLog.create({
@@ -292,7 +321,7 @@ export async function PUT(req: Request) {
           balanceDiff,
           orderCount: orderIds?.length || 0,
           glPosted: updatePostResult?.posted ?? false,
-          glReason: updatePostResult?.posted ? undefined : updatePostResult?.reason,
+          glReason: keepJournal ? 'journal kept (hand-made lines the record cannot reproduce)' : updatePostResult?.posted ? undefined : updatePostResult?.reason,
         },
       },
     })

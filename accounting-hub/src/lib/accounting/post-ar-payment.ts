@@ -157,6 +157,57 @@ export async function postARPaymentJournal(
 }
 
 /**
+ * Is the payment's standing journal exactly what postARPaymentJournal would
+ * write from the record today (same accounts, same amounts)? false when the
+ * journal carries hand-made lines the record cannot reproduce — e.g. the
+ * 2026-10-30 gross-up that split an HMO's 5% discount and its 2% EWT across two
+ * accounts while the record keeps one discount figure. Editing such a payment
+ * would reverse it and re-post from the record, losing the split, so the edit
+ * route refuses amount/account/date changes on it. null when nothing stands.
+ * Mirrors the line building in postARPaymentJournal above.
+ */
+export async function journalMatchesRecord(prisma: PrismaClient, paymentId: string): Promise<boolean | null> {
+  const standing = await standingPostings(prisma, paymentId)
+  if (standing <= 0) return null
+  if (standing > 1) return false
+  const je = await prisma.journalEntry.findFirst({
+    where: { referenceType: 'AR_PAYMENT', referenceId: paymentId },
+    orderBy: { createdAt: 'desc' },
+    select: { lines: { select: { accountId: true, debit: true, credit: true } } },
+  })
+  const payment = await prisma.aRPayment.findUnique({
+    where: { id: paymentId },
+    select: {
+      amount: true, discount: true, overpayment: true,
+      cashAccountId: true, discountAccountId: true, overpaymentAccountId: true,
+      wallet: { select: { account: { select: { id: true } } } },
+    },
+  })
+  if (!je || !payment) return false
+  const cents = (v: unknown) => Math.round(Number(v || 0) * 100)
+  const add = (m: Map<string, number>, id: string | null | undefined, signedCents: number) => {
+    if (!signedCents) return
+    const k = id || '(none)'
+    m.set(k, (m.get(k) || 0) + signedCents)
+  }
+  const actual = new Map<string, number>()
+  for (const l of je.lines) add(actual, l.accountId, cents(l.debit) - cents(l.credit))
+  const arId = payment.wallet?.account?.id
+    ?? (await prisma.account.findFirst({ where: { accountNumber: '1010', accountType: 'ASSET' }, select: { id: true } }))?.id
+  const cash = cents(payment.amount), disc = cents(payment.discount), over = cents(payment.overpayment)
+  const expected = new Map<string, number>()
+  add(expected, payment.cashAccountId, cash)
+  add(expected, payment.discountAccountId, disc)
+  add(expected, arId, -(cash + disc - over))
+  add(expected, payment.overpaymentAccountId, -over)
+  for (const [k, v] of actual) if (v === 0) actual.delete(k)
+  for (const [k, v] of expected) if (v === 0) expected.delete(k)
+  if (actual.size !== expected.size) return false
+  for (const [k, v] of expected) if (actual.get(k) !== v) return false
+  return true
+}
+
+/**
  * Reverse a previously-posted AR payment JE by writing an equal-and-opposite
  * entry. Used by AR payment DELETE / UPDATE so we never mutate historical JEs.
  */

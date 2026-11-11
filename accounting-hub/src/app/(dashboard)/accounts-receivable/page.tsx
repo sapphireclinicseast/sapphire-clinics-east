@@ -1251,7 +1251,11 @@ export default function AccountsReceivablePage() {
     if (effectiveWalletIds.length === 0) { setPayError('Select an HMO/Agency'); return }
     if (!payAmount || toNum(payAmount) <= 0) { setPayError('Amount is required'); return }
     if (payOverpay > 0 && !payOverpayAccountId) { setPayError(`Choose an account for the ${formatCurrency(payOverpay)} overpayment`); return }
-    if (toNum(payDiscount) > 0 && !payDiscountAccountId) { setPayError('Choose the account for the discount / EWT (usually 1140 Creditable Withholding Tax)'); return }
+    // An edit that leaves an old discount (recorded with no account) as it was is the
+    // server's call: a payment whose journal it cannot rebuild keeps its journal.
+    const editingOrig = editingPaymentId ? arPayments.find(p => p.id === editingPaymentId) : null
+    const keepsOldDiscount = !!editingOrig && !editingOrig.discountAccountId && toNum(editingOrig.discount) === toNum(payDiscount)
+    if (toNum(payDiscount) > 0 && !payDiscountAccountId && !keepsOldDiscount) { setPayError('Choose the account for the discount / EWT (usually 1140 Creditable Withholding Tax)'); return }
     setPaySaving(true)
     setPayError('')
     try {
