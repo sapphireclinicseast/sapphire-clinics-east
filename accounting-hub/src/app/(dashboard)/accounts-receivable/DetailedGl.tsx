@@ -123,6 +123,18 @@ function StageTickFilter({ value, onChange }: { value: string[]; onChange: (v: s
   )
 }
 
+const CLEAR_STAGE = '__clear'
+
+/** Tick-all box for the Detailed GL bulk stage; a dash while only some are ticked. */
+function TickAll({ checked, some, disabled, onChange, title }: { checked: boolean; some: boolean; disabled: boolean; onChange: () => void; title: string }) {
+  const ref = useRef<HTMLInputElement>(null)
+  useEffect(() => { if (ref.current) ref.current.indeterminate = some && !checked }, [some, checked])
+  return (
+    <input ref={ref} type="checkbox" checked={checked} disabled={disabled} onChange={onChange} title={title} aria-label="Tick every letter shown"
+      className="w-3.5 h-3.5 cursor-pointer disabled:cursor-not-allowed disabled:opacity-30" style={{ accentColor: 'var(--teal)' }} />
+  )
+}
+
 function StageSteps({ stage }: { stage?: string | null }) {
   const at = stageIndex(stage)
   return (
@@ -363,6 +375,42 @@ export default function DetailedGl({
     }
   }
 
+  // Bulk stage (Hannah 2026-11-11: "allow me to tick all and set the stage in
+  // bulk"). Ticks are row keys; only ticked rows still on screen are changed, so
+  // a filter that hides a ticked row also leaves it alone.
+  const canSetStage = (r: Row) => canWrite && !!(r.caseId || r.wallet) && !r.paid
+  const [picked, setPicked] = useState<string[]>([])
+  const [bulkStage, setBulkStage] = useState('')
+  const [bulkBusy, setBulkBusy] = useState(false)
+  const togglePick = (k: string) => setPicked(p => (p.includes(k) ? p.filter(x => x !== k) : [...p, k]))
+  const saveStageBulk = async (targets: Row[], value: string) => {
+    const glStage = value === CLEAR_STAGE ? null : value
+    const label = glStage || 'no stage'
+    if (!targets.length || !confirm(`Set ${targets.length} letter${targets.length === 1 ? '' : 's'} to ${label}?`)) return
+    setStageError(''); setBulkBusy(true)
+    const before = Object.fromEntries(targets.map(r => [r.key, r.key in stageEdits ? stageEdits[r.key] : undefined]))
+    setStageEdits(m => ({ ...m, ...Object.fromEntries(targets.map(r => [r.key, glStage])) }))
+    try {
+      const res = await fetch('/api/accounts-receivable/gl-case/stage', {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          glStage,
+          caseIds: targets.filter(r => r.caseId).map(r => r.caseId),
+          walletIds: targets.filter(r => !r.caseId && r.wallet).map(r => r.wallet!.id),
+        }),
+      })
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'Could not save the stages')
+      setPicked([]); setBulkStage('')
+    } catch (e) {
+      setStageEdits(m => {
+        const n = { ...m }
+        for (const [k, v] of Object.entries(before)) { if (v === undefined) delete n[k]; else n[k] = v }
+        return n
+      })
+      setStageError(`Bulk stage: ${e instanceof Error ? e.message : 'Could not save the stages'}`)
+    } finally { setBulkBusy(false) }
+  }
+
   // A global-search hit lands here with ?focus=<wallet or case id>: scroll the
   // row into view and flash it once the data is in.
   const focusedOnce = useRef(false)
@@ -442,6 +490,11 @@ export default function DetailedGl({
     })
   }, [baseRows, toneTicks, writtenOffOnly, sortKey, sortDir])
 
+  const pickable = useMemo(() => rows.filter(canSetStage), [rows]) // eslint-disable-line react-hooks/exhaustive-deps
+  const pickedRows = useMemo(() => { const set = new Set(picked); return pickable.filter(r => set.has(r.key)) }, [pickable, picked])
+  const allPicked = pickable.length > 0 && pickedRows.length === pickable.length
+  const pickAll = () => setPicked(allPicked ? [] : pickable.map(r => r.key))
+
   const toggleSort = (k: ColKey) => {
     if (sortKey === k) setSortDir(d => (d === 'asc' ? 'desc' : 'asc'))
     else { setSortKey(k); setSortDir('asc') }
@@ -462,7 +515,12 @@ export default function DetailedGl({
     <table className="w-full text-xs">
       <thead>
         <tr className="sticky top-0 z-10" style={{ background: 'var(--pale-teal)' }}>
-          {canWrite && <th className="px-2 py-2 w-8" />}
+          {canWrite && (
+            <th className="px-2 py-2 w-14 align-top">
+              <TickAll checked={allPicked} some={pickedRows.length > 0} disabled={!pickable.length} onChange={pickAll}
+                title={allPicked ? 'Untick every letter' : `Tick every letter shown whose stage can be set (${pickable.length})`} />
+            </th>
+          )}
           {COLS.map(c => (
             <th key={c.key} className="px-2 py-2 align-top whitespace-nowrap" style={{ color: 'var(--deep-teal)' }}>
               <button onClick={() => toggleSort(c.key)}
@@ -501,12 +559,18 @@ export default function DetailedGl({
             style={{ borderColor: 'var(--light-gray)', background: tone ? TONE_BG[tone] : undefined }}>
             {canWrite && (
               <td className="px-2 py-1.5">
-                <button
-                  onClick={() => (r.source ? setEditingCase(r.source) : setEditing(r.wallet))}
-                  className="p-1 rounded hover:bg-teal-50"
-                  title={r.source ? 'Edit entry' : 'Edit case details'}>
-                  <Pencil size={12} style={{ color: 'var(--teal)' }} />
-                </button>
+                <span className="flex items-center gap-1">
+                  <input type="checkbox" checked={picked.includes(r.key)} disabled={!canSetStage(r)} onChange={() => togglePick(r.key)}
+                    aria-label={`Tick ${r.patientName}`}
+                    title={canSetStage(r) ? 'Tick to set the stage in bulk' : r.paid ? 'Paid — the stage is PAID' : 'No entry or wallet to save a stage on'}
+                    className="w-3.5 h-3.5 cursor-pointer disabled:cursor-not-allowed disabled:opacity-30" style={{ accentColor: 'var(--teal)' }} />
+                  <button
+                    onClick={() => (r.source ? setEditingCase(r.source) : setEditing(r.wallet))}
+                    className="p-1 rounded hover:bg-teal-50"
+                    title={r.source ? 'Edit entry' : 'Edit case details'}>
+                    <Pencil size={12} style={{ color: 'var(--teal)' }} />
+                  </button>
+                </span>
               </td>
             )}
             {COLS.map(c => (
@@ -794,6 +858,33 @@ export default function DetailedGl({
         )
       })()}
       {stageError && <p className="text-xs text-red-600 mb-1">{stageError}</p>}
+      {canWrite && pickedRows.length > 0 && (
+        // Floats over the page (and over the full-screen view, which shows only the table).
+        <div className="fixed bottom-4 inset-x-4 mx-auto w-fit z-[70] flex items-center gap-2 flex-wrap justify-center px-4 py-2.5 rounded-2xl border shadow-2xl max-w-[calc(100vw-2rem)]"
+          style={{ background: 'var(--pale-teal)', borderColor: 'var(--teal)' }}>
+          <span className="text-xs font-semibold" style={{ color: 'var(--deep-teal)' }}>
+            {pickedRows.length} letter{pickedRows.length === 1 ? '' : 's'} ticked
+          </span>
+          <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>Set stage to</span>
+          <select value={bulkStage} onChange={e => setBulkStage(e.target.value)} disabled={bulkBusy}
+            className="px-2 py-1 rounded-lg border text-xs font-semibold outline-none bg-white"
+            style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}>
+            <option value="">— choose —</option>
+            {GL_STAGES.map(s => <option key={s} value={s}>{s}</option>)}
+            <option value={CLEAR_STAGE}>Clear the stage (Not set)</option>
+          </select>
+          <button onClick={() => saveStageBulk(pickedRows, bulkStage)} disabled={!bulkStage || bulkBusy}
+            className="px-3 py-1 rounded-lg text-xs font-semibold text-white disabled:opacity-40"
+            style={{ background: 'var(--teal)' }}>
+            {bulkBusy ? 'Saving…' : 'Apply'}
+          </button>
+          <button onClick={() => setPicked([])} disabled={bulkBusy}
+            className="px-2.5 py-1 rounded-lg text-xs font-medium" style={{ color: 'var(--mid-gray)' }}>
+            Untick all
+          </button>
+          {stageError && <span className="basis-full text-center text-xs text-red-600">{stageError}</span>}
+        </div>
+      )}
       <ExpandablePanel title="Detailed GL" subtitle="Every Guarantee Letter, in the OPGL summary layout" maxHeight={520}>
         {table}
       </ExpandablePanel>
