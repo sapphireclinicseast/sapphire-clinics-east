@@ -18,7 +18,13 @@ export type SbpPayload = {
   /** Same split per line per month (Monthly view). */
   monthly: SbpMonthRow[]
   totals: { cash: number; gl: number; hmo: number; other: number; total: number }
-  cashMethods: { method: string; label: string; amount: number }[]
+  /** Net basis: each line after its own discounts, plus a "DISC" row for discounts no POS sale explains. */
+  netRows: SbpRow[]
+  monthlyNet: SbpMonthRow[]
+  netTotals: { cash: number; gl: number; hmo: number; other: number; total: number }
+  discountTotal: number
+  /** amount = gross, net = after discounts */
+  cashMethods: { method: string; label: string; amount: number; net: number }[]
   notes: string[]
 }
 
@@ -51,6 +57,9 @@ export default function SalesByPayment({ year, branch, onData }: {
   // lines or one line picked below) — Hannah 2026-11-11.
   const [view, setView] = useState<'summary' | 'monthly'>('summary')
   const [line, setLine] = useState('')
+  // Net sales (after discounts — the default; PWD/SC discounts sit mostly on
+  // cash-paying patients, so gross overstates Cash) or gross sales. Hannah 2026-11-11.
+  const [basis, setBasis] = useState<'net' | 'gross'>('net')
   const key = `${year}|${branch}|${fromM}|${toM}`
   const [result, setResult] = useState<{ key: string; data: SbpPayload | null; error: string | null }>({ key: '', data: null, error: null })
 
@@ -73,6 +82,14 @@ export default function SalesByPayment({ year, branch, onData }: {
   const data = result.data
   const monthPicker = (
     <div className="flex items-center gap-2 flex-wrap">
+      <div className="flex items-center rounded-lg overflow-hidden mr-1" style={{ border: '1px solid var(--light-gray)' }}>
+        {([['net', 'Net sales'], ['gross', 'Gross sales']] as const).map(([k, l]) => (
+          <button key={k} type="button" onClick={() => { setBasis(k); setLine('') }} className="px-2.5 py-1.5 text-xs font-semibold"
+            style={basis === k ? { background: 'var(--deep-teal, #14532d)', color: 'white' } : { background: 'white', color: 'var(--charcoal)' }}>
+            {l}
+          </button>
+        ))}
+      </div>
       <span className="text-xs font-medium" style={{ color: 'var(--mid-gray)' }}>From</span>
       <select value={fromM} onChange={e => { const v = Number(e.target.value); setFromM(v); if (v > toM) setToM(v) }}
         className="px-2 py-1.5 rounded-lg text-xs" style={{ border: '1px solid var(--light-gray)' }}>
@@ -101,10 +118,12 @@ export default function SalesByPayment({ year, branch, onData }: {
           ))}
         </div>
       ) : (
-        <select value={line} onChange={e => setLine(e.target.value)} aria-label="Gross sales line"
+        <select value={line} onChange={e => setLine(e.target.value)} aria-label="Sales line"
           className="px-2 py-1.5 rounded-lg text-xs" style={{ border: '1px solid var(--light-gray)' }}>
-          <option value="">All gross sales</option>
-          {(result.data?.rows || []).map(r => <option key={r.number} value={r.number}>{r.number} {r.title}</option>)}
+          <option value="">All {basis === 'net' ? 'net' : 'gross'} sales</option>
+          {((basis === 'net' ? result.data?.netRows : result.data?.rows) || []).map(r => (
+            <option key={r.number} value={r.number}>{r.number === 'DISC' ? r.title : `${r.number} ${r.title}`}</option>
+          ))}
         </select>
       )}
     </div>
@@ -118,17 +137,26 @@ export default function SalesByPayment({ year, branch, onData }: {
   )
   if (result.error || !data) return <div className="py-16 text-center text-sm" style={{ color: 'var(--mid-gray)' }}>{result.error || 'No data'}</div>
 
+  const isNet = basis === 'net'
+  const srcRows = (isNet ? data.netRows : data.rows) || []
+  const srcMonthly = (isNet ? data.monthlyNet : data.monthly) || []
+  const srcTotals = (isNet ? data.netTotals : data.totals) || data.totals
+  const basisLabel = isNet ? 'Net Sales' : 'Gross Sales'
+  const rowLabel = (r: SbpRow) => (r.number === 'DISC' ? r.title : `${r.number} ${r.title}`)
   // Monthly view: one row per month for the picked line (or every line).
   const monthRows = Array.from({ length: data.to - data.from + 1 }, (_, i) => data.from + i).map(month => {
-    const own = (data.monthly || []).filter(x => x.month === month && (!line || x.number === line))
+    const own = srcMonthly.filter(x => x.month === month && (!line || x.number === line))
     const sum = (k: Col | 'total') => own.reduce((t, x) => t + x[k], 0)
     return { month, cash: sum('cash'), gl: sum('gl'), hmo: sum('hmo'), other: sum('other'), total: sum('total') }
   })
-  const pickedRow = line ? data.rows.find(r => r.number === line) : null
+  const pickedRow = line ? srcRows.find(r => r.number === line) : null
   const T = view === 'monthly' && pickedRow
     ? { cash: pickedRow.cash, gl: pickedRow.gl, hmo: pickedRow.hmo, other: pickedRow.other, total: pickedRow.total }
-    : data.totals
-  const showOther = (view === 'monthly' ? monthRows : data.rows).some(r => Math.abs(r.other) >= 0.5)
+    : srcTotals
+  // Gross shares beside the net ones, so the discount skew is visible.
+  const grossPicked = view === 'monthly' && line ? data.rows.find(r => r.number === line) : null
+  const G = grossPicked || data.totals
+  const showOther = (view === 'monthly' ? monthRows : srcRows).some(r => Math.abs(r.other) >= 0.5)
   const cols = COLS.filter(c => c.key !== 'other' || showOther)
   // Negatives in brackets like the amounts; a rounding −0.0% reads 0.0%.
   const pct = (v: number, base: number) => {
@@ -138,7 +166,8 @@ export default function SalesByPayment({ year, branch, onData }: {
     return r < 0 ? `(${Math.abs(r).toFixed(1)}%)` : `${r.toFixed(1)}%`
   }
   const fmt = (v: number) => (v < 0 ? `(${Math.round(Math.abs(v)).toLocaleString('en-PH')})` : Math.round(v).toLocaleString('en-PH'))
-  const cashTotal = T.cash || 0
+  const methodAmt = (m: SbpPayload['cashMethods'][number]) => (isNet ? m.net : m.amount)
+  const methodBase = data.cashMethods.reduce((t, m) => t + methodAmt(m), 0)
 
   return (
     <div className="px-4 pb-4 space-y-4">
@@ -150,7 +179,10 @@ export default function SalesByPayment({ year, branch, onData }: {
           <div key={c.key} className="rounded-xl px-4 py-3" style={{ border: '1px solid var(--light-gray)', background: c.bg }}>
             <p className="text-[11px] font-bold uppercase tracking-[.4px]" style={{ color: 'var(--mid-gray)' }}><Swatch fill={c.fill} />{c.label}</p>
             <p className="text-2xl font-bold tabular-nums mt-0.5" style={{ color: 'var(--charcoal)' }}>{pct(T[c.key], T.total)}</p>
-            <p className="text-xs tabular-nums" style={{ color: 'var(--charcoal)' }}>{formatCurrency(T[c.key])} of {formatCurrency(T.total)}</p>
+            <p className="text-xs tabular-nums" style={{ color: 'var(--charcoal)' }}>{formatCurrency(T[c.key])} of {formatCurrency(T.total)} {isNet ? 'net' : 'gross'}</p>
+            {isNet && G && (
+              <p className="text-[11px] tabular-nums" style={{ color: 'var(--mid-gray)' }}>{pct(G[c.key], G.total)} of gross sales</p>
+            )}
             {c.key === 'cash' && (
               <p className="text-[11px] mt-1" style={{ color: 'var(--mid-gray)' }}>Cash, cards, GCash/Maya, package, VIP and prepaid card, advance and downpayment</p>
             )}
@@ -165,7 +197,7 @@ export default function SalesByPayment({ year, branch, onData }: {
         <PaymentMixChart
           months={monthRows.map(r => ({ month: r.month, label: MONTHS[r.month - 1].slice(0, 3), cash: r.cash, gl: r.gl, hmo: r.hmo, other: r.other, total: r.total }))}
           series={cols}
-          title={pickedRow ? `${pickedRow.number} ${pickedRow.title}` : 'All gross sales'}
+          title={pickedRow ? rowLabel(pickedRow) : `All ${basisLabel.toLowerCase()}`}
         />
       )}
 
@@ -175,7 +207,7 @@ export default function SalesByPayment({ year, branch, onData }: {
             <thead>
               <tr style={{ background: 'var(--hr-head)' }}>
                 <th className="px-2 py-2 text-left text-[11px] font-bold uppercase tracking-[.4px]" style={{ color: 'var(--mid-gray)' }}>
-                  {pickedRow ? `${pickedRow.number} ${pickedRow.title}` : 'All gross sales'}
+                  {pickedRow ? rowLabel(pickedRow) : `All ${basisLabel.toLowerCase()}`}
                 </th>
                 {cols.map(c => (
                   <th key={c.key} colSpan={2} className="px-2 py-2 text-right text-[11px] font-bold uppercase tracking-[.4px] whitespace-nowrap" style={{ color: 'var(--mid-gray)' }}><Swatch fill={c.fill} />{c.label}</th>
@@ -227,7 +259,7 @@ export default function SalesByPayment({ year, branch, onData }: {
         <table className="w-full table-auto">
           <thead>
             <tr style={{ background: 'var(--hr-head)' }}>
-              <th className="px-2 py-2 text-left text-[11px] font-bold uppercase tracking-[.4px]" style={{ color: 'var(--mid-gray)' }}>Gross Sales</th>
+              <th className="px-2 py-2 text-left text-[11px] font-bold uppercase tracking-[.4px]" style={{ color: 'var(--mid-gray)' }}>{basisLabel} by department</th>
               {cols.map(c => (
                 <th key={c.key} colSpan={2} className="px-2 py-2 text-right text-[11px] font-bold uppercase tracking-[.4px] whitespace-nowrap" style={{ color: 'var(--mid-gray)' }}><Swatch fill={c.fill} />{c.label}</th>
               ))}
@@ -235,9 +267,12 @@ export default function SalesByPayment({ year, branch, onData }: {
             </tr>
           </thead>
           <tbody>
-            {data.rows.map(r => (
+            {srcRows.map(r => (
               <tr key={r.number} style={{ borderTop: '1px solid var(--light-gray)' }}>
-                <td className="px-2 py-1.5 text-xs whitespace-nowrap" style={{ color: 'var(--charcoal)' }}>{r.number} {r.title}</td>
+                <td className={`px-2 py-1.5 text-xs whitespace-nowrap ${r.number === 'DISC' ? 'italic' : ''}`} style={{ color: r.number === 'DISC' ? 'var(--mid-gray)' : 'var(--charcoal)' }}
+                  title={r.number === 'DISC' ? 'Discounts on the Income Statement that no POS sale explains: discounts given when an HMO or GL agency paid (by its type), TikTok fees, journal entries.' : undefined}>
+                  {rowLabel(r)}
+                </td>
                 {cols.map(c => {
                   const v = r[c.key]
                   return [
@@ -252,7 +287,7 @@ export default function SalesByPayment({ year, branch, onData }: {
               </tr>
             ))}
             <tr style={{ borderTop: '2px solid #94a3b8', background: '#f8fafc' }}>
-              <td className="px-2 py-1.5 text-xs font-semibold whitespace-nowrap" style={{ color: 'var(--charcoal)' }}>Total Gross Sales</td>
+              <td className="px-2 py-1.5 text-xs font-semibold whitespace-nowrap" style={{ color: 'var(--charcoal)' }}>Total {basisLabel}</td>
               {cols.map(c => [
                 <td key={`${c.key}a`} className="pl-2 py-1.5 text-right tabular-nums text-xs font-semibold whitespace-nowrap" style={{ color: '#111827' }}>{fmt(T[c.key])}</td>,
                 <td key={`${c.key}p`} className="pr-3 pl-1 py-1.5 text-right tabular-nums text-[11px] font-semibold whitespace-nowrap" style={{ color: 'var(--charcoal)' }}>{pct(T[c.key], T.total)}</td>,
@@ -267,12 +302,14 @@ export default function SalesByPayment({ year, branch, onData }: {
 
       {data.cashMethods.length > 0 && (
         <div className="rounded-lg px-4 py-3 bg-white" style={{ border: '1px solid var(--light-gray)' }}>
-          <p className="text-[11px] font-bold uppercase tracking-[.4px] mb-2" style={{ color: '#166534' }}>What makes up Cash{view === 'monthly' && line ? ' (all lines)' : ''}</p>
+          <p className="text-[11px] font-bold uppercase tracking-[.4px] mb-2" style={{ color: 'var(--mid-gray)' }}>
+            <Swatch fill={COLS[0].fill} />What makes up Cash — {isNet ? 'net' : 'gross'}{view === 'monthly' && line ? ' (all lines)' : ''}
+          </p>
           <div className="flex flex-wrap gap-x-5 gap-y-1">
-            {data.cashMethods.map(m => (
+            {[...data.cashMethods].sort((a, b) => methodAmt(b) - methodAmt(a)).map(m => (
               <span key={m.method} className="text-xs tabular-nums" style={{ color: 'var(--charcoal)' }}>
-                {m.label} <span className="font-semibold">{formatCurrency(m.amount)}</span>
-                <span style={{ color: 'var(--mid-gray)' }}> · {pct(m.amount, cashTotal)} of cash</span>
+                {m.label} <span className="font-semibold">{formatCurrency(methodAmt(m))}</span>
+                <span style={{ color: 'var(--mid-gray)' }}> · {pct(methodAmt(m), methodBase)} of cash</span>
               </span>
             ))}
           </div>
@@ -281,7 +318,10 @@ export default function SalesByPayment({ year, branch, onData }: {
 
       <div className="space-y-1">
         <p className="text-[11px]" style={{ color: '#94a3b8' }}>
-          Gross sales before discounts, as on the Income Statement&apos;s sales lines (other income and interest left out). Each sale is split by how its order was paid; an order paid partly by HMO and partly in cash is split in proportion.
+          {isNet
+            ? `Net sales = the Income Statement's sales lines less discounts (other income and interest left out); total net sales ${formatCurrency(srcTotals.total)} after ${formatCurrency(data.discountTotal || 0)} of discounts. `
+            : 'Gross sales before discounts, as on the Income Statement\u2019s sales lines (other income and interest left out). '}
+          Each sale is split by how its order was paid; an order paid partly by HMO and partly in cash is split in proportion.
           {view === 'monthly' && ' In the Monthly view each % is of that month\u2019s sales.'}
           Amounts in whole pesos.
         </p>

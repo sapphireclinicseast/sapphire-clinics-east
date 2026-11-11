@@ -1981,34 +1981,39 @@ export default function ReportsPage() {
       const branchLbl = (isTickboxes ? isBranchSel : effBranch).split('+').map(pt => BRANCHES.find(b => b.value === pt)?.label || (pt === 'ALL' ? 'All Branches' : pt)).join(' + ')
       const MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
       const period = sbpData.from === 1 && sbpData.to === 12 ? `${year}` : `${MON[sbpData.from - 1]}–${MON[sbpData.to - 1]} ${year}`
-      const T = sbpData.totals
-      const withOther = sbpData.rows.some(r => Math.abs(r.other) >= 0.5)
-      const pct = (v: number) => (T.total ? `${((v / T.total) * 100).toFixed(1)}%` : '')
+      type R = { number: string; title: string; cash: number; gl: number; hmo: number; other: number; total: number }
       const rows: string[][] = [[`Sales by Payment — ${period} — ${branchLbl}`]]
-      rows.push(['Gross Sales', 'Cash', '% of total', 'GL', '% of total', 'HMO', '% of total', ...(withOther ? ['Not from POS', '% of total'] : []), 'Total', '% of total'])
-      for (const r of sbpData.rows) {
-        rows.push([`${r.number} ${r.title}`, r.cash.toFixed(2), pct(r.cash), r.gl.toFixed(2), pct(r.gl), r.hmo.toFixed(2), pct(r.hmo),
-          ...(withOther ? [r.other.toFixed(2), pct(r.other)] : []), r.total.toFixed(2), pct(r.total)])
-      }
-      rows.push(['Total Gross Sales', T.cash.toFixed(2), pct(T.cash), T.gl.toFixed(2), pct(T.gl), T.hmo.toFixed(2), pct(T.hmo),
-        ...(withOther ? [T.other.toFixed(2), pct(T.other)] : []), T.total.toFixed(2), '100%'])
-      // Monthly — all gross sales, one row per month (% of that month's sales).
-      if (sbpData.monthly?.length) {
+      // One section per basis: net (after discounts) first, then gross.
+      const section = (label: string, list: R[], T: Omit<R, 'number' | 'title'>, monthly: { month: number; cash: number; gl: number; hmo: number; other: number; total: number }[]) => {
+        const withOther = list.some(r => Math.abs(r.other) >= 0.5)
+        const pct = (v: number) => (T.total ? `${((v / T.total) * 100).toFixed(1)}%` : '')
         rows.push([])
-        rows.push(['Monthly — all gross sales', 'Cash', '% of month', 'GL', '% of month', 'HMO', '% of month', ...(withOther ? ['Not from POS', '% of month'] : []), 'Total'])
-        for (let m = sbpData.from; m <= sbpData.to; m++) {
-          const own = sbpData.monthly.filter(x => x.month === m)
-          const sum = (k: 'cash' | 'gl' | 'hmo' | 'other' | 'total') => own.reduce((t, x) => t + x[k], 0)
-          const tot = sum('total')
-          const mp = (v: number) => (tot ? `${((v / tot) * 100).toFixed(1)}%` : '')
-          rows.push([MON[m - 1], sum('cash').toFixed(2), mp(sum('cash')), sum('gl').toFixed(2), mp(sum('gl')), sum('hmo').toFixed(2), mp(sum('hmo')),
-            ...(withOther ? [sum('other').toFixed(2), mp(sum('other'))] : []), tot.toFixed(2)])
+        rows.push([`${label} by department`, 'Cash', '% of total', 'GL', '% of total', 'HMO', '% of total', ...(withOther ? ['Not from POS', '% of total'] : []), 'Total', '% of total'])
+        for (const r of list) {
+          rows.push([r.number === 'DISC' ? r.title : `${r.number} ${r.title}`, r.cash.toFixed(2), pct(r.cash), r.gl.toFixed(2), pct(r.gl), r.hmo.toFixed(2), pct(r.hmo),
+            ...(withOther ? [r.other.toFixed(2), pct(r.other)] : []), r.total.toFixed(2), pct(r.total)])
+        }
+        rows.push([`Total ${label}`, T.cash.toFixed(2), pct(T.cash), T.gl.toFixed(2), pct(T.gl), T.hmo.toFixed(2), pct(T.hmo),
+          ...(withOther ? [T.other.toFixed(2), pct(T.other)] : []), T.total.toFixed(2), '100%'])
+        if (monthly?.length) {
+          rows.push([])
+          rows.push([`${label} — monthly`, 'Cash', '% of month', 'GL', '% of month', 'HMO', '% of month', ...(withOther ? ['Not from POS', '% of month'] : []), 'Total'])
+          for (let m = sbpData.from; m <= sbpData.to; m++) {
+            const own = monthly.filter(x => x.month === m)
+            const sum = (k: 'cash' | 'gl' | 'hmo' | 'other' | 'total') => own.reduce((t, x) => t + x[k], 0)
+            const tot = sum('total')
+            const mp = (v: number) => (tot ? `${((v / tot) * 100).toFixed(1)}%` : '')
+            rows.push([MON[m - 1], sum('cash').toFixed(2), mp(sum('cash')), sum('gl').toFixed(2), mp(sum('gl')), sum('hmo').toFixed(2), mp(sum('hmo')),
+              ...(withOther ? [sum('other').toFixed(2), mp(sum('other'))] : []), tot.toFixed(2)])
+          }
         }
       }
+      if (sbpData.netRows?.length) section('Net Sales', sbpData.netRows, sbpData.netTotals, sbpData.monthlyNet)
+      section('Gross Sales', sbpData.rows, sbpData.totals, sbpData.monthly)
       if (sbpData.cashMethods.length) {
         rows.push([])
-        rows.push(['What makes up Cash', 'Amount', '% of cash'])
-        for (const m of sbpData.cashMethods) rows.push([m.label, m.amount.toFixed(2), T.cash ? `${((m.amount / T.cash) * 100).toFixed(1)}%` : ''])
+        rows.push(['What makes up Cash', 'Gross', 'Net'])
+        for (const m of sbpData.cashMethods) rows.push([m.label, m.amount.toFixed(2), (m.net ?? m.amount).toFixed(2)])
       }
       exportRows(rows, fmt)
       return
