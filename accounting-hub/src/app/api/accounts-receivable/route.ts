@@ -4,6 +4,7 @@ import { prisma } from '@/lib/prisma'
 import { decreaseRowsOnly } from '@/lib/hmo-session-void'
 import { possibleDuplicates } from '@/lib/hmo-duplicates'
 import { notDuplicateNote } from '@/lib/hmo-not-duplicate'
+import { SCI_ERA_MARKER_PREFIX, SCI_SETTLEMENT_ID } from '@/lib/sci-settlement'
 
 const READ_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'VIEWER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN', 'HMO_OFFICER', 'AHEA_FRONTDESK', 'AHGH_FRONTDESK']
 // This role never sees GL wallets, so ?type= is ignored for it rather than
@@ -306,6 +307,22 @@ export async function GET(req: Request) {
       },
     })
 
+    // How each billed HMO session was settled (Hannah 2026-11-11: the paid card
+    // must show the SCI (BGC) settlement): tagged to an HMO payment, or closed
+    // by a ₱0 SCI-era marker. Untagged sessions are the ones not yet paid.
+    const settledBy = new Map<string, 'HMO' | 'SCI'>()
+    if (type === 'HMO') {
+      const tags = await prisma.aRPaymentItem.findMany({
+        where: { payment: { wallet: { walletType: 'HMO' } } },
+        select: { orderId: true, payment: { select: { notes: true } } },
+      }).catch(err => { console.error('[AR] settled-by lookup failed:', err); return [] })
+      for (const t of tags) {
+        if (t.payment.notes?.startsWith(SCI_ERA_MARKER_PREFIX)) settledBy.set(t.orderId, 'SCI')
+        else if (!settledBy.has(t.orderId)) settledBy.set(t.orderId, 'HMO')
+      }
+    }
+    let paidSessions = 0, sciSessions = 0, sciSessionCount = 0
+
     const walletNameById = new Map(wallets.map(w => [w.id, w.patientName]))
     const exceptionWalletIds = new Set(wallets.filter(w => (w as { paysClinicForMd?: boolean }).paysClinicForMd).map(w => w.id))
     const deptTotals = new Map<string, number>()
@@ -334,9 +351,13 @@ export async function GET(req: Request) {
         directOrders.push({ id: o.id, amount: orderAmt })
         continue
       }
+      const how = settledBy.get(o.id)
+      if (how === 'SCI') sciSessionCount++
       for (const p of o.payments) {
         const amt = Number(p.amount) || 0
         totalBilled += amt
+        if (how === 'SCI') sciSessions += amt
+        else if (how === 'HMO') paidSessions += amt
         const name = (p.walletId && walletNameById.get(p.walletId)) || 'Unknown'
         providerTotals.set(name, (providerTotals.get(name) || 0) + amt)
       }
@@ -375,9 +396,29 @@ export async function GET(req: Request) {
         }).catch(err => { console.error('[AR] HMO decrease total failed:', err); return null })
       : null
 
+    // The SCI settlement's checks, shown with the sessions they pay for.
+    const sciSettlement = sciSessions > 0
+      ? await prisma.otherReceivable.findUnique({
+          where: { id: SCI_SETTLEMENT_ID },
+          select: { totalDue: true, months: true, payments: { select: { amount: true } } },
+        }).catch(err => { console.error('[AR] SCI settlement lookup failed:', err); return null })
+      : null
+
     const summary = {
       orderCount: aggOrders.length - directOrderCount,
       totalBilled,
+      // Billed sessions by how they were settled; whatever is left is not yet paid.
+      settled: type === 'HMO' ? {
+        paidSessions,
+        sciSessions,
+        sciSessionCount,
+        sciSettlement: sciSettlement ? {
+          totalDue: Number(sciSettlement.totalDue),
+          checks: sciSettlement.months ?? null,
+          checksReceived: sciSettlement.payments.length,
+          received: sciSettlement.payments.reduce((t, p) => t + Number(p.amount), 0),
+        } : null,
+      } : null,
       hmoDecrease: { total: Number(hmoDecreaseAgg?._sum.difference || 0), sessionCount: hmoDecreaseAgg?._count ?? 0 },
       directToClinician: {
         orderCount: directOrderCount,

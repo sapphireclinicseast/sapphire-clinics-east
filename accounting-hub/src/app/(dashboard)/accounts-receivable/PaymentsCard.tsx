@@ -23,16 +23,18 @@ export interface RecentPayment {
 const RECENT = 5
 
 export default function PaymentsCard({
-  title, icon, count, subtitle, paid, billed, paidCaption, recent, action, toolbar, children,
+  title, icon, count, subtitle, paid, billed, paidCaption, pctLabel = '% Paid vs HMO Orders', recent, action, toolbar, children,
 }: {
   title: string
   icon?: React.ReactNode
   count: string | number
   subtitle: string
-  /** Numerator and denominator of "% Paid vs HMO Orders". */
+  /** Numerator and denominator of the card's percentage. */
   paid: number
   billed: number
   paidCaption: string
+  /** The percentage's label (default "% Paid vs HMO Orders"). */
+  pctLabel?: string
   /** Newest first; only the first few are shown while collapsed. */
   recent: RecentPayment[]
   /** The card's Record button — shown collapsed and expanded. */
@@ -111,7 +113,7 @@ export default function PaymentsCard({
       </div>
 
       <div className="rounded-xl p-4 border" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
-        <p className="text-xs uppercase tracking-wide font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>% Paid vs HMO Orders</p>
+        <p className="text-xs uppercase tracking-wide font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>{pctLabel}</p>
         <p className="text-xl font-bold" style={{ color: '#166534' }}>{pct.toFixed(1)}%</p>
         <div className="mt-2 rounded-full overflow-hidden h-2" style={{ background: 'var(--light-gray)' }}>
           <div style={{ width: `${pct}%`, background: '#16a34a', height: '100%', transition: 'width 0.4s' }} />

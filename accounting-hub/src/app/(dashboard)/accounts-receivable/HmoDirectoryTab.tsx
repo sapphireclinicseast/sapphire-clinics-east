@@ -26,6 +26,16 @@ const CONTACTS = [
 ] as const
 type ContactKey = typeof CONTACTS[number]['key']
 type ContactField = `${ContactKey}${'Name' | 'Email' | 'Number'}`
+const CONTACT_PARTS = ['Name', 'Email', 'Number'] as const
+// Submission and collection can simply be the accreditation contact (Hannah
+// 2026-11-11: a "Same with Accreditation" tickbox). Ticked, the three boxes
+// follow the accreditation contact and save as a copy of it; the tick shows
+// again on reopen whenever all three still match.
+type MirrorKey = Exclude<ContactKey, 'accreditation'>
+const sameAsAccreditation = (e: Partial<Record<ContactField, string | null>>, key: MirrorKey) => {
+  const t = (v?: string | null) => (v || '').trim()
+  return CONTACT_PARTS.some(f => t(e[`accreditation${f}`])) && CONTACT_PARTS.every(f => t(e[`${key}${f}`]) === t(e[`accreditation${f}`]))
+}
 
 type Entry = Partial<Record<ContactField, string | null>> & {
   walletId: string
@@ -75,6 +85,7 @@ type Form = Record<ContactField, string> & {
   loaApplicationUrl: string
   serviceCategory: string
   logoUrl: string
+  sameAsAccreditation: Record<MirrorKey, boolean>
 }
 
 const BRANCH_LABEL: Record<string, string> = { SANDBOX_EAST: 'East', SANDBOX_GREENHILLS: 'Greenhills', VERDANA_STORE: 'Verdana', ALL: 'All branches' }
@@ -102,9 +113,10 @@ function toForm(e: Entry): Form {
     loaApplicationUrl: e.loaApplicationUrl || '',
     serviceCategory: e.serviceCategory || '',
     logoUrl: e.logoUrl || '',
+    sameAsAccreditation: { submission: sameAsAccreditation(e, 'submission'), collection: sameAsAccreditation(e, 'collection') },
   } as Form
   for (const c of CONTACTS) {
-    for (const f of ['Name', 'Email', 'Number'] as const) form[`${c.key}${f}`] = e[`${c.key}${f}`] || ''
+    for (const f of CONTACT_PARTS) form[`${c.key}${f}`] = e[`${c.key}${f}`] || ''
   }
   return form
 }
@@ -358,7 +370,11 @@ export default function HmoDirectoryTab({ canEdit, focusWalletId = '' }: { canEd
     if (serviceCategory === undefined) { setFormError('Pick the Category in Services Section from the list.'); return }
     setSaving(true); setFormError('')
     try {
-      const { hmoName: _hmoName, ...fields } = form
+      const { hmoName: _hmoName, sameAsAccreditation: same, ...fields } = form
+      // A ticked contact saves as a copy of the accreditation contact.
+      for (const key of ['submission', 'collection'] as const) {
+        if (same[key]) for (const f of CONTACT_PARTS) fields[`${key}${f}`] = form[`accreditation${f}`]
+      }
       const body = { ...fields, serviceCategory }
       const r = await fetch(API, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
       if (!r.ok) { setFormError((await r.json().catch(() => null))?.error || 'Could not save'); return }
@@ -617,13 +633,36 @@ export default function HmoDirectoryTab({ canEdit, focusWalletId = '' }: { canEd
             </section>
 
             <section className="space-y-3">
-              {CONTACTS.map(c => (
+              {CONTACTS.map(c => {
+                const mirrored = c.key !== 'accreditation' && form.sameAsAccreditation[c.key]
+                // Ticked: show the accreditation contact, read-only.
+                const val = (f: typeof CONTACT_PARTS[number]) => form[`${mirrored ? 'accreditation' : c.key}${f}`]
+                const lockStyle = mirrored ? { ...inputStyle, background: 'var(--off-white)', color: 'var(--mid-gray)' } : inputStyle
+                return (
                 <div key={c.key}>
-                  <p className="text-sm font-semibold mb-1" style={{ color: 'var(--charcoal)' }}>{c.title} contact</p>
+                  <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 mb-1">
+                    <p className="text-sm font-semibold" style={{ color: 'var(--charcoal)' }}>{c.title} contact</p>
+                    {c.key !== 'accreditation' && (
+                      <label className="flex items-center gap-2 text-xs" style={{ color: 'var(--charcoal)' }}>
+                        <input type="checkbox" checked={form.sameAsAccreditation[c.key]}
+                          onChange={ev => {
+                            const on = ev.target.checked
+                            setForm(f => {
+                              if (!f) return f
+                              const next = { ...f, sameAsAccreditation: { ...f.sameAsAccreditation, [c.key]: on } }
+                              // Unticking keeps the accreditation contact as a starting point to edit.
+                              if (!on) for (const p of CONTACT_PARTS) next[`${c.key}${p}`] = f[`accreditation${p}`]
+                              return next
+                            })
+                          }} />
+                        Same with Accreditation
+                      </label>
+                    )}
+                  </div>
                   <div className="grid gap-2 sm:grid-cols-3">
-                    <input aria-label={`${c.title} contact person`} placeholder="Contact person" value={form[`${c.key}Name`]} onChange={ev => setForm({ ...form, [`${c.key}Name`]: ev.target.value })} className={inputClass} style={inputStyle} />
-                    <input aria-label={`${c.title} email`} placeholder="Email" value={form[`${c.key}Email`]} onChange={ev => setForm({ ...form, [`${c.key}Email`]: ev.target.value })} className={inputClass} style={inputStyle} />
-                    <input aria-label={`${c.title} number`} placeholder="Number" value={form[`${c.key}Number`]} onChange={ev => setForm({ ...form, [`${c.key}Number`]: ev.target.value })} className={inputClass} style={inputStyle} />
+                    <input aria-label={`${c.title} contact person`} placeholder="Contact person" value={val('Name')} readOnly={mirrored} onChange={ev => setForm({ ...form, [`${c.key}Name`]: ev.target.value })} className={inputClass} style={lockStyle} />
+                    <input aria-label={`${c.title} email`} placeholder="Email" value={val('Email')} readOnly={mirrored} onChange={ev => setForm({ ...form, [`${c.key}Email`]: ev.target.value })} className={inputClass} style={lockStyle} />
+                    <input aria-label={`${c.title} number`} placeholder="Number" value={val('Number')} readOnly={mirrored} onChange={ev => setForm({ ...form, [`${c.key}Number`]: ev.target.value })} className={inputClass} style={lockStyle} />
                   </div>
                   {c.key === 'submission' && (
                     <div className="mt-2 sm:w-1/3">
@@ -636,7 +675,8 @@ export default function HmoDirectoryTab({ canEdit, focusWalletId = '' }: { canEd
                     </div>
                   )}
                 </div>
-              ))}
+                )
+              })}
             </section>
 
             <section className="grid gap-4 sm:grid-cols-2">

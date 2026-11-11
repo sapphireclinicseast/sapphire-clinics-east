@@ -103,6 +103,13 @@ interface ARSummary {
   byProvider: { label: string; amount: number }[]
   directToClinician?: { orderCount: number; total: number; paidOrderCount?: number; paidTotal?: number; byProvider: { label: string; amount: number }[] }
   hmoDecrease?: { total: number; sessionCount: number }
+  // HMO billed sessions by how they were settled (older API: absent).
+  settled?: {
+    paidSessions: number
+    sciSessions: number
+    sciSessionCount: number
+    sciSettlement: { totalDue: number; checks: number | null; checksReceived: number; received: number } | null
+  } | null
 }
 
 interface InvoiceSetting {
@@ -2012,11 +2019,18 @@ export default function AccountsReceivablePage() {
           ? summary.totalBilled
           : orders.reduce((s, o) => s + o.payments.reduce((ps, p) => ps + toNum(p.amount), 0), 0)
         const totalPaid = arPayments.reduce((s, p) => s + toNum(p.amount), 0)
-        const pctPaid = totalHmoOrders > 0 ? Math.min(100, (totalPaid / totalHmoOrders) * 100) : 0
-        // What's owed is the sessions still unpaid (totalReceivable), not billed minus
-        // cash: SCI (BGC) era sessions are settled by a ₱0 marker payment, and the
-        // settlement itself sits outside AR.
-        const settledWithoutCash = totalHmoOrders - totalPaid - totalReceivable
+        // Billed sessions split by how they were settled (Hannah 2026-11-11): paid
+        // by the HMO (tagged to an HMO payment, its EWT included), closed by the
+        // SCI (BGC) settlement — the 18 PDCs recorded in Other Customers, never
+        // HMO cash — or not yet paid. The three add up to Total HMO Billed.
+        const settled = summary?.settled ?? null
+        const paidS = settled?.paidSessions ?? 0
+        const sciS = settled?.sciSessions ?? 0
+        const unpaidS = settled ? Math.max(0, totalHmoOrders - paidS - sciS) : totalReceivable
+        const pctOfBilled = (v: number) => (totalHmoOrders > 0 ? (v / totalHmoOrders) * 100 : 0)
+        // Older API: fall back to cash received over billed.
+        const pctSettled = Math.min(100, settled ? pctOfBilled(paidS + sciS) : pctOfBilled(totalPaid))
+        const sciDeal = settled?.sciSettlement ?? null
 
         // Department breakdown — split each order's payment proportionally across
         // departments. Served by the API across all orders; the local pass is the
@@ -2080,15 +2094,56 @@ export default function AccountsReceivablePage() {
                 <p className="text-xs mt-1" style={{ color: 'var(--mid-gray)' }}>Active HMO wallets</p>
               </div>
               <div className="rounded-xl p-4 border" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
-                <p className="text-xs uppercase tracking-wide font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>% Paid vs HMO Orders</p>
-                <p className="text-xl font-bold" style={{ color: '#166534' }}>{pctPaid.toFixed(1)}%</p>
-                <div className="mt-2 rounded-full overflow-hidden h-2" style={{ background: 'var(--light-gray)' }}>
-                  <div style={{ width: `${pctPaid}%`, background: '#16a34a', height: '100%', transition: 'width 0.4s' }} />
+                <p className="text-xs uppercase tracking-wide font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>% Settled vs HMO Orders</p>
+                <p className="text-xl font-bold" style={{ color: '#166534' }}>{pctSettled.toFixed(1)}%</p>
+                <div className="mt-2 flex gap-[2px] rounded-full overflow-hidden h-2" style={{ background: 'var(--light-gray)' }}
+                  role="img" aria-label={`${pctSettled.toFixed(1)}% of HMO billings settled`}>
+                  {settled ? (
+                    <>
+                      {paidS > 0 && <div style={{ width: `${pctOfBilled(paidS)}%`, background: '#16a34a', height: '100%' }} />}
+                      {sciS > 0 && <div style={{ width: `${pctOfBilled(sciS)}%`, background: '#2a78d6', height: '100%' }} />}
+                    </>
+                  ) : <div style={{ width: `${pctSettled}%`, background: '#16a34a', height: '100%' }} />}
                 </div>
-                <p className="text-xs mt-1" style={{ color: 'var(--mid-gray)' }}>{formatCurrency(totalPaid)} received of {formatCurrency(totalHmoOrders)}</p>
-                <p className="text-xs mt-0.5 font-semibold" style={{ color: '#b91c1c' }}>{formatCurrency(totalReceivable)} not yet paid</p>
-                {settledWithoutCash > 0 && (
-                  <p className="text-xs mt-0.5" style={{ color: 'var(--mid-gray)' }}>{formatCurrency(settledWithoutCash)} settled without cash here, mostly SCI (BGC) era</p>
+                {settled ? (
+                  <ul className="mt-2 space-y-1 text-xs" style={{ color: 'var(--charcoal)' }}>
+                    <li className="flex items-start gap-1.5">
+                      <span aria-hidden className="mt-1 inline-block w-2 h-2 rounded-sm flex-none" style={{ background: '#16a34a' }} />
+                      <span><span className="font-semibold">{formatCurrency(paidS)}</span> paid by the HMOs · {pctOfBilled(paidS).toFixed(1)}%</span>
+                    </li>
+                    {sciS > 0 && (
+                      <li className="flex items-start gap-1.5">
+                        <span aria-hidden className="mt-1 inline-block w-2 h-2 rounded-sm flex-none" style={{ background: '#2a78d6' }} />
+                        <span>
+                          <span className="font-semibold">{formatCurrency(sciS)}</span> SCI (BGC) settlement · {pctOfBilled(sciS).toFixed(1)}%
+                          <span className="block text-[11px]" style={{ color: 'var(--mid-gray)' }}>
+                            {settled.sciSessionCount} session{settled.sciSessionCount === 1 ? '' : 's'}{sciDeal && <> · settled for {formatCurrency(sciDeal.totalDue)}{sciDeal.checks ? ` (${sciDeal.checks} PDCs)` : ''}</>}
+                          </span>
+                          {sciDeal && (
+                            <span className="block text-[11px]" style={{ color: 'var(--mid-gray)' }}>
+                              {formatCurrency(sciDeal.received)} deposited{sciDeal.checks ? ` (${sciDeal.checksReceived})` : ''} · {formatCurrency(Math.max(0, sciDeal.totalDue - sciDeal.received))} to come{sciDeal.checks ? ` (${Math.max(0, sciDeal.checks - sciDeal.checksReceived)})` : ''}
+                            </span>
+                          )}
+                          {sciDeal && sciS - sciDeal.totalDue >= 1 && (
+                            <span className="block text-[11px]" style={{ color: 'var(--mid-gray)' }}
+                              title="Per the SCI-SCEI settlement in Other Customers: EWT, tax and clinic share, the offset against the BGC payable, and the write-off">
+                              {formatCurrency(sciS - sciDeal.totalDue)} closed by EWT, tax and clinic share, BGC offset and write-off
+                            </span>
+                          )}
+                        </span>
+                      </li>
+                    )}
+                    <li className="flex items-start gap-1.5">
+                      <span aria-hidden className="mt-1 inline-block w-2 h-2 rounded-sm flex-none border" style={{ background: 'var(--light-gray)', borderColor: '#cbd2d9' }} />
+                      <span><span className="font-semibold" style={{ color: '#b91c1c' }}>{formatCurrency(unpaidS)}</span> not yet paid · {pctOfBilled(unpaidS).toFixed(1)}%</span>
+                    </li>
+                    <li className="pt-1 text-[11px]" style={{ color: 'var(--mid-gray)' }}>Cash received from HMOs: {formatCurrency(totalPaid)} (Payment History)</li>
+                  </ul>
+                ) : (
+                  <>
+                    <p className="text-xs mt-1" style={{ color: 'var(--mid-gray)' }}>{formatCurrency(totalPaid)} received of {formatCurrency(totalHmoOrders)}</p>
+                    <p className="text-xs mt-0.5 font-semibold" style={{ color: '#b91c1c' }}>{formatCurrency(totalReceivable)} not yet paid</p>
+                  </>
                 )}
               </div>
               <div className="rounded-xl p-4 border" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
@@ -2500,6 +2555,13 @@ export default function AccountsReceivablePage() {
           const billed = summary ? summary.totalBilled
             : orders.reduce((s, o) => s + o.payments.reduce((ps, p) => ps + toNum(p.amount), 0), 0)
           const received = arPayments.reduce((s, p) => s + toNum(p.amount), 0)
+          // Same measure as the Overview card: sessions settled by the HMOs plus
+          // those closed by the SCI (BGC) settlement (older API: cash received).
+          const st = summary?.settled ?? null
+          const settledAmt = st ? st.paidSessions + st.sciSessions : received
+          const settledCaption = st
+            ? `${formatCurrency(st.paidSessions)} paid by the HMOs${st.sciSessions ? ` + ${formatCurrency(st.sciSessions)} SCI (BGC) settlement` : ''} of ${formatCurrency(billed)} · ${formatCurrency(Math.max(0, billed - settledAmt))} not yet paid`
+            : `${formatCurrency(received)} received of ${formatCurrency(billed)} · ${formatCurrency(totalReceivable)} not yet paid`
           return (
             <div id="ar-payment-history" className="grid grid-cols-1 sm:grid-cols-2 gap-4 items-stretch">
               <PaymentsCard
@@ -2507,9 +2569,10 @@ export default function AccountsReceivablePage() {
                 icon={<DollarSign size={15} />}
                 count={shownPayments.length === arPayments.length ? arPayments.length : `${shownPayments.length} of ${arPayments.length}`}
                 subtitle="What the HMOs paid us — cash in our bank, credited against their AR."
-                paid={received}
+                paid={settledAmt}
                 billed={billed}
-                paidCaption={`${formatCurrency(received)} received of ${formatCurrency(billed)} · ${formatCurrency(totalReceivable)} not yet paid`}
+                pctLabel={st ? '% Settled vs HMO Orders' : undefined}
+                paidCaption={settledCaption}
                 recent={[...arPayments]
                   .sort((a, b) => new Date(b.paymentDate).getTime() - new Date(a.paymentDate).getTime())
                   .map(p => ({
