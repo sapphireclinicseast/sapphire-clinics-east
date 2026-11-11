@@ -313,6 +313,15 @@ export async function DELETE(req: Request) {
     // A referral-commission payout RFP owns its auto-created expense entry:
     // deleting the RFP removes the entry (no orphan expense in the P&L) and
     // releases the claimed sessions so the next payout run picks them up.
+    // A doctor's-fee RFP for consults the HMO coursed through the clinic
+    // (lib/hmo-coursed-fee) owns its 8190 entry the same way; the Payments to
+    // Doctors record stays (the consults remain our sales) and can Prepare RFP again.
+    if (meta?.source === 'HMO_COURSED_DOCTOR_FEE') {
+      await prisma.clinicianHmoPayment.updateMany({ where: { rfpId: id }, data: { rfpId: null } })
+      await prisma.pettyCashEntry.deleteMany({ where: { reimbursementId: id } })
+      await prisma.reimbursementReport.delete({ where: { id } })
+      return NextResponse.json({ success: true })
+    }
     if (meta?.source === 'REFERRAL_COMMISSION') {
       await prisma.referralCommissionItem.deleteMany({ where: { rfpId: id } })
       await prisma.pettyCashEntry.deleteMany({ where: { reimbursementId: id } })

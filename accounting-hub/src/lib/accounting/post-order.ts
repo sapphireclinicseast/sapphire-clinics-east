@@ -111,8 +111,10 @@ export async function postOrderJournal(
   // MD pass-through: when every item's service is settled by the HMO with the
   // clinician directly (and no paying wallet is a pays-the-clinic exception),
   // nothing here is our revenue or receivable — the books get no entry at all
-  // (owner directive 2026-08-24).
+  // (owner directive 2026-08-24). A consult the HMO paid through the clinic this
+  // once (Payments to Doctors, lib/hmo-coursed-fee) is our sale after all.
   if (
+    !order.hmoCoursedThroughClinic &&
     order.items.length > 0 &&
     order.items.every(i => (i.service as { hmoPaysClinicianDirect?: boolean } | null)?.hmoPaysClinicianDirect) &&
     order.payments.some(p => p.method === 'HMO') &&

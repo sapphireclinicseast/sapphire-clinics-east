@@ -144,6 +144,7 @@ export async function GET(req: Request) {
         soaBranch: true,
         netAmount: true,
         arProofUrl: true,
+        hmoCoursedThroughClinic: true,
         // Read only for the "Not a duplicate" stamp; not sent to the page.
         notes: true,
         createdBy: { select: { name: true } },
@@ -183,6 +184,8 @@ export async function GET(req: Request) {
       OR: [
         { items: { none: {} } },
         { items: { some: { OR: [{ service: { is: null } }, { service: { is: { hmoPaysClinicianDirect: false } } }] } } },
+        // The HMO paid us for this consult this once (lib/hmo-coursed-fee).
+        { hmoCoursedThroughClinic: true },
       ],
     }
 
@@ -294,6 +297,7 @@ export async function GET(req: Request) {
       where: orderWhere,
       select: {
         id: true,
+        hmoCoursedThroughClinic: true,
         payments: {
           where: { method: type as 'HMO' | 'GL' },
           select: { amount: true, walletId: true },
@@ -315,7 +319,7 @@ export async function GET(req: Request) {
     const directOrders: { id: string; amount: number }[] = []
 
     for (const o of aggOrders) {
-      const isDirect = type === 'HMO' && o.items.length > 0 && o.items.every(it => it.service?.hmoPaysClinicianDirect)
+      const isDirect = type === 'HMO' && !o.hmoCoursedThroughClinic && o.items.length > 0 && o.items.every(it => it.service?.hmoPaysClinicianDirect)
         && !o.payments.some(p => p.walletId && exceptionWalletIds.has(p.walletId))
       if (isDirect) {
         directOrderCount++
@@ -448,7 +452,7 @@ export async function GET(req: Request) {
     const cpItems = orders.length
       ? await prisma.clinicianHmoPaymentItem.findMany({
           where: { orderId: { in: orders.map(o => o.id) } },
-          select: { orderId: true, payment: { select: { pvNumber: true, clinicianName: true, pvDate: true } } },
+          select: { orderId: true, payment: { select: { pvNumber: true, clinicianName: true, pvDate: true, coursedThroughClinic: true } } },
         }).catch(err => { console.error('[AR] clinician payments lookup failed:', err); return [] })
       : []
     const cpByOrder = new Map(cpItems.map(i => [i.orderId as string, i.payment]))

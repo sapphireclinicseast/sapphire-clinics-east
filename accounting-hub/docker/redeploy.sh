@@ -1153,6 +1153,9 @@ CREATE TABLE IF NOT EXISTS "CollectionReportSettings" (
   "updatedAt"       TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
   CONSTRAINT "CollectionReportSettings_pkey" PRIMARY KEY ("branch")
 );
+ALTER TABLE "Order" ADD COLUMN IF NOT EXISTS "hmoCoursedThroughClinic" BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE "ClinicianHmoPayment" ADD COLUMN IF NOT EXISTS "coursedThroughClinic" BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE "ClinicianHmoPayment" ADD COLUMN IF NOT EXISTS "rfpId" TEXT;
 SQL
 
 echo "Redeploy complete."

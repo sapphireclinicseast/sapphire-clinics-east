@@ -1202,6 +1202,10 @@ model Order {
   // (SANDBOX_EAST / SANDBOX_GREENHILLS); null = the order's own branch. SOA
   // scoping only — sales, payroll, aging and LOA views keep reading `branch`.
   soaBranch             String?
+  // HMO paid SCEI for this doctor consult this once (a "coursed through clinic"
+  // Payments to Doctors record): it is our sale and AR even though the service
+  // is normally settled by the HMO with the doctor (hmoPaysClinicianDirect).
+  hmoCoursedThroughClinic Boolean @default(false)
   status                OrderStatus  @default(COMPLETED)
   returnedByBuyer       Boolean      @default(false) // product order returned by buyer (stock restocked, sale reversed)
   paymentStatus         String       @default("PAID") // PAID | UNPAID (session recorded, cash collected later)
@@ -1307,6 +1311,11 @@ model ClinicianHmoPayment {
   proofUrl      String?
   notes         String?
   branch        String?
+  // One-off: the HMO paid SCEI for these consults instead of the doctor
+  // (Hannah 2026-11-11). The consults become our sales/AR and the doctor is
+  // paid by an RFP (rfpId) under 8190 for what the HMO paid us.
+  coursedThroughClinic Boolean @default(false)
+  rfpId                String?
   createdById   String
   createdByName String?
   createdAt     DateTime @default(now())

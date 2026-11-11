@@ -85,7 +85,9 @@ interface AROrder {
   soaSubmissionItems?: { submission: { id?: string; submittedDate: string; referenceNo?: string | null } }[]
   soaApprovalStatus?: string | null   // APPROVED | DISAPPROVED | null (pending)
   soaBranch?: string | null           // Reassign: branch whose SOA generation picks this up; null = own branch
-  clinicianPayment?: { pvNumber: string | null; clinicianName: string; pvDate: string } | null // HMO paid the doctor directly (Payments to Doctors)
+  clinicianPayment?: { pvNumber: string | null; clinicianName: string; pvDate: string; coursedThroughClinic?: boolean } | null // HMO paid the doctor directly (Payments to Doctors)
+  // The HMO paid SCEI for this consult this once — our sale and AR (lib/hmo-coursed-fee).
+  hmoCoursedThroughClinic?: boolean
   // Order numbers of standing orders with the same HMO, patient, day, services,
   // amount and remarks (lib/hmo-duplicates) — a possible duplicate session.
   possibleDuplicateOf?: number[]
@@ -1102,6 +1104,7 @@ export default function AccountsReceivablePage() {
   const unpaidOrders = orders.filter(o => o.arPaymentItems.length === 0)
   // Sessions the HMO settles with the clinician directly — never our receivable.
   const isDirectToClinician = (o: AROrder) =>
+    !o.hmoCoursedThroughClinic &&
     o.items.length > 0 && o.items.every(it => it.service?.hmoPaysClinicianDirect)
     && !o.payments.some(p => p.walletId && wallets.find(w => w.id === p.walletId && (w as { paysClinicForMd?: boolean }).paysClinicForMd))
 
@@ -2899,7 +2902,7 @@ export default function AccountsReceivablePage() {
                 paid: o.arPaymentItems.length > 0,
                 soaDays: soaDaysOf(o),
                 doctorPayment: cp
-                  ? `${/^PV/i.test(cp.pvNumber || '') ? cp.pvNumber : `PV ${cp.pvNumber || '-'}`}\n${shortDate(cp.pvDate)}`
+                  ? `${cp.coursedThroughClinic ? 'Paid to clinic · ' : ''}${/^PV/i.test(cp.pvNumber || '') ? cp.pvNumber : `PV ${cp.pvNumber || '-'}`}\n${shortDate(cp.pvDate)}`
                   : isDirectToClinician(o) ? 'HMO pays the doctor' : '',
               })
             }
@@ -3322,7 +3325,14 @@ export default function AccountsReceivablePage() {
                           {isDirect && (
                             <span className="ml-1 px-1.5 py-0.5 rounded-full text-[9px] font-semibold whitespace-nowrap" title="The HMO pays the clinician directly — not part of our AR" style={{ background: '#ffedd5', color: '#c2410c' }}>direct to clinician</span>
                           )}
-                          {o.clinicianPayment && (
+                          {o.clinicianPayment?.coursedThroughClinic && (
+                            <span className="ml-1 px-1.5 py-0.5 rounded-full text-[9px] font-semibold whitespace-nowrap"
+                              title={`The HMO paid the clinic for this consult${o.clinicianPayment.pvNumber ? ` (${o.clinicianPayment.pvNumber})` : ''} — our sale and receivable; ${o.clinicianPayment.clinicianName} is paid by RFP. Payment History → Payments to Doctors`}
+                              style={{ background: '#e0f2fe', color: '#075985' }}>
+                              coursed through clinic{o.clinicianPayment.pvNumber ? ` · ${o.clinicianPayment.pvNumber}` : ''}
+                            </span>
+                          )}
+                          {o.clinicianPayment && !o.clinicianPayment.coursedThroughClinic && (
                             <span className="ml-1 px-1.5 py-0.5 rounded-full text-[9px] font-semibold whitespace-nowrap"
                               title={`Paid by the HMO to ${o.clinicianPayment.clinicianName} on ${formatDate(o.clinicianPayment.pvDate)} — Payment History → Payments to Doctors`}
                               style={{ background: '#dcfce7', color: '#166534' }}>
