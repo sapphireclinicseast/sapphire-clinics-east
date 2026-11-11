@@ -775,6 +775,28 @@ function SeatsButton({ seats, onChange, where, tone }: {
   )
 }
 
+
+/**
+ * The slots a one-off date works out to.
+ *
+ * Through daySlots(), the same function the weekly board and the Google Sheet
+ * use, rather than a bare splitSpan. A doctor giving 9 to 7 for eight patients
+ * with an hour for lunch used to get eight slots of seventy-five minutes laid
+ * straight across the lunch hour — the arithmetic was right and the day was
+ * nonsense. With the break named, the hour comes out of the span first and the
+ * patients share what is left.
+ *
+ * One function for the preview and for the save, so what the modal shows and
+ * what is written cannot drift apart.
+ */
+function datedPieces(f: { startTime: string; endTime: string; count: number; breakStart?: string; breakMinutes?: number }) {
+  return daySlots(f.startTime, f.endTime, {
+    slotsPerDay: f.count,
+    breakStart: f.breakStart || null,
+    breakMinutes: f.breakStart ? (f.breakMinutes || 0) : null,
+  })
+}
+
 function TherapistRow({ staff, activeBranch, sectionMode, config, slots, defaultHours, capacity, onSetCapacity, caseload = [], onAddCase, onRemoveCase, onSaveConfig, onClearServiceConfig, onSaveSlot, onDeleteSlot, onOpenLoa, density = 'comfortable', collapsed = false, onToggleCollapse, datedSlots = [], onAddDated, onDatedChanged, showCapacity = true, startClosed = false }: {
   staff: StaffMember
   /** Keep the schedule form closed when nothing is set (interns). Display only. */
@@ -852,7 +874,7 @@ function TherapistRow({ staff, activeBranch, sectionMode, config, slots, default
   // by weekday and a mismatch would render the slot on the wrong column.
   // A span, not one hour. A doctor who comes in 9 to 5 was eight separate
   // entries, each needing the date typed again.
-  const [datedForm, setDatedForm] = useState({ date: '', startTime: '09:00', endTime: '10:00', count: 1 })
+  const [datedForm, setDatedForm] = useState({ date: '', startTime: '09:00', endTime: '10:00', count: 1, breakStart: '', breakMinutes: 60 })
   const [datedSaving, setDatedSaving] = useState(false)
   // Set when a patient is picked for a dual-tagged consultant: the booking waits
   // here until the kind of session is chosen. Asking after the patient — rather
@@ -1573,12 +1595,26 @@ function TherapistRow({ staff, activeBranch, sectionMode, config, slots, default
             )}
           </div>
         ) : (
-        <div className="flex items-start justify-center gap-2 px-4 py-5 text-xs" style={{ color: 'var(--mid-gray)' }}>
+        <div className="flex flex-col items-center gap-2.5 px-4 py-5 text-xs" style={{ color: 'var(--mid-gray)' }}>
+          <div className="flex items-start gap-2">
           <CalendarPlus size={14} className="flex-shrink-0 mt-px" aria-hidden />
           <p className="max-w-md leading-relaxed">
             No weekly schedule. Use <strong style={{ color: 'var(--charcoal)' }}>Configure</strong> to set one up &mdash; or, for a consultant
             who only comes in now and then, add a <strong style={{ color: ONEOFF_FG }}>one-off date</strong> below without one.
           </p>
+          </div>
+          {/* A patient with no day and no hour does not need a weekly grid to
+              exist — an annulment case is the same work whether or not the
+              psychologist has set their days. This used to live only in the
+              footer under a configured schedule, so for an unconfigured
+              consultant there was no way to record one at all. */}
+          {onAddCase && (
+            <button type="button" onClick={() => setAddingCase(true)} className={BTN_SM}
+              title="A patient on this clinician's list with no day and no hour"
+              style={{ background: '#fff', border: `1px dashed ${CASE_BORDER}`, color: CASE_FG }}>
+              <UserPlus size={12} aria-hidden /> Add patients with no fixed schedule
+            </button>
+          )}
         </div>
         )
       )}
@@ -2135,6 +2171,42 @@ function TherapistRow({ staff, activeBranch, sectionMode, config, slots, default
                   consult follows. Not every consult is an hour.
                 </p>
               </div>
+              {/* Break — optional, and the reason the arithmetic stops being
+                  odd. Without it a doctor giving 9 to 7 for eight patients got
+                  eight slots of seventy-five minutes laid straight across
+                  lunch: correct division, nonsense day. Named here, the break
+                  comes out of the span first and the patients share the rest. */}
+              <div className="col-span-2 grid grid-cols-2 gap-2">
+                <div>
+                  <label className={LABEL} style={{ color: 'var(--mid-gray)' }} htmlFor={`ds-brk-${staff.id}`}>
+                    Break starts (optional)
+                  </label>
+                  <input id={`ds-brk-${staff.id}`} type="time" step={300}
+                    value={datedForm.breakStart}
+                    onChange={e => setDatedForm(f => ({ ...f, breakStart: e.target.value }))}
+                    className={`${CONTROL} w-full`} style={{ ...CONTROL_STYLE, width: '100%' }} />
+                </div>
+                <div>
+                  <label className={LABEL} style={{ color: 'var(--mid-gray)' }} htmlFor={`ds-brkm-${staff.id}`}>
+                    For how long
+                  </label>
+                  <select id={`ds-brkm-${staff.id}`}
+                    value={datedForm.breakMinutes}
+                    disabled={!datedForm.breakStart}
+                    onChange={e => setDatedForm(f => ({ ...f, breakMinutes: Number(e.target.value) }))}
+                    className={`${CONTROL} w-full disabled:opacity-50`} style={{ ...CONTROL_STYLE, width: '100%' }}>
+                    {[15, 30, 45, 60, 90, 120].map(m => (
+                      <option key={m} value={m}>{m} minutes</option>
+                    ))}
+                  </select>
+                </div>
+                {datedForm.breakStart && (
+                  <p className="col-span-2 text-[11px]" style={{ color: 'var(--mid-gray)' }}>
+                    No patient is placed between {formatTime(datedForm.breakStart)} and{' '}
+                    {formatTime(fromMinutes(toMinutes(datedForm.breakStart) + datedForm.breakMinutes))}.
+                  </p>
+                )}
+              </div>
               {/* Read back what will be saved — the weekday is derived from
                   the date the same way the save below derives it. */}
               {datedForm.date ? (() => {
@@ -2145,7 +2217,7 @@ function TherapistRow({ staff, activeBranch, sectionMode, config, slots, default
                 // Display only: flags a date+hour this consultant already has.
                 // Every hour in the span, so a clash anywhere in it is caught
                 // rather than only one at the start.
-                const pieces = splitSpan(datedForm.startTime, datedForm.endTime, datedForm.count)
+                const pieces = datedPieces(datedForm)
                 const each = pieces.length
                   ? toMinutes(pieces[0].endTime) - toMinutes(pieces[0].startTime)
                   : 0
@@ -2213,7 +2285,7 @@ function TherapistRow({ staff, activeBranch, sectionMode, config, slots, default
                       //
                       // Sequential, not Promise.all: each POST re-checks the
                       // cell, and firing them together would race that check.
-                      for (const piece of splitSpan(datedForm.startTime, datedForm.endTime, datedForm.count)) {
+                      for (const piece of datedPieces(datedForm)) {
                         await onAddDated({
                           staffId: staff.id, patientId: null,
                           dayOfWeek: dow, startTime: piece.startTime, endTime: piece.endTime,
@@ -2222,7 +2294,7 @@ function TherapistRow({ staff, activeBranch, sectionMode, config, slots, default
                         })
                       }
                       setShowDatedModal(false)
-                      setDatedForm({ date: '', startTime: '09:00', endTime: '10:00', count: 1 })
+                      setDatedForm({ date: '', startTime: '09:00', endTime: '10:00', count: 1, breakStart: '', breakMinutes: 60 })
                     } finally { setDatedSaving(false) }
                   }}
                   className={BTN_PRIMARY}
@@ -2599,7 +2671,7 @@ function TherapistRow({ staff, activeBranch, sectionMode, config, slots, default
                 className={BTN_SM}
                 title="A patient on this clinician's list with no day and no hour — an annulment case and the like"
                 style={{ background: '#fff', border: `1px dashed ${CASE_BORDER}`, color: CASE_FG }}>
-                <UserPlus size={12} /> No fixed date
+                <UserPlus size={12} /> Add patients with no fixed schedule
               </button>
             )}
           </div>
@@ -2620,7 +2692,7 @@ function TherapistRow({ staff, activeBranch, sectionMode, config, slots, default
             <div className="flex items-center gap-2 mb-2">
               <UserPlus size={12} style={{ color: CASE_FG }} aria-hidden />
               <p className="text-[11px] font-bold uppercase tracking-wider" style={{ color: CASE_FG }}>
-                No fixed date
+                No fixed schedule
               </p>
               <span className="text-[11px]" style={{ color: 'var(--mid-gray)' }}>
                 {caseload.length} {caseload.length === 1 ? 'patient' : 'patients'} &middot; no hour held on the board

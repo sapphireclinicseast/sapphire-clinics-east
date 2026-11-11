@@ -130,9 +130,31 @@ export function daySlots(
       const bTo = bFrom + s.breakMinutes
       const before = splitSpanWithin(startTime, fromMinutes(bFrom), endTime, s.slotsPerDay)
       if (before) return before
+
+      // The patients are shared BY AVAILABLE TIME, not half and half.
+      //
+      // Half and half is what makes the day look wrong. A doctor giving
+      // 9 to 7 with an hour from noon has three hours before the break and
+      // six after; splitting eight patients four-four produced consults of
+      // 45 minutes in the morning and 90 in the afternoon — the same patient,
+      // twice the appointment, depending which side of lunch they landed.
+      // Sharing by minutes gives three before and five after, at 60 and 72,
+      // which is as even as whole consults allow.
+      const beforeMins = Math.max(0, bFrom - toMinutes(startTime))
+      const afterMins = Math.max(0, toMinutes(endTime) - bTo)
+      const total = beforeMins + afterMins
+      if (total <= 0) return splitSpan(startTime, endTime, s.slotsPerDay)
+
+      // At least one each side while there is room for one, so a short
+      // morning does not vanish entirely into the afternoon.
+      let nBefore = Math.round((beforeMins / total) * s.slotsPerDay)
+      nBefore = Math.min(s.slotsPerDay, Math.max(0, nBefore))
+      if (nBefore === 0 && beforeMins > 0 && s.slotsPerDay > 1) nBefore = 1
+      if (nBefore === s.slotsPerDay && afterMins > 0 && s.slotsPerDay > 1) nBefore = s.slotsPerDay - 1
+
       return [
-        ...splitSpan(startTime, fromMinutes(bFrom), Math.max(1, Math.round(s.slotsPerDay / 2))),
-        ...splitSpan(fromMinutes(bTo), endTime, s.slotsPerDay - Math.max(1, Math.round(s.slotsPerDay / 2))),
+        ...(nBefore > 0 ? splitSpan(startTime, fromMinutes(bFrom), nBefore) : []),
+        ...(s.slotsPerDay - nBefore > 0 ? splitSpan(fromMinutes(bTo), endTime, s.slotsPerDay - nBefore) : []),
       ]
     }
     return splitSpan(startTime, endTime, s.slotsPerDay)
