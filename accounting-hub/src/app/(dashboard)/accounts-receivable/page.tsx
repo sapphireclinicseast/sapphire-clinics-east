@@ -35,7 +35,8 @@ import { NOT_DUP_ROLES, notDuplicateTwins } from '@/lib/hmo-not-duplicate'
 import ExpandablePanel from './ExpandablePanel'
 import PaymentsCard from './PaymentsCard'
 import { useResizableColumns, ResizableColgroup, ColResizeHandle } from '@/components/useResizableColumns'
-import DetailedGl, { type GlCaseRow } from './DetailedGl'
+import DetailedGl, { type GlCaseRow, type GlCaseWallet } from './DetailedGl'
+import { buildRows as buildGlRows, avgArRunningDays } from '@/lib/gl-letters'
 import { HR_PAGE_CLASS, HR_PAGE_STYLE, HrShimmerStyle, hrBtn } from '@/components/ui/hr-look'
 
 interface ARWallet {
@@ -588,6 +589,13 @@ export default function AccountsReceivablePage() {
   const arPayments = dataReady ? arPaymentsLoaded : NO_ROWS
   const glCases = dataReady ? glCasesLoaded : NO_ROWS
   const summary = dataReady ? summaryLoaded : null
+  // GL "AR Days (Overall)" on the dashboard IS Detailed GL's "Avg AR running days":
+  // the same letters and the same clock (lib/gl-letters), so the two always agree
+  // (Hannah 2026-11-11 — they used to differ, 203.6 vs 131.0 days).
+  const glArRunning = useMemo(
+    () => (tab === 'GL' && dataReady ? avgArRunningDays(buildGlRows(wallets as unknown as GlCaseWallet[], glCases)) : null),
+    [tab, dataReady, wallets, glCases],
+  )
   const fetchCtl = useRef<AbortController | null>(null)
 
   // Aging dashboard state
@@ -1507,7 +1515,9 @@ export default function AccountsReceivablePage() {
     ].filter(Boolean)
 
     const kpis = [
-      { label: 'AR Days (Overall)', value: agingData ? `${agingData.arDaysOverall.toFixed(1)} days` : '—' },
+      { label: 'AR Days (Overall)', value: isGL
+        ? (glArRunning ? `${glArRunning.avg.toFixed(1)} days (${glArRunning.n} of ${glArRunning.of} letters)` : '—')
+        : agingData ? `${agingData.arDaysOverall.toFixed(1)} days` : '—' },
       { label: 'Total AR', value: agingData ? formatCurrency(agingData.totalAR) : '—' },
       { label: `Revenue (${agingPeriodDays}d)`, value: agingData ? formatCurrency(agingData.totalRevenue) : '—' },
       ...(!isGL && agingData?.totalAllDeptRevenue != null
@@ -2105,7 +2115,9 @@ export default function AccountsReceivablePage() {
           <div>
             <h2 className="text-lg font-bold" style={{ color: 'var(--charcoal)' }}>AR Dashboard — {tab}</h2>
             <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>
-              Receivable age and aging buckets. AR Days = amount-weighted average age of the unpaid claims (HMO: days since session; GL: days since the letter was obtained).
+              {tab === 'GL'
+                ? 'Receivable age and aging buckets. AR Days = AR running days, the same figure as Detailed GL: from the SOA submission (or the GL release, before an SOA) to the payment, or to today while unpaid, averaged over the letters. The aging buckets use the same clock.'
+                : 'Receivable age and aging buckets. AR Days = amount-weighted average age of the unpaid claims (days since the session).'}
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -2145,9 +2157,16 @@ export default function AccountsReceivablePage() {
           <div>
             <p className="text-xs uppercase tracking-wide" style={{ color: 'var(--mid-gray)' }}>AR Days (Overall)</p>
             <p className="text-2xl font-bold mt-1" style={{ color: 'var(--deep-teal)' }}>
-              {agingData ? agingData.arDaysOverall.toFixed(1) : '—'}
+              {tab === 'GL'
+                ? (glArRunning ? glArRunning.avg.toFixed(1) : '—')
+                : (agingData ? agingData.arDaysOverall.toFixed(1) : '—')}
               <span className="text-sm font-normal ml-1" style={{ color: 'var(--mid-gray)' }}>days</span>
             </p>
+            {tab === 'GL' && glArRunning && (
+              <p className="text-[11px] mt-0.5 tabular-nums" style={{ color: 'var(--mid-gray)' }}>
+                {(glArRunning.avg / 30.44).toFixed(2)} months · {glArRunning.n} of {glArRunning.of} letters · same as Detailed GL
+              </p>
+            )}
           </div>
           <div>
             <p className="text-xs uppercase tracking-wide" style={{ color: 'var(--mid-gray)' }}>Total AR</p>

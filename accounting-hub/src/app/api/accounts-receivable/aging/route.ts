@@ -6,7 +6,8 @@
  *                        view counts letters of that branch and ALL
  *                        HMO: sum of unpaid outstanding order amounts
  *   - totalRevenue       netAmount total of COMPLETED orders in the window
- *   - arDaysOverall      (totalAR / totalRevenue) * periodDays  (DSO, days)
+ *   - arDaysOverall      HMO: AR-weighted average claim age of the unpaid orders
+ *                        GL: average AR running days per letter (Detailed GL's figure)
  *   - perWallet[]        per-HMO/-GL aging breakdown:
  *       { walletId, walletName, agency, ar, revenue, arDays,
  *         aging:    { b0_30, b31_60, b61_90, b90plus },
@@ -14,7 +15,8 @@
  *
  * GL wallets:
  *   - ar = totalGlAmount − sum(ARPayment.amount + ARPayment.discount)
- *   - The full net AR is placed in one bucket based on GL age (dateObtained or createdAt)
+ *   - The full net AR is placed in one bucket by the letter's AR running days
+ *     (SOA submitted, else GL released → payment, else today); no clock → dateObtained/createdAt
  *   - orderIdsByBucket contains all unpaid order IDs for drill-down reference
  *
  * HMO wallets:
@@ -32,6 +34,16 @@ const HMO_ONLY_ROLES = ['HMO_OFFICER', 'AHEA_FRONTDESK', 'AHGH_FRONTDESK']
 const DAY_MS = 24 * 60 * 60 * 1000
 
 type Bucket = 'b0_30' | 'b31_60' | 'b61_90' | 'b90plus'
+
+/** Detailed GL's AR running days for one letter (mirror of lib/gl-letters arRunningDays). */
+function glRunningDays(soaSubmittedAt: Date | null, glReleasedAt: Date | null, lastPaid: Date | null, now: Date): number | null {
+  const t = now.getTime()
+  const start = soaSubmittedAt && soaSubmittedAt.getTime() <= t ? soaSubmittedAt
+    : glReleasedAt && glReleasedAt.getTime() <= t ? glReleasedAt : null
+  if (!start) return null
+  const end = lastPaid && lastPaid.getTime() <= t ? lastPaid.getTime() : t
+  return Math.floor((end - start.getTime()) / 86_400_000)
+}
 
 function ageBucket(ageDays: number): Bucket {
   if (ageDays <= 30) return 'b0_30'
@@ -60,7 +72,7 @@ export async function GET(req: Request) {
     // wallets serve every branch; their AR is scoped through the orders below.
     const wallets = await prisma.digitalWallet.findMany({
       where: { walletType: type, isActive: true, ...(isGL && branch ? { branch: { in: [branch, 'ALL'] } } : {}) },
-      select: { id: true, patientName: true, totalGlAmount: true, agency: true, dateObtained: true, createdAt: true },
+      select: { id: true, patientName: true, totalGlAmount: true, agency: true, dateObtained: true, createdAt: true, soaSubmittedAt: true, glReleasedAt: true },
       orderBy: { patientName: 'asc' },
     })
     const walletIds = wallets.map(w => w.id)
@@ -140,15 +152,18 @@ export async function GET(req: Request) {
 
     // ── GL-specific: AR payments already received (amount + discount = total settled) ──
     const arPaidByWallet = new Map<string, number>()
+    const lastPaidByWallet = new Map<string, Date>()
     const allUnpaidIdsByWallet = new Map<string, string[]>()
 
     if (isGL) {
       const glArPayments = await prisma.aRPayment.findMany({
         where: { walletId: { in: walletIds } },
-        select: { walletId: true, amount: true, discount: true, overpayment: true },
+        select: { walletId: true, amount: true, discount: true, overpayment: true, paymentDate: true },
       })
       for (const p of glArPayments) {
         if (!p.walletId) continue
+        const last = lastPaidByWallet.get(p.walletId)
+        if (!last || p.paymentDate > last) lastPaidByWallet.set(p.walletId, p.paymentDate)
         // Overpaid excess is income, not AR settlement.
         const settled = Number(p.amount) + Number(p.discount || 0) - Number(p.overpayment || 0)
         arPaidByWallet.set(p.walletId, (arPaidByWallet.get(p.walletId) || 0) + settled)
@@ -205,9 +220,14 @@ export async function GET(req: Request) {
         const arPaid = arPaidByWallet.get(w.id) || 0
         const arNet = Math.max(0, approved - arPaid)
 
-        // Place the entire net AR into one bucket based on GL age
+        // Place the entire net AR into one bucket by the letter's AR running days —
+        // the Detailed GL clock (lib/gl-letters arRunningDays, Hannah 2026-11-11):
+        // from the SOA submission (or the GL release, before an SOA) to the payment,
+        // or to today. A letter with neither date has no clock; its bucket falls
+        // back to the days since it was obtained, and it stays out of the average.
+        const running = glRunningDays(w.soaSubmittedAt, w.glReleasedAt, lastPaidByWallet.get(w.id) ?? null, now)
         const refDate = w.dateObtained ? new Date(w.dateObtained) : new Date(w.createdAt)
-        const ageDays = Math.floor((now.getTime() - refDate.getTime()) / DAY_MS)
+        const ageDays = running ?? Math.floor((now.getTime() - refDate.getTime()) / DAY_MS)
         const glBucket = ageBucket(ageDays)
 
         const glAging: Record<Bucket, number> = { b0_30: 0, b31_60: 0, b61_90: 0, b90plus: 0 }
@@ -217,9 +237,10 @@ export async function GET(req: Request) {
           glOrderIds[glBucket] = allUnpaidIdsByWallet.get(w.id) || []
         }
 
-        // AR Days for GL = actual age of the receivable (days since dateObtained)
+        // AR Days for GL = the letter's AR running days (bucket age above).
         const arDays = ageDays
         return {
+          running,
           walletId: w.id,
           walletName: w.patientName,
           agency: w.agency || null,
@@ -257,6 +278,13 @@ export async function GET(req: Request) {
     // dateObtained-based; HMO: weighted claim age). The old HMO DSO overall
     // mixed units with the per-wallet rows and inherited the same blow-ups.
     const arDaysOverall = (() => {
+      // GL: Detailed GL's average — every letter whose clock has started, paid
+      // ones included, each counting once. (The AR page shows the same figure
+      // computed from the very same rows, standalone GL entries included.)
+      if (isGL) {
+        const days = perWallet.map(w => (w as { running?: number | null }).running).filter((d): d is number => d != null)
+        return days.length ? days.reduce((a, b) => a + b, 0) / days.length : 0
+      }
       const withAR = perWallet.filter(w => w.ar > 0)
       if (withAR.length === 0 || totalAR <= 0) return 0
       const weightedSum = withAR.reduce((s, w) => s + w.arDays * w.ar, 0)
