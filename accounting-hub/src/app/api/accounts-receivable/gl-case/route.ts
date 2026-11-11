@@ -22,7 +22,35 @@ const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'AHEA_ADMIN', 'AHGH_AD
 
 const DATE_FIELDS = ['glDocsSubmittedAt', 'glReleasedAt', 'soaSubmittedAt', 'soaResubmittedAt'] as const
 const MONEY_FIELDS = ['glRequestedAmount', 'soaAmount', 'soaCommissionRate'] as const
-const TEXT_FIELDS = ['guardianName', 'payoutBatch', 'qbEntry'] as const
+const TEXT_FIELDS = ['guardianName', 'payoutBatch', 'qbEntry', 'glLetterNo'] as const
+
+// GL No. as printed on the OP letter, e.g. "PHD-170925112436-WA7": caps, no spaces.
+const cleanGlNo = (v: unknown) => String(v ?? '').toUpperCase().replace(/\s+/g, '') || null
+
+/**
+ * The OP gives every letter its own number, so two rows with the same GL No.
+ * are the same letter entered twice. A wallet and the case tagged to it are one
+ * letter and may share it. Returns the problem, or null.
+ */
+async function glNoTaken(glNo: string | null, self: { walletId?: string | null; caseId?: string | null }): Promise<string | null> {
+  if (!glNo) return null
+  const [w, c] = await Promise.all([
+    prisma.digitalWallet.findFirst({
+      where: { glLetterNo: glNo, ...(self.walletId ? { id: { not: self.walletId } } : {}) },
+      select: { patientName: true },
+    }),
+    prisma.glCase.findFirst({
+      where: {
+        glLetterNo: glNo,
+        ...(self.caseId ? { id: { not: self.caseId } } : {}),
+        ...(self.walletId ? { OR: [{ walletId: null }, { walletId: { not: self.walletId } }] } : {}),
+      },
+      select: { patientName: true },
+    }),
+  ])
+  const other = w || c
+  return other ? `GL No. ${glNo} is already on ${other.patientName}'s letter` : null
+}
 
 // A standalone GlCase carries two fields a wallet-backed row reads from
 // elsewhere: the approved amount (wallet: totalGlAmount) and the cheque date
@@ -137,6 +165,11 @@ export async function PATCH(req: Request) {
       if (!(f in body)) continue
       data[f] = String(body[f] ?? '').trim() || null
     }
+    if ('glLetterNo' in body) {
+      data.glLetterNo = cleanGlNo(body.glLetterNo)
+      const taken = await glNoTaken(data.glLetterNo, { walletId: id })
+      if (taken) return NextResponse.json({ error: taken }, { status: 409 })
+    }
     if ('glStage' in body) {
       const st = parseStage(body.glStage)
       if (!st.ok) return NextResponse.json({ error: STAGE_ERROR }, { status: 400 })
@@ -153,7 +186,7 @@ export async function PATCH(req: Request) {
       select: {
         id: true, glRequestedAmount: true, glDocsSubmittedAt: true, glReleasedAt: true,
         soaAmount: true, soaSubmittedAt: true, soaResubmittedAt: true, guardianName: true,
-        soaCommissionRate: true, payoutBatch: true, qbEntry: true, glStage: true,
+        soaCommissionRate: true, payoutBatch: true, qbEntry: true, glLetterNo: true, glStage: true,
       },
     })
     return NextResponse.json(updated)
@@ -168,7 +201,7 @@ const CASE_SELECT = {
   glRequestedAmount: true, glDocsSubmittedAt: true, glReleasedAt: true,
   approvedAmount: true, soaAmount: true, soaSubmittedAt: true,
   soaResubmittedAt: true, guardianName: true, soaCommissionRate: true, payoutBatch: true,
-  qbEntry: true, paidAt: true, notes: true, createdAt: true, glStage: true,
+  qbEntry: true, glLetterNo: true, paidAt: true, notes: true, createdAt: true, glStage: true,
   processorRfpId: true, processorPaidAt: true, processorProofUrl: true,
 } as const
 
@@ -215,6 +248,11 @@ export async function POST(req: Request) {
       data[f] = p.value
     }
     for (const f of CASE_TEXT_FIELDS) if (f in body) data[f] = String(body[f] ?? '').trim() || null
+    if ('glLetterNo' in body) {
+      data.glLetterNo = cleanGlNo(body.glLetterNo)
+      const taken = await glNoTaken(data.glLetterNo, { walletId: data.walletId ?? walletId })
+      if (taken) return NextResponse.json({ error: taken }, { status: 409 })
+    }
 
     const created = await prisma.glCase.create({ data, select: CASE_SELECT })
     return NextResponse.json(created, { status: 201 })
@@ -270,6 +308,12 @@ export async function PUT(req: Request) {
       data[f] = p.value
     }
     for (const f of CASE_TEXT_FIELDS) if (f in body) data[f] = String(body[f] ?? '').trim() || null
+    if ('glLetterNo' in body) {
+      data.glLetterNo = cleanGlNo(body.glLetterNo)
+      const link = 'walletId' in data ? data.walletId : (await prisma.glCase.findUnique({ where: { id: caseId }, select: { walletId: true } }))?.walletId
+      const taken = await glNoTaken(data.glLetterNo, { caseId, walletId: link })
+      if (taken) return NextResponse.json({ error: taken }, { status: 409 })
+    }
     if ('glStage' in body) {
       const st = parseStage(body.glStage)
       if (!st.ok) return NextResponse.json({ error: STAGE_ERROR }, { status: 400 })

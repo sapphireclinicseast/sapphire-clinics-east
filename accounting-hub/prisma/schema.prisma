@@ -1012,6 +1012,9 @@ model DigitalWallet {
   soaCommissionRate Decimal?
   payoutBatch       String? // Payout cutoff the professional fee went out on
   qbEntry           String? // QuickBooks reference (e.g. AR25-0027)
+  // Number printed at the bottom of the OP guarantee letter (e.g. PHD-170925112436-WA7),
+  // beside its QR code; the OP's payment lists name letters by it. Hannah 11/11.
+  glLetterNo        String?
   branch           String       @default("ALL") // SANDBOX_EAST, SANDBOX_GREENHILLS, or ALL
   dateObtained     DateTime? // Date patient originally obtained the wallet/card
   paymentModeId    String? // How the initial load was paid
@@ -1108,6 +1111,7 @@ model GlCase {
   soaCommissionRate Decimal?
   payoutBatch       String?
   qbEntry           String?
+  glLetterNo        String? // GL No. printed on the OP guarantee letter
   /// Cheque date for an untagged case. A tagged one takes its payment from ARPayment.
   paidAt            DateTime?
   notes             String?

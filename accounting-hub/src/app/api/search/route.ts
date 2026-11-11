@@ -117,18 +117,18 @@ export async function GET(req: Request) {
     prisma.digitalWallet.findMany({
       where: { walletType: 'GL', ...jBranch, OR: [
         ...(isNum ? [{ totalGlAmount: n }, { soaAmount: n }] : []),
-        { patientName: ci }, { guardianName: ci }, { qbEntry: ci }, { payoutBatch: ci }, { agency: ci },
+        { patientName: ci }, { guardianName: ci }, { qbEntry: ci }, { glLetterNo: ci }, { payoutBatch: ci }, { agency: ci },
       ] },
       take: TAKE, orderBy: { patientName: 'asc' },
-      select: { id: true, patientName: true, guardianName: true, qbEntry: true, payoutBatch: true, agency: true, branch: true, totalGlAmount: true, soaAmount: true, soaSubmittedAt: true },
+      select: { id: true, patientName: true, guardianName: true, qbEntry: true, glLetterNo: true, payoutBatch: true, agency: true, branch: true, totalGlAmount: true, soaAmount: true, soaSubmittedAt: true },
     }),
     prisma.glCase.findMany({
       where: { ...jBranch, OR: [
         ...(isNum ? [{ soaAmount: n }, { approvedAmount: n }] : []),
-        { patientName: ci }, { guardianName: ci }, { qbEntry: ci }, { payoutBatch: ci }, { notes: ci },
+        { patientName: ci }, { guardianName: ci }, { qbEntry: ci }, { glLetterNo: ci }, { payoutBatch: ci }, { notes: ci },
       ] },
       take: TAKE, orderBy: { createdAt: 'desc' },
-      select: { id: true, walletId: true, patientName: true, guardianName: true, qbEntry: true, payoutBatch: true, branch: true, soaAmount: true, approvedAmount: true, soaSubmittedAt: true },
+      select: { id: true, walletId: true, patientName: true, guardianName: true, qbEntry: true, glLetterNo: true, payoutBatch: true, branch: true, soaAmount: true, approvedAmount: true, soaSubmittedAt: true },
     }),
   ])
 
@@ -208,7 +208,7 @@ export async function GET(req: Request) {
       subtitle: `${bl(w.branch)}${w.agency ? ` · ${w.agency}` : ''}${w.guardianName ? ` · ${w.guardianName}` : ''}`,
       amount: w.soaAmount != null ? num(w.soaAmount) : (w.totalGlAmount != null ? num(w.totalGlAmount) : null),
       reference: w.qbEntry || '', date: dstr(w.soaSubmittedAt), href: `/accounts-receivable?type=GL&gltab=detailed&focus=${enc(w.id)}`,
-      detail: { Patient: w.patientName, Guardian: w.guardianName || '—', Agency: w.agency || '—', 'QB entry': w.qbEntry || '—', Payout: w.payoutBatch || '—', Branch: bl(w.branch), 'Approved GL': w.totalGlAmount != null ? num(w.totalGlAmount).toFixed(2) : '—', 'SOA Amount': w.soaAmount != null ? num(w.soaAmount).toFixed(2) : '—' },
+      detail: { Patient: w.patientName, Guardian: w.guardianName || '—', Agency: w.agency || '—', 'GL No.': w.glLetterNo || '—', 'QB entry': w.qbEntry || '—', Payout: w.payoutBatch || '—', Branch: bl(w.branch), 'Approved GL': w.totalGlAmount != null ? num(w.totalGlAmount).toFixed(2) : '—', 'SOA Amount': w.soaAmount != null ? num(w.soaAmount).toFixed(2) : '—' },
     })
   }
   for (const c of glCases) results.push({
@@ -216,7 +216,7 @@ export async function GET(req: Request) {
     subtitle: `${bl(c.branch)}${c.guardianName ? ` · ${c.guardianName}` : ''}`,
     amount: c.soaAmount != null ? num(c.soaAmount) : (c.approvedAmount != null ? num(c.approvedAmount) : null),
     reference: c.qbEntry || '', date: dstr(c.soaSubmittedAt), href: `/accounts-receivable?type=GL&gltab=detailed&focus=${enc(c.walletId || c.id)}`,
-    detail: { Patient: c.patientName, Guardian: c.guardianName || '—', 'QB entry': c.qbEntry || '—', Payout: c.payoutBatch || '—', Branch: bl(c.branch), 'Approved GL': c.approvedAmount != null ? num(c.approvedAmount).toFixed(2) : '—', 'SOA Amount': c.soaAmount != null ? num(c.soaAmount).toFixed(2) : '—' },
+    detail: { Patient: c.patientName, Guardian: c.guardianName || '—', 'GL No.': c.glLetterNo || '—', 'QB entry': c.qbEntry || '—', Payout: c.payoutBatch || '—', Branch: bl(c.branch), 'Approved GL': c.approvedAmount != null ? num(c.approvedAmount).toFixed(2) : '—', 'SOA Amount': c.soaAmount != null ? num(c.soaAmount).toFixed(2) : '—' },
   })
 
   return NextResponse.json({ results })

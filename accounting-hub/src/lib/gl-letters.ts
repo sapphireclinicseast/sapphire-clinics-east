@@ -37,6 +37,7 @@ export interface GlCaseWallet {
   soaCommissionRate?: number | string | null
   payoutBatch?: string | null
   qbEntry?: string | null
+  glLetterNo?: string | null
   glStage?: string | null
   /** True when any order has been billed against the letter. */
   hasOrders?: boolean
@@ -65,6 +66,7 @@ export interface GlCaseRow {
   soaCommissionRate?: number | string | null
   payoutBatch?: string | null
   qbEntry?: string | null
+  glLetterNo?: string | null
   paidAt?: string | null
   notes?: string | null
   glStage?: string | null
@@ -106,6 +108,7 @@ export interface GlLetterRow {
   soaCommissionRate?: number | string | null
   payoutBatch?: string | null
   qbEntry?: string | null
+  glLetterNo?: string | null
   /** Where the letter is in the OP's payment process (STAR OFFICE → PAID). */
   glStage?: string | null
   /** Remaining on the tagged wallet in POS; null when nothing is tagged. */
@@ -177,6 +180,7 @@ export function rowOf(c: GlCaseRow | null, w: GlCaseWallet | null): GlLetterRow 
     soaCommissionRate: pick(c?.soaCommissionRate, w?.soaCommissionRate),
     payoutBatch: pick(c?.payoutBatch, w?.payoutBatch),
     qbEntry: pick(c?.qbEntry, w?.qbEntry),
+    glLetterNo: pick(c?.glLetterNo, w?.glLetterNo),
     // A recorded payment settles the stage. The stored stage stays underneath, so
     // undoing the payment puts the letter back where it was.
     glStage: paid ? 'PAID' : pick(c?.glStage, w?.glStage),

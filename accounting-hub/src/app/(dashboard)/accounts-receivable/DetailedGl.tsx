@@ -212,7 +212,7 @@ type ColKey =
   | 'stage' | 'name' | 'branch' | 'docsDate' | 'requested' | 'released' | 'approved' | 'soaAmount'
   | 'posBalance'
   | 'rendered' | 'soaSubmitted' | 'soaDate' | 'soaResubDate' | 'status' | 'paidDate' | 'arDays' | 'arDaysResub' | 'perMonths'
-  | 'guardian' | 'drive' | 'commission' | 'payout' | 'qb' | 'linked'
+  | 'guardian' | 'drive' | 'commission' | 'payout' | 'qb' | 'linked' | 'glNo'
 
 interface Col { key: ColKey; label: string; numeric?: boolean }
 
@@ -220,6 +220,8 @@ const COLS: Col[] = [
   // Hannah, 2026-11-03: which OP office the letter is at, so each stage can be chased.
   { key: 'stage', label: 'Stage' },
   { key: 'name', label: 'Name' },
+  // Hannah 11/11: the number printed on the OP letter — OP payment lists name letters by it.
+  { key: 'glNo', label: 'GL No.' },
   { key: 'branch', label: 'Branch' },
   { key: 'linked', label: 'POS wallet' },
   { key: 'docsDate', label: 'Date submission of documents' },
@@ -280,6 +282,7 @@ function cellText(r: Row, k: ColKey): string {
     }
     case 'payout': return r.payoutBatch || '—'
     case 'qb': return r.qbEntry || '—'
+    case 'glNo': return r.glLetterNo || '—'
   }
 }
 
@@ -310,6 +313,7 @@ function sortValue(r: Row, k: ColKey): string | number {
     case 'commission': return commissionOf(r)
     case 'payout': return r.payoutBatch || ''
     case 'qb': return r.qbEntry || ''
+    case 'glNo': return r.glLetterNo || ''
   }
 }
 
@@ -835,6 +839,7 @@ function GlEntryModal({
     guardianName: entry?.guardianName || '',
     payoutBatch: entry?.payoutBatch || '',
     qbEntry: entry?.qbEntry || '',
+    glLetterNo: entry?.glLetterNo || '',
     paidAt: dayKey(entry?.paidAt),
     notes: entry?.notes || '',
   })
@@ -984,6 +989,7 @@ function GlEntryModal({
           {field('Date submission of documents', 'glDocsSubmittedAt', 'date')}
           {field('Requested GL (₱)', 'glRequestedAmount', 'number')}
           {field('GL release date', 'glReleasedAt', 'date')}
+          {field('GL No.', 'glLetterNo', 'text', 'Printed at the bottom of the OP guarantee letter, beside the QR code — e.g. PHD-170925112436-WA7')}
           {field('Approved GL (₱)', 'approvedAmount', 'number', 'Ignored once tagged — the wallet’s approved amount wins.')}
           {field('Amount in SOA (₱)', 'soaAmount', 'number')}
           {field('Date submission of SOA', 'soaSubmittedAt', 'date', 'AR running days and Per months count from here')}
@@ -1037,6 +1043,7 @@ function GlCaseModal({ wallet, cases, wallets, onClose, onSaved }: { wallet: GlC
     soaCommissionRate: wallet.soaCommissionRate != null ? String(num(wallet.soaCommissionRate)) : '25',
     payoutBatch: wallet.payoutBatch || '',
     qbEntry: wallet.qbEntry || '',
+    glLetterNo: wallet.glLetterNo || '',
   })
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
@@ -1148,6 +1155,7 @@ function GlCaseModal({ wallet, cases, wallets, onClose, onSaved }: { wallet: GlC
           {field('Date submission of documents', 'glDocsSubmittedAt', 'date')}
           {field('Requested GL (₱)', 'glRequestedAmount', 'number')}
           {field('GL release date', 'glReleasedAt', 'date')}
+          {field('GL No.', 'glLetterNo', 'text', 'Printed at the bottom of the OP guarantee letter, beside the QR code — e.g. PHD-170925112436-WA7')}
           {field('Amount in SOA (₱)', 'soaAmount', 'number')}
           {field('Date submission of SOA', 'soaSubmittedAt', 'date', 'AR running days and Per months count from here')}
           {field('SOA Resubmission Date', 'soaResubmittedAt', 'date', 'Only for SOAs returned for errors — starts the second AR-days clock')}

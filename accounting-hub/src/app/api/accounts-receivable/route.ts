@@ -44,7 +44,7 @@ export async function GET(req: Request) {
         // GL case tracking (Detailed GL)
         glRequestedAmount: true, glDocsSubmittedAt: true, glReleasedAt: true,
         soaAmount: true, soaSubmittedAt: true, soaResubmittedAt: true, guardianName: true,
-        soaCommissionRate: true, payoutBatch: true, qbEntry: true, glStage: true,
+        soaCommissionRate: true, payoutBatch: true, qbEntry: true, glLetterNo: true, glStage: true,
         attachmentUrls: true, attachmentUrl: true, soaStatus: true,
         createdAt: true,
         account: { select: { accountNumber: true, accountTitle: true } } },
@@ -483,7 +483,7 @@ export async function GET(req: Request) {
             glRequestedAmount: true, glDocsSubmittedAt: true, glReleasedAt: true,
             approvedAmount: true, soaAmount: true, soaSubmittedAt: true, soaResubmittedAt: true,
             guardianName: true, soaCommissionRate: true, payoutBatch: true,
-            qbEntry: true, paidAt: true, notes: true,
+            qbEntry: true, glLetterNo: true, paidAt: true, notes: true,
             // Processor payout — drives the "already paid" exclusion in the batch.
             processorRfpId: true, processorPaidAt: true, processorProofUrl: true,
           },
