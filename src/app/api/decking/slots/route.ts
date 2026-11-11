@@ -246,8 +246,56 @@ export async function DELETE(req: NextRequest) {
   const session = await auth()
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const { id } = await req.json()
+  const body = await req.json()
+  const { id } = body
   const delRole = (session.user as { role?: string })?.role ?? ''
+
+  // ── A whole one-off day ──────────────────────────────────────────────────
+  //
+  // Done here rather than by the browser calling the single-slot delete once
+  // per hour. A doctor's one-off day can be sixteen half-hour slots; sixteen
+  // requests fail independently, and a day half-removed is worse than one
+  // still there — the board would show an afternoon with no morning and
+  // nobody would know whether that was intended.
+  //
+  // Only ever dated slots. The weekly template is edited through the grid and
+  // a staffId+weekday delete here would be a way to wipe a consultant's
+  // standing hours by accident.
+  if (!id && body.staffId && body.date) {
+    const dateKey = String(body.date).slice(0, 10)
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(dateKey)) {
+      return NextResponse.json({ error: 'date must be YYYY-MM-DD' }, { status: 400 })
+    }
+    const dayStart = new Date(`${dateKey}T00:00:00.000Z`)
+    const dayEnd = new Date(`${dateKey}T23:59:59.999Z`)
+
+    const slots = await prisma.deckingSlot.findMany({
+      where: { staffId: String(body.staffId), date: { gte: dayStart, lte: dayEnd } },
+      select: { id: true, branch: true, deliveryMode: true, patientId: true },
+    })
+    if (slots.length === 0) {
+      return NextResponse.json({ error: 'No one-off slots on that date' }, { status: 404 })
+    }
+    // Every slot, not just the first: a day can mix delivery modes, and the
+    // branch rule has to hold for all of them or none are removed.
+    const denied = slots.find(sl => !canWriteSlot(delRole, sl.branch, sl.deliveryMode))
+    if (denied) return NextResponse.json({ error: CROSS_BRANCH_DENIED }, { status: 403 })
+
+    const booked = slots.filter(sl => sl.patientId).length
+    // The caller has to have been told how many children are in the day and
+    // say yes to that number. Without this the first click would remove
+    // bookings the person could not see — the tile says "3 booked", but the
+    // button is next to the date, not the children.
+    if (booked > 0 && body.confirmBooked !== true) {
+      return NextResponse.json({ needsConfirm: true, slots: slots.length, booked }, { status: 409 })
+    }
+
+    const { count } = await prisma.deckingSlot.deleteMany({
+      where: { id: { in: slots.map(sl => sl.id) } },
+    })
+    return NextResponse.json({ ok: true, deleted: count, booked })
+  }
+
   const doomed = await prisma.deckingSlot.findUnique({
     where: { id }, select: { branch: true, deliveryMode: true },
   })
