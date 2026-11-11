@@ -5,7 +5,7 @@
 // renewal popup and the bell read the MOA date saved here.
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import { ChevronDown, ChevronRight, ExternalLink, FileText, Loader2, Pencil, Search, Tag, X } from 'lucide-react'
+import { ExternalLink, FileText, Loader2, Pencil, Search, Tag, X } from 'lucide-react'
 import { ScanUpload } from '@/components/ScanUpload'
 import { NameCombobox } from '@/components/NameCombobox'
 import { formatCurrency } from '@/lib/utils'
@@ -110,9 +110,17 @@ function toForm(e: Entry): Form {
 }
 
 // The HMO's logo on a white tile; nothing when none is saved.
-function HmoLogo({ url, name, size }: { url?: string | null; name: string; size: 'row' | 'form' }) {
-  if (!url) return null
-  const box = size === 'row' ? 'h-7 w-24 px-1.5' : 'h-16 w-44 p-2'
+function HmoLogo({ url, name, size }: { url?: string | null; name: string; size: 'row' | 'card' | 'form' }) {
+  const box = size === 'row' ? 'h-8 w-28 px-1.5' : size === 'card' ? 'h-12 w-36 p-1.5' : 'h-16 w-44 p-2'
+  if (!url) {
+    if (size !== 'card') return null
+    const initials = name.split(/[\s/&]+/).filter(Boolean).slice(0, 2).map(w => w[0]).join('').toUpperCase()
+    return (
+      <span aria-hidden className={`inline-flex flex-none items-center justify-center rounded-lg text-sm font-bold ${box}`} style={{ background: 'var(--pale-teal, #E6F4F2)', color: 'var(--teal)' }}>
+        {initials}
+      </span>
+    )
+  }
   return (
     <span className={`inline-flex flex-none items-center justify-center rounded-lg border bg-white ${box}`} style={{ borderColor: 'var(--light-gray)' }}>
       {/* eslint-disable-next-line @next/next/no-img-element -- uploaded file served by /api/files, not a static asset */}
@@ -286,8 +294,9 @@ export default function HmoDirectoryTab({ canEdit, focusWalletId = '' }: { canEd
   const [search, setSearch] = useState('')
   const [renewalOnly, setRenewalOnly] = useState(false)
   const [missingOnly, setMissingOnly] = useState(false)
-  // Rows flipped from their default: closed normally, open while searching.
-  const [toggledRows, setToggledRows] = useState<Set<string>>(new Set())
+  // The HMO whose card was clicked: its full details open in a popup (Hannah 11/11:
+  // cards three across, with the logo and accreditation contact; details on click).
+  const [detailsId, setDetailsId] = useState<string | null>(null)
   // A row's prices open in a popup (Hannah 11/11: the inline list was too long).
   const [pricesFor, setPricesFor] = useState<{ hmoName: string; category: string } | null>(null)
   const [form, setForm] = useState<Form | null>(null)
@@ -309,7 +318,7 @@ export default function HmoDirectoryTab({ canEdit, focusWalletId = '' }: { canEd
     const match = entries.find(e => e.walletId === focusWalletId)
     if (!match) return
     focusedOnce.current = true
-    setToggledRows(prev => new Set(prev).add(match.walletId))
+    setDetailsId(match.walletId)
     setFormError('')
     setForm(toForm(match))
   }, [focusWalletId, entries, canEdit])
@@ -362,20 +371,19 @@ export default function HmoDirectoryTab({ canEdit, focusWalletId = '' }: { canEd
 
   const categoryHints = useMemo(() => Object.fromEntries(categories.map(c => [c.name, `${c.count} service${c.count === 1 ? '' : 's'}`])), [categories])
 
-  const toggleRow = (walletId: string) => setToggledRows(prev => {
-    const next = new Set(prev)
-    if (next.has(walletId)) next.delete(walletId)
-    else next.add(walletId)
-    return next
-  })
-
-  // Escape closes the prices popup.
+  // Escape closes the top popup: prices first, then the details (never the edit form).
   useEffect(() => {
-    if (!pricesFor) return
-    const onKey = (ev: KeyboardEvent) => { if (ev.key === 'Escape') setPricesFor(null) }
+    if (!pricesFor && !detailsId) return
+    const onKey = (ev: KeyboardEvent) => {
+      if (ev.key !== 'Escape') return
+      if (pricesFor) setPricesFor(null)
+      else if (!form) setDetailsId(null)
+    }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [pricesFor])
+  }, [pricesFor, detailsId, form])
+
+  const detail = detailsId ? entries?.find(e => e.walletId === detailsId) || null : null
 
   const categoryNames = categories.map(c => c.name)
   const formMatches = form ? categoriesMatching(form.hmoName, categoryNames) : []
@@ -410,30 +418,66 @@ export default function HmoDirectoryTab({ canEdit, focusWalletId = '' }: { canEd
         </p>
       )}
 
-      <div className="space-y-2">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
       {shown.map(e => {
+        const missing = missingByWallet.get(e.walletId) || []
+        const acc = { name: e.accreditationName, email: e.accreditationEmail, number: e.accreditationNumber }
+        return (
+          <button key={e.walletId} type="button" onClick={() => setDetailsId(e.walletId)} aria-haspopup="dialog"
+            className="text-left rounded-xl border bg-white p-4 flex flex-col gap-3 min-w-0 transition-[box-shadow,border-color] hover:shadow-[0_4px_12px_rgba(0,0,0,0.07)] focus-visible:outline-2 focus-visible:outline-offset-2"
+            style={{ borderColor: missing.length ? MISSING_BORDER : 'var(--light-gray)', outlineColor: 'var(--teal)' }}>
+            <div className="flex items-start justify-between gap-3">
+              <HmoLogo url={e.logoUrl} name={e.hmoName} size="card" />
+              {missing.length > 0 && (
+                <span title={`Missing: ${missing.join(', ')}`} className="px-2 py-0.5 rounded-full text-[11px] font-semibold whitespace-nowrap text-white" style={{ background: MISSING_RED }}>
+                  {missing.length} missing
+                </span>
+              )}
+            </div>
+            <div className="min-w-0">
+              <p className="text-sm font-bold truncate" style={{ color: 'var(--charcoal)' }}>{e.hmoName}</p>
+              <div className="mt-1"><MoaBadge validUntil={e.moaValidUntil} noEndDate={e.moaNoEndDate} /></div>
+            </div>
+            <div className="border-t pt-2.5 min-w-0" style={{ borderColor: 'var(--light-gray)' }}>
+              <p className="text-[11px] font-semibold uppercase tracking-wide mb-1" style={{ color: 'var(--mid-gray)' }}>Accreditation contact</p>
+              {!acc.name && !acc.email && !acc.number ? (
+                <p className="text-xs font-medium" style={{ color: MISSING_RED }}>No contact yet</p>
+              ) : (
+                <div className="text-xs space-y-0.5" style={{ color: 'var(--charcoal)' }}>
+                  {acc.name && <p className="font-medium truncate">{acc.name}</p>}
+                  {acc.email && <p className="truncate" style={{ color: 'var(--teal)' }}>{acc.email}</p>}
+                  {acc.number && <p className="truncate">{acc.number}</p>}
+                </div>
+              )}
+            </div>
+          </button>
+        )
+      })}
+      </div>
+
+      {detail && (() => {
+        const e = detail
         const chosen = e.serviceCategory || ''
-        const isOpen = toggledRows.has(e.walletId) !== !!search.trim()
         const branches = ACCREDITABLE_BRANCHES.filter(b => (e.accreditedBranches || []).includes(b.value))
         const missing = missingByWallet.get(e.walletId) || []
         return (
-          <div key={e.walletId} className="rounded-xl border overflow-hidden" style={{ borderColor: missing.length ? MISSING_BORDER : 'var(--light-gray)', background: '#fff' }}>
-            <h3 className="text-sm font-bold" style={{ color: missing.length ? MISSING_RED : 'var(--charcoal)', background: missing.length ? MISSING_BG : undefined }}>
-              <button type="button" aria-expanded={isOpen} onClick={() => toggleRow(e.walletId)} className="w-full flex flex-wrap items-center gap-2 px-4 py-3 text-left">
-                {isOpen ? <ChevronDown size={16} style={{ color: 'var(--mid-gray)' }} /> : <ChevronRight size={16} style={{ color: 'var(--mid-gray)' }} />}
-                <HmoLogo url={e.logoUrl} name={e.hmoName} size="row" />
-                <span>{e.hmoName}</span>
-                <MoaBadge validUntil={e.moaValidUntil} noEndDate={e.moaNoEndDate} />
-                {missing.length > 0 && (
-                  <span title={`Missing: ${missing.join(', ')}`} className="px-2 py-0.5 rounded-full text-[11px] font-semibold whitespace-nowrap text-white" style={{ background: MISSING_RED }}>
-                    {missing.length} missing
-                  </span>
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4" onClick={() => setDetailsId(null)}>
+          <div role="dialog" aria-modal="true" aria-labelledby="hmo-details-title" onClick={ev => ev.stopPropagation()}
+            className="bg-white rounded-2xl w-full max-w-4xl max-h-[90vh] flex flex-col">
+            <div className="flex flex-wrap items-center gap-3 px-6 pt-5 pb-3 border-b" style={{ borderColor: 'var(--light-gray)' }}>
+              <HmoLogo url={e.logoUrl} name={e.hmoName} size="row" />
+              <h2 id="hmo-details-title" className="text-lg font-bold" style={{ color: 'var(--charcoal)' }}>{e.hmoName}</h2>
+              <MoaBadge validUntil={e.moaValidUntil} noEndDate={e.moaNoEndDate} />
+              <div className="ml-auto flex items-center gap-2">
+                {canEdit && (
+                  <button onClick={() => { setFormError(''); setForm(toForm(e)) }} className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium text-white" style={{ background: 'var(--teal)' }}>
+                    <Pencil size={12} /> Edit
+                  </button>
                 )}
-              </button>
-            </h3>
-
-            {isOpen && (
-            <div className="border-t px-4 py-3 space-y-3" style={{ borderColor: missing.length ? MISSING_BORDER : 'var(--light-gray)' }}>
+                <button onClick={() => setDetailsId(null)} aria-label="Close"><X size={18} style={{ color: 'var(--mid-gray)' }} /></button>
+              </div>
+            </div>
+            <div className="px-6 py-4 space-y-3 overflow-y-auto">
             {missing.length > 0 && (
               <p className="text-xs rounded-lg px-3 py-2" style={{ background: MISSING_BG, color: MISSING_RED, border: `1px solid ${MISSING_BORDER}` }}>
                 <span className="font-semibold">Missing: </span>{missing.join(', ')}
@@ -445,14 +489,9 @@ export default function HmoDirectoryTab({ canEdit, focusWalletId = '' }: { canEd
               {e.loaApplicationUrl
                 ? <a href={e.loaApplicationUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs border" style={{ borderColor: 'var(--light-gray)', color: 'var(--teal)' }}><ExternalLink size={12} /> LOA application</a>
                 : <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>No LOA link</span>}
-              {canEdit && (
-                <button onClick={() => { setFormError(''); setForm(toForm(e)) }} className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium text-white" style={{ background: 'var(--teal)' }}>
-                  <Pencil size={12} /> Edit
-                </button>
-              )}
             </div>
 
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {CONTACTS.map(c => (
                 <ContactCard key={c.key} title={c.title} name={e[`${c.key}Name`]} email={e[`${c.key}Email`]} number={e[`${c.key}Number`]}
                   extra={c.key === 'submission' && (
@@ -502,14 +541,13 @@ export default function HmoDirectoryTab({ canEdit, focusWalletId = '' }: { canEd
               </div>
             </div>
             </div>
-            )}
           </div>
+        </div>
         )
-      })}
-      </div>
+      })()}
 
       {pricesFor && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4" onClick={() => setPricesFor(null)}>
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 p-4" onClick={() => setPricesFor(null)}>
           <div role="dialog" aria-modal="true" aria-labelledby="hmo-prices-title" onClick={ev => ev.stopPropagation()}
             className="bg-white rounded-2xl w-full max-w-3xl max-h-[85vh] flex flex-col">
             <div className="flex items-start justify-between gap-3 px-6 pt-5 pb-3 border-b" style={{ borderColor: 'var(--light-gray)' }}>
@@ -525,7 +563,7 @@ export default function HmoDirectoryTab({ canEdit, focusWalletId = '' }: { canEd
       )}
 
       {form && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4">
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 p-4">
           <div className="bg-white rounded-2xl p-6 w-full max-w-2xl max-h-[90vh] overflow-auto space-y-5">
             <div className="flex items-center justify-between">
               <h2 className="text-lg font-bold" style={{ color: 'var(--charcoal)' }}>{form.hmoName}</h2>
