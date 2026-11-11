@@ -54,7 +54,7 @@ const shapeOfConfig = (c: { slotsPerDay?: number | null; slotMinutes?: number | 
 
 interface SlotCapacity { staffId: string; dayOfWeek: string; startTime: string; date: string | null; capacity: number }
 interface TherapistConfig { id: string; staffId: string; workDays: string[]; startTime: string; endTime: string; useDefault: boolean; branch: string; department: string; deliveryMode?: string | null; slotsPerDay?: number | null; slotMinutes?: number | null; breakStart?: string | null; breakMinutes?: number | null }
-interface DeckingSlot { id: string; staffId: string; patientId: string | null; patient: Patient | null; dayOfWeek: string; startTime: string; endTime: string; branch: string; department: string; notes: string | null; disabled: boolean; paymentType?: string; isClass?: boolean; deliveryMode?: string | null; supervisorId?: string | null; date?: string | null; sheetHidden?: boolean }
+interface DeckingSlot { id: string; staffId: string; patientId: string | null; patient: Patient | null; dayOfWeek: string; startTime: string; endTime: string; branch: string; department: string; notes: string | null; disabled: boolean; paymentType?: string; isClass?: boolean; deliveryMode?: string | null; supervisorId?: string | null; date?: string | null; sheetHidden?: boolean; isMakeup?: boolean }
 
 // Cell colouring, the way front desk reads their spreadsheet: what needs
 // paperwork chased before the session stands out from what doesn't.
@@ -83,6 +83,12 @@ const CELL_RADIUS = 6            // one radius for open, booked and unavailable 
 const OFF_BORDER  = '#DDE3E7'
 const OFF_FG      = '#66717D'
 const ONEOFF_FG   = '#BE185D'
+// Make-up sessions. Deliberately the orange Clinic Schedule already uses for
+// them, so a make-up looks the same wherever it is seen rather than each view
+// picking its own colour.
+const MAKEUP_FG     = '#C2410C'
+const MAKEUP_BG     = '#FFF7F1'
+const MAKEUP_BORDER = '#FBD5BC'
 // The no-fixed-date list. Its own colour, so a clinician's card never reads a
 // standing case as an hour somebody is coming in.
 const CASE_FG     = '#6D28D9'
@@ -832,7 +838,7 @@ function TherapistRow({ staff, activeBranch, sectionMode, config, slots, default
   datedSlots?: DeckingSlot[]
   /** Called after a one-off is booked or cleared, so the board reloads. */
   onDatedChanged?: () => void
-  onAddDated?: (data: { staffId: string; patientId: string | null; dayOfWeek: string; startTime: string; endTime: string; branch: string; department: string; notes: string | null; date?: string | null }) => Promise<void>
+  onAddDated?: (data: { staffId: string; patientId: string | null; dayOfWeek: string; startTime: string; endTime: string; branch: string; department: string; notes: string | null; date?: string | null; isMakeup?: boolean }) => Promise<void>
 }) {
   // Homecare starts with the form closed: most consultants on that board
   // have no home-visit days, and an open form on every card buried the few
@@ -858,6 +864,10 @@ function TherapistRow({ staff, activeBranch, sectionMode, config, slots, default
   const [addingCell, setAddingCell] = useState<{ dayOfWeek: string; startTime: string } | null>(null)
   const [showCustomModal, setShowCustomModal] = useState(false)
   const [showDatedModal, setShowDatedModal] = useState(false)
+  // The dated modal opens for a plain one-off or for a make-up. Same form,
+  // same slots — the difference is a flag on the rows and the colour they are
+  // drawn in, so there is no second modal to keep in step with this one.
+  const [datedIsMakeup, setDatedIsMakeup] = useState(false)
   /** Which one-off is having its patient set, if any. */
   const [fillingDated, setFillingDated] = useState<string | null>(null)
   // Which one-off day is being removed, so its button can say so and the
@@ -1587,7 +1597,7 @@ function TherapistRow({ staff, activeBranch, sectionMode, config, slots, default
               <Settings2 size={12} aria-hidden /> Set homecare days
             </button>
             {onAddDated && (
-              <button type="button" onClick={() => setShowDatedModal(true)} className={BTN_SM}
+              <button type="button" onClick={() => { setDatedIsMakeup(false); setShowDatedModal(true) }} className={BTN_SM}
                 title="Hours for one named date only — never repeats"
                 style={{ background: '#fff', border: '1px dashed #F9A8D4', color: ONEOFF_FG }}>
                 <CalendarPlus size={12} aria-hidden /> One-off date
@@ -1733,7 +1743,7 @@ function TherapistRow({ staff, activeBranch, sectionMode, config, slots, default
               </span>
             )}
             {onAddDated && (
-              <button type="button" onClick={() => setShowDatedModal(true)}
+              <button type="button" onClick={() => { setDatedIsMakeup(false); setShowDatedModal(true) }}
                 className="ml-auto inline-flex items-center gap-1 h-7 text-[11px] font-semibold rounded-md px-2.5 transition-colors hover:bg-pink-50"
                 style={{ border: '1px dashed #F9A8D4', color: ONEOFF_FG, background: '#fff' }}>
                 <Plus size={12} aria-hidden /> Add a date
@@ -1781,13 +1791,18 @@ function TherapistRow({ staff, activeBranch, sectionMode, config, slots, default
                       const mine = upcoming.filter(sl => String(sl.date).slice(0, 10) === dateKey)
                       const d = new Date(`${dateKey}T00:00:00Z`)
                       const rel = relativeDayLabel(dateKey, todayKey)
+                      // A day of make-ups wears the make-up colour. Mixed days
+                      // are treated as ordinary one-offs: the tile is one
+                      // colour and claiming the whole day is a make-up when
+                      // half of it is not would be worse than saying nothing.
+                      const isMk = mine.length > 0 && mine.every(x => x.isMakeup)
                       return (
                         <div key={dateKey} className="flex gap-2.5 items-start rounded-lg p-2"
-                          style={{ background: '#fff', border: '1px solid #F6D5E5' }}>
+                          style={{ background: '#fff', border: `1px solid ${isMk ? MAKEUP_BORDER : '#F6D5E5'}` }}>
                           <span aria-hidden className="flex-shrink-0 flex flex-col items-center justify-center rounded-md overflow-hidden"
-                            style={{ width: 44, border: '1px solid #F9C4DE', background: '#fff' }}>
+                            style={{ width: 44, border: `1px solid ${isMk ? MAKEUP_BORDER : '#F9C4DE'}`, background: '#fff' }}>
                             <span className="w-full text-center text-[9px] font-bold uppercase leading-[14px] text-white"
-                              style={{ background: ONEOFF_FG, letterSpacing: '0.06em' }}>
+                              style={{ background: isMk ? MAKEUP_FG : ONEOFF_FG, letterSpacing: '0.06em' }}>
                               {d.toLocaleDateString('en-PH', { month: 'short', timeZone: 'UTC' })}
                             </span>
                             <span className="text-[16px] font-bold leading-[24px] tabular-nums" style={{ color: 'var(--charcoal)' }}>
@@ -1803,6 +1818,15 @@ function TherapistRow({ staff, activeBranch, sectionMode, config, slots, default
                                 <span className="rounded-full px-1.5 py-px text-[10px] font-semibold"
                                   style={rel === 'Today' ? { background: ONEOFF_FG, color: '#fff' } : { background: '#FDF2F8', color: '#9D174D' }}>
                                   {rel}
+                                </span>
+                              )}
+                              {isMk && (
+                                // Named, not only coloured: a colour alone is
+                                // no use to anyone who cannot see it, and this
+                                // is the whole difference between the two.
+                                <span className="rounded-full px-1.5 py-px text-[10px] font-semibold"
+                                  style={{ background: MAKEUP_BG, color: MAKEUP_FG, border: `1px solid ${MAKEUP_BORDER}` }}>
+                                  Make-up
                                 </span>
                               )}
                               <span className="text-[11px]" style={{ color: 'var(--mid-gray)' }}>
@@ -2104,12 +2128,15 @@ function TherapistRow({ staff, activeBranch, sectionMode, config, slots, default
             style={{ background: '#fff', width: '100%', maxWidth: 400, boxShadow: '0 20px 60px rgba(15,23,42,0.25)' }}>
             <div className="flex items-start justify-between gap-3 px-5 pt-4 pb-3" style={{ borderBottom: '1px solid var(--light-gray)' }}>
               <div className="flex items-start gap-3 min-w-0">
-                <span aria-hidden className="inline-flex items-center justify-center w-8 h-8 rounded-lg flex-shrink-0" style={{ background: '#FDF2F8', color: ONEOFF_FG }}>
-                  <CalendarPlus size={15} />
+                <span aria-hidden className="inline-flex items-center justify-center w-8 h-8 rounded-lg flex-shrink-0"
+                  style={datedIsMakeup
+                    ? { background: MAKEUP_BG, color: MAKEUP_FG }
+                    : { background: '#FDF2F8', color: ONEOFF_FG }}>
+                  {datedIsMakeup ? <UserPlus size={15} /> : <CalendarPlus size={15} />}
                 </span>
                 <div className="min-w-0">
                   <h3 id={`dated-slot-${staff.id}`} className="text-[15px] font-bold leading-tight" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>
-                    Add a one-off date
+                    {datedIsMakeup ? 'Schedule a make-up session' : 'Add a one-off date'}
                   </h3>
                   <p className="text-xs mt-0.5 truncate" style={{ color: 'var(--mid-gray)' }} title={`${staff.lastName}, ${staff.firstName}`}>
                     {staff.lastName}, {staff.firstName}
@@ -2119,9 +2146,13 @@ function TherapistRow({ staff, activeBranch, sectionMode, config, slots, default
               <button type="button" onClick={() => setShowDatedModal(false)} aria-label="Close" className="dk-icon-btn rounded-md p-1" style={{ color: 'var(--mid-gray)' }}><X size={16} /></button>
             </div>
             <div className="px-5 py-4 grid grid-cols-2 gap-3">
-              <p className="col-span-2 text-xs leading-relaxed rounded-lg px-3 py-2" style={{ background: '#FDF2F8', color: '#9D174D' }}>
-                This hour applies to the chosen date only. It never repeats, and it does not
-                appear on the weekly grid.
+              <p className="col-span-2 text-xs leading-relaxed rounded-lg px-3 py-2"
+                style={datedIsMakeup
+                  ? { background: MAKEUP_BG, color: MAKEUP_FG }
+                  : { background: '#FDF2F8', color: '#9D174D' }}>
+                {datedIsMakeup
+                  ? 'A session replacing one the patient missed, on a day outside this clinician\u2019s weekly schedule. It applies to the chosen date only and shows as a make-up on the board and in Clinic Schedule.'
+                  : 'This hour applies to the chosen date only. It never repeats, and it does not appear on the weekly grid.'}
               </p>
               <div>
                 <label className={LABEL} style={{ color: 'var(--mid-gray)' }} htmlFor={`ds-date-${staff.id}`}>Date</label>
@@ -2255,7 +2286,9 @@ function TherapistRow({ staff, activeBranch, sectionMode, config, slots, default
                 )
               })() : (
                 <p className="col-span-2 text-xs" style={{ color: 'var(--mid-gray)' }}>
-                  Pick the date they&apos;re coming in. Each one-off is a single one-hour slot; add another for each extra hour.
+                  {datedIsMakeup
+                    ? 'Pick the date they are coming in. The span and the number of patients decide how long each session is.'
+                    : 'Pick the date they are coming in. The span and the number of patients decide how long each slot is.'}
                 </p>
               )}
             </div>
@@ -2291,17 +2324,19 @@ function TherapistRow({ staff, activeBranch, sectionMode, config, slots, default
                           dayOfWeek: dow, startTime: piece.startTime, endTime: piece.endTime,
                           branch: activeBranch, department: staff.department, notes: null,
                           date: datedForm.date,
+                          isMakeup: datedIsMakeup,
                         })
                       }
                       setShowDatedModal(false)
+                      setDatedIsMakeup(false)
                       setDatedForm({ date: '', startTime: '09:00', endTime: '10:00', count: 1, breakStart: '', breakMinutes: 60 })
                     } finally { setDatedSaving(false) }
                   }}
                   className={BTN_PRIMARY}
-                  style={{ background: ONEOFF_FG }}>
+                  style={{ background: datedIsMakeup ? MAKEUP_FG : ONEOFF_FG }}>
                   {datedSaving
                     ? <><Loader2 size={14} className="animate-spin" aria-hidden /> Adding…</>
-                    : <><Plus size={14} aria-hidden /> Add this date</>}
+                    : <><Plus size={14} aria-hidden /> {datedIsMakeup ? 'Schedule the make-up' : 'Add this date'}</>}
                 </button>
             </div>
           </div>
@@ -2659,11 +2694,23 @@ function TherapistRow({ staff, activeBranch, sectionMode, config, slots, default
               <Plus size={12} /> Custom slot
             </button>
             {onAddDated && datedSlots.length === 0 && (
-              <button type="button" onClick={() => setShowDatedModal(true)}
+              <button type="button" onClick={() => { setDatedIsMakeup(false); setShowDatedModal(true) }}
                 className={BTN_SM}
                 title="Hours for one named date only — never repeats, not drawn on the weekly grid"
                 style={{ background: '#fff', border: '1px dashed #F9A8D4', color: ONEOFF_FG }}>
                 <CalendarPlus size={12} /> One-off date
+              </button>
+            )}
+            {/* A make-up is the same shape as a one-off — a date, an hour, a
+                patient — so it uses the same modal and the same rows. What it
+                is NOT is the same thing to the people reading the board, which
+                is why it carries its own flag and its own colour. */}
+            {onAddDated && (
+              <button type="button" onClick={() => { setDatedIsMakeup(true); setShowDatedModal(true) }}
+                className={BTN_SM}
+                title="A session replacing one the patient missed, on a day outside this clinician's weekly schedule"
+                style={{ background: '#fff', border: `1px dashed ${MAKEUP_BORDER}`, color: MAKEUP_FG }}>
+                <UserPlus size={12} /> Schedule a make-up session
               </button>
             )}
             {onAddCase && (
@@ -3509,7 +3556,7 @@ export default function DeckingClient({ role }: { role: string }) {
     }
   }
 
-  async function handleSaveSlot(data: { staffId: string; patientId: string | null; dayOfWeek: string; startTime: string; endTime: string; branch: string; department: string; notes: string | null; disabled?: boolean; isClass?: boolean; deliveryMode?: string | null; supervisorId?: string | null; date?: string | null }) {
+  async function handleSaveSlot(data: { staffId: string; patientId: string | null; dayOfWeek: string; startTime: string; endTime: string; branch: string; department: string; notes: string | null; disabled?: boolean; isClass?: boolean; deliveryMode?: string | null; supervisorId?: string | null; date?: string | null; isMakeup?: boolean }) {
     const res = await fetch('/api/decking/slots', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

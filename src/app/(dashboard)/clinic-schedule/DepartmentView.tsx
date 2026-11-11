@@ -1086,10 +1086,14 @@ export default function DepartmentView({ role, selectedDate, onDateChange }: { r
   const [staff, setStaff] = useState<StaffMember[]>([])
   const [configs, setConfigs] = useState<TherapistConfig[]>([])
   const [loading, setLoading] = useState(true)
-  // Manually-added make-up clinicians (work a session on a day that isn't on
-  // their weekly Decking schedule). Keyed by staffId.
-  const [makeupIds, setMakeupIds] = useState<string[]>([])
-  const [makeupQuery, setMakeupQuery] = useState('')
+  // Make-up sessions for tomorrow, read from Decking.
+  //
+  // This was a list of staff ids picked in a search box on this page and held
+  // nowhere else — it vanished on reload and on a branch switch, and nothing
+  // was ever written down. A make-up is now a real dated slot created in the
+  // Decking module, so this reads them back and shows what was actually
+  // arranged rather than what somebody typed into this page once.
+  const [makeupSlots, setMakeupSlots] = useState<{ staffId: string }[]>([])
   // Display-only: the roster load's error, and a counter "Try again" bumps to
   // re-run the same request.
   const [staffError, setStaffError] = useState('')
@@ -1116,8 +1120,36 @@ export default function DepartmentView({ role, selectedDate, onDateChange }: { r
       .catch(() => setConfigs([]))
   }, [])
 
-  // Reset dept filter + make-up picks when branch changes
-  useEffect(() => { setActiveDept('Tomorrow'); setMakeupIds([]); setMakeupQuery('') }, [activeBranch])
+  // Make-ups booked for tomorrow, from Decking.
+  //
+  // Dated slots are excluded from the weekly board by default, so they have to
+  // be asked for — includeDated. Filtered to tomorrow and to make-ups here
+  // rather than in the query, because the endpoint has no date filter and the
+  // list is small; what matters is that the source is the board, not this
+  // page's memory.
+  //
+  // A failure leaves the section empty rather than failing the view: the
+  // clinicians working tomorrow are the point, and a make-up that does not
+  // render is a smaller problem than a page that does not.
+  useEffect(() => {
+    const ctl = new AbortController()
+    const forDate = tomorrowStr()
+    fetch('/api/decking/slots?includeDated=1', { signal: ctl.signal })
+      .then(r => r.ok ? r.json() : [])
+      .then((rows: Array<{ staffId: string; date?: string | null; isMakeup?: boolean; branch?: string }>) => {
+        if (!Array.isArray(rows)) { setMakeupSlots([]); return }
+        setMakeupSlots(rows.filter(sl =>
+          sl.isMakeup
+          && String(sl.date ?? '').slice(0, 10) === forDate
+          && (!sl.branch || sl.branch === activeBranch)))
+      })
+      .catch(err => { if (err.name !== 'AbortError') setMakeupSlots([]) })
+    return () => ctl.abort()
+  }, [activeBranch])
+
+  // Reset the dept filter when the branch changes. The make-ups follow from
+  // the fetch below, which is branch-scoped.
+  useEffect(() => { setActiveDept('Tomorrow') }, [activeBranch])
 
   // Interns are never standalone clinicians — they hold no caseload of their
   // own and appear only as the "Select Intern" field inside a supervisor's
@@ -1148,18 +1180,14 @@ export default function DepartmentView({ role, selectedDate, onDateChange }: { r
     { dept: 'Other', list: tomorrowClinicians.filter(x => !ALL_DEPARTMENTS.includes(x.staff.department)) },
   ].filter(g => g.list.length > 0)
 
-  // Make-up clinicians: manually added, in this branch, not already auto-listed.
+  // Clinicians with a make-up booked tomorrow, from the Decking slots above.
+  // Anyone already listed as working tomorrow is left out: they are on the
+  // board for that day anyway, and a second card for the same person reads as
+  // two different sessions.
   const autoIds = new Set(tomorrowClinicians.map(x => x.staff.id))
-  const makeupClinicians = makeupIds
+  const makeupClinicians = [...new Set(makeupSlots.map(sl => sl.staffId))]
     .map(id => staffById.get(id))
-    .filter((s): s is StaffMember => !!s && !isIntern(s) && (s.branch === activeBranch || (s.extraBranches ?? []).includes(activeBranch)) && !autoIds.has(s.id))
-  // Type-ahead matches for the make-up search (exclude already-listed staff).
-  const makeupMatches = makeupQuery.trim().length > 0
-    ? branchStaff
-        .filter(s => !autoIds.has(s.id) && !makeupIds.includes(s.id) &&
-          `${s.firstName} ${s.lastName}`.toLowerCase().includes(makeupQuery.trim().toLowerCase()))
-        .slice(0, 8)
-    : []
+    .filter((s): s is StaffMember => !!s && !isIntern(s) && !autoIds.has(s.id))
 
   // ── Display-only derived values ──
   const branchName = branchLabel(activeBranch) ?? activeBranch
@@ -1346,13 +1374,12 @@ export default function DepartmentView({ role, selectedDate, onDateChange }: { r
                         <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full" style={{ background: '#FFF1E8', color: '#C2410C', border: '1px solid #FBD5BC' }}>
                           Make-up · {s.firstName} {s.lastName}
                         </span>
-                        <button
-                          type="button"
-                          onClick={() => setMakeupIds(ids => ids.filter(id => id !== s.id))}
-                          className={`${BTN_SM} cs-btn h-7`}
-                          style={{ ...CONTROL_STYLE, color: 'var(--mid-gray)' }}>
-                          <X size={12} /> Remove
-                        </button>
+                        {/* No Remove here any more. The make-up is a real
+                            dated slot now, and removing it from this view
+                            would only hide it from this page while it stayed
+                            on the board — the kind of half-deletion that makes
+                            two screens disagree. It is taken off in Decking,
+                            where it was put on. */}
                       </div>
                       <StaffCard flat staff={s} allStaff={staff} selectedDate={tomorrowDate} schedulingBranch={activeBranch} />
                     </div>
@@ -1374,52 +1401,17 @@ export default function DepartmentView({ role, selectedDate, onDateChange }: { r
               </p>
             </div>
 
-            {/* Make-up clinician search */}
-            <div className="rounded-xl p-4" style={CARD_STYLE}>
-              <p className="flex items-center gap-2 text-sm font-bold mb-2.5" style={{ color: 'var(--charcoal)', fontFamily: 'var(--font-display)' }}>
-                <UserPlus size={15} style={{ color: 'var(--teal)' }} />
-                Any clinicians who will do make up sessions?
-              </p>
-              <div style={{ position: 'relative' }}>
-                <Search size={14} aria-hidden className="absolute left-2.5 top-[18px] -translate-y-1/2 pointer-events-none" style={{ color: 'var(--mid-gray)' }} />
-                <input
-                  type="text"
-                  value={makeupQuery}
-                  onChange={e => setMakeupQuery(e.target.value)}
-                  placeholder="Search clinician name…"
-                  aria-label="Search clinician name"
-                  className={`${CONTROL} w-full pl-8`}
-                  style={CONTROL_STYLE}
-                />
-                {makeupMatches.length > 0 && (
-                  <div className="rounded-lg mt-1 overflow-hidden" style={{ border: '1px solid var(--light-gray)', background: '#fff', boxShadow: '0 8px 24px rgba(15,23,42,0.08)' }}>
-                    {makeupMatches.map(s => (
-                      <button
-                        type="button"
-                        key={s.id}
-                        onClick={() => { setMakeupIds(ids => [...ids, s.id]); setMakeupQuery('') }}
-                        className="cs-btn w-full text-left px-3 py-2 text-sm hover:bg-[#F5FAFA] flex items-center justify-between gap-2"
-                        style={{ color: 'var(--charcoal)', borderTop: '1px solid #F1F4F4' }}>
-                        <span className="flex items-center gap-2 min-w-0">
-                          <Plus size={13} className="flex-shrink-0" style={{ color: 'var(--teal)' }} />
-                          <span className="truncate">{s.firstName} {s.lastName}</span>
-                        </span>
-                        <DeptChip code={s.department} color={deptColor(s.department)} />
-                      </button>
-                    ))}
-                  </div>
-                )}
-                {makeupQuery.trim().length > 0 && makeupMatches.length === 0 && (
-                  <p className="text-xs mt-1.5" style={{ color: 'var(--mid-gray)' }}>
-                    No matching clinician in {branchName} (already-scheduled clinicians are hidden).
-                  </p>
-                )}
-              </div>
-              <p className="text-[11px] mt-2.5" style={{ color: 'var(--mid-gray)', lineHeight: 1.45 }}>
-                Add a clinician here to schedule a make-up session on a day that isn&apos;t part of their
-                weekly schedule. They&apos;ll appear under <strong>Make-up sessions</strong> on the left.
-              </p>
-            </div>
+            {/* The make-up search box is gone.
+
+                It added a clinician to a list held in this component and
+                nowhere else: the picks vanished on reload and on a branch
+                switch, and nothing was ever written down. Front desk could
+                tell the page about a make-up but not the clinic.
+
+                Make-ups are now scheduled in Decking, where they are real
+                dated slots with the clinician's hours and the patient in
+                them. This view reads them back, so what it shows is what
+                was actually arranged. */}
           </div>
         </div>
       ) : loading ? (

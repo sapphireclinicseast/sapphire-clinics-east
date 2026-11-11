@@ -1,0 +1,13 @@
+-- A dated decking slot that is a MAKE-UP session: replacing one the patient
+-- missed, on a day outside the clinician's weekly schedule.
+--
+-- The same shape as any other one-off date, because it is the same thing to
+-- the board. The flag is for the people reading it — front desk seeing which
+-- of tomorrow's sessions are make-ups, and the clinic counting them.
+--
+-- Make-ups previously existed only as unsaved state on the Clinic Schedule
+-- page: a list of clinician names that vanished on reload and was never
+-- written anywhere. Nothing to migrate.
+--
+-- Guarded throughout — the deploy replays every migration on every run.
+ALTER TABLE "DeckingSlot" ADD COLUMN IF NOT EXISTS "isMakeup" BOOLEAN NOT NULL DEFAULT false;
