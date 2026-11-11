@@ -5,7 +5,7 @@
 // renewal popup and the bell read the MOA date saved here.
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import { ChevronDown, ChevronRight, ExternalLink, FileText, Loader2, Pencil, Search, X } from 'lucide-react'
+import { ChevronDown, ChevronRight, ExternalLink, FileText, Loader2, Pencil, Search, Tag, X } from 'lucide-react'
 import { ScanUpload } from '@/components/ScanUpload'
 import { NameCombobox } from '@/components/NameCombobox'
 import { formatCurrency } from '@/lib/utils'
@@ -284,8 +284,8 @@ export default function HmoDirectoryTab({ canEdit, focusWalletId = '' }: { canEd
   const [missingOnly, setMissingOnly] = useState(false)
   // Rows flipped from their default: closed normally, open while searching.
   const [toggledRows, setToggledRows] = useState<Set<string>>(new Set())
-  // Same idea for a row's prices: showing normally, hidden while searching.
-  const [flippedPrices, setFlippedPrices] = useState<Set<string>>(new Set())
+  // A row's prices open in a popup (Hannah 11/11: the inline list was too long).
+  const [pricesFor, setPricesFor] = useState<{ hmoName: string; category: string } | null>(null)
   const [form, setForm] = useState<Form | null>(null)
   const [saving, setSaving] = useState(false)
   const [formError, setFormError] = useState('')
@@ -365,12 +365,13 @@ export default function HmoDirectoryTab({ canEdit, focusWalletId = '' }: { canEd
     return next
   })
 
-  const togglePrices = (walletId: string) => setFlippedPrices(prev => {
-    const next = new Set(prev)
-    if (next.has(walletId)) next.delete(walletId)
-    else next.add(walletId)
-    return next
-  })
+  // Escape closes the prices popup.
+  useEffect(() => {
+    if (!pricesFor) return
+    const onKey = (ev: KeyboardEvent) => { if (ev.key === 'Escape') setPricesFor(null) }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [pricesFor])
 
   const categoryNames = categories.map(c => c.name)
   const formMatches = form ? categoriesMatching(form.hmoName, categoryNames) : []
@@ -408,7 +409,6 @@ export default function HmoDirectoryTab({ canEdit, focusWalletId = '' }: { canEd
       <div className="space-y-2">
       {shown.map(e => {
         const chosen = e.serviceCategory || ''
-        const pricesOpen = !!chosen && flippedPrices.has(e.walletId) === !!search.trim()
         const isOpen = toggledRows.has(e.walletId) !== !!search.trim()
         const branches = ACCREDITABLE_BRANCHES.filter(b => (e.accreditedBranches || []).includes(b.value))
         const missing = missingByWallet.get(e.walletId) || []
@@ -490,12 +490,12 @@ export default function HmoDirectoryTab({ canEdit, focusWalletId = '' }: { canEd
                   <span className={chosen ? undefined : 'font-medium'} style={{ color: chosen ? 'var(--charcoal)' : MISSING_RED }}>{chosen || (canEdit ? 'Not chosen yet. Choose it in Edit.' : 'Not chosen yet')}</span>
                 </p>
                 {chosen && (
-                  <button onClick={() => togglePrices(e.walletId)} className="inline-flex items-center gap-1 text-xs font-medium" style={{ color: 'var(--teal)' }}>
-                    {pricesOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />} {pricesOpen ? 'Hide prices' : 'Show prices'}
+                  <button onClick={() => setPricesFor({ hmoName: e.hmoName, category: chosen })}
+                    className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium border" style={{ borderColor: 'var(--teal)', color: 'var(--teal)' }}>
+                    <Tag size={12} /> View prices
                   </button>
                 )}
               </div>
-              {pricesOpen && <ServicePrices category={chosen} />}
             </div>
             </div>
             )}
@@ -503,6 +503,22 @@ export default function HmoDirectoryTab({ canEdit, focusWalletId = '' }: { canEd
         )
       })}
       </div>
+
+      {pricesFor && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4" onClick={() => setPricesFor(null)}>
+          <div role="dialog" aria-modal="true" aria-labelledby="hmo-prices-title" onClick={ev => ev.stopPropagation()}
+            className="bg-white rounded-2xl w-full max-w-3xl max-h-[85vh] flex flex-col">
+            <div className="flex items-start justify-between gap-3 px-6 pt-5 pb-3 border-b" style={{ borderColor: 'var(--light-gray)' }}>
+              <div className="min-w-0">
+                <h2 id="hmo-prices-title" className="text-lg font-bold" style={{ color: 'var(--charcoal)' }}>{pricesFor.hmoName} prices</h2>
+                <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>Services under {pricesFor.category} in the Services section</p>
+              </div>
+              <button onClick={() => setPricesFor(null)} aria-label="Close"><X size={18} style={{ color: 'var(--mid-gray)' }} /></button>
+            </div>
+            <div className="px-6 pb-5 overflow-y-auto"><ServicePrices category={pricesFor.category} /></div>
+          </div>
+        </div>
+      )}
 
       {form && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4">
