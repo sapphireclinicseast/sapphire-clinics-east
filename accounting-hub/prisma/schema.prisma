@@ -1060,6 +1060,7 @@ model HmoDirectory {
   priceListFileUrls   Json          @default("[]") // Price list PDFs submitted to the HMO, newest first.
   mdPayment           String? // DOCTOR_DIRECT | CLINIC; blank until someone records it
   soaSubmission       String? // EMAIL | COURIER | EMAIL_AND_COURIER — how this HMO takes our SOAs
+  logoUrl             String? // The HMO's logo (an /api/files/ image), shown on its directory card
   earlyDiscountPct    Decimal?
   earlyDiscountDays   Int?
   earlyDiscountNotes  String?

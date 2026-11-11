@@ -40,6 +40,8 @@ const isAccreditable = (v: unknown): v is AccreditableBranch =>
 // counts as untagged, i.e. for every branch.
 export type PriceListFile = { url: string; branch: AccreditableBranch | null }
 const isPdfUrl = (u: unknown): u is string => typeof u === 'string' && u.startsWith('/api/files/') && /\.pdf$/i.test(u)
+// The HMO's logo (Hannah 11/11: a photo section with the HMO logo): one uploaded image.
+export const isLogoUrl = (u: unknown): u is string => typeof u === 'string' && u.startsWith('/api/files/') && /\.(png|jpe?g|webp)$/i.test(u)
 
 export function priceListFiles(v: unknown): PriceListFile[] {
   return (Array.isArray(v) ? v : []).flatMap((x): PriceListFile[] => {
@@ -99,6 +101,7 @@ export interface HmoDirectoryFields {
   earlyDiscountNotes: string | null
   loaApplicationUrl: string | null
   serviceCategory: string | null
+  logoUrl: string | null
 }
 
 // What an HMO's directory card still lacks, in the order the card shows it.
@@ -175,6 +178,11 @@ export function cleanDirectoryInput(body: Record<string, unknown>): { data: Part
   }
   if ('moaFileUrls' in body) data.moaFileUrls = pdfUrls(body.moaFileUrls)
   if ('priceListFileUrls' in body) data.priceListFileUrls = priceListFiles(body.priceListFileUrls)
+  if ('logoUrl' in body) {
+    if (isBlank(body.logoUrl)) data.logoUrl = null
+    else if (isLogoUrl(body.logoUrl)) data.logoUrl = body.logoUrl
+    else return { data, error: 'The logo must be a PNG, JPG or WEBP image' }
+  }
   if ('earlyDiscountNotes' in body) {
     data.earlyDiscountNotes = typeof body.earlyDiscountNotes === 'string' && body.earlyDiscountNotes.trim() ? body.earlyDiscountNotes.trim().slice(0, 500) : null
   }

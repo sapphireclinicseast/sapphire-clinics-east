@@ -10,7 +10,7 @@ import { ScanUpload } from '@/components/ScanUpload'
 import { NameCombobox } from '@/components/NameCombobox'
 import { formatCurrency } from '@/lib/utils'
 import {
-  ACCREDITABLE_BRANCHES, MD_PAYMENT_LABEL, MOA_ALERT_DAYS, SOA_SUBMISSION_LABEL, categoriesMatching, missingInfo, moaDaysLeft, moaNeedsRenewal, moaStatusText, priceListFiles,
+  ACCREDITABLE_BRANCHES, MD_PAYMENT_LABEL, MOA_ALERT_DAYS, SOA_SUBMISSION_LABEL, categoriesMatching, isLogoUrl, missingInfo, moaDaysLeft, moaNeedsRenewal, moaStatusText, priceListFiles,
   type AccreditableBranch, type MdPayment, type PriceListFile, type SoaSubmission,
 } from '@/lib/hmo-directory'
 
@@ -42,6 +42,7 @@ type Entry = Partial<Record<ContactField, string | null>> & {
   earlyDiscountNotes?: string | null
   loaApplicationUrl?: string | null
   serviceCategory?: string | null
+  logoUrl?: string | null
   updatedByName?: string | null
   updatedAt?: string
 }
@@ -71,6 +72,7 @@ type Form = Record<ContactField, string> & {
   earlyDiscountNotes: string
   loaApplicationUrl: string
   serviceCategory: string
+  logoUrl: string
 }
 
 const BRANCH_LABEL: Record<string, string> = { SANDBOX_EAST: 'East', SANDBOX_GREENHILLS: 'Greenhills', VERDANA_STORE: 'Verdana', ALL: 'All branches' }
@@ -96,11 +98,24 @@ function toForm(e: Entry): Form {
     earlyDiscountNotes: e.earlyDiscountNotes || '',
     loaApplicationUrl: e.loaApplicationUrl || '',
     serviceCategory: e.serviceCategory || '',
+    logoUrl: e.logoUrl || '',
   } as Form
   for (const c of CONTACTS) {
     for (const f of ['Name', 'Email', 'Number'] as const) form[`${c.key}${f}`] = e[`${c.key}${f}`] || ''
   }
   return form
+}
+
+// The HMO's logo on a white tile; nothing when none is saved.
+function HmoLogo({ url, name, size }: { url?: string | null; name: string; size: 'row' | 'form' }) {
+  if (!url) return null
+  const box = size === 'row' ? 'h-7 w-24 px-1.5' : 'h-16 w-44 p-2'
+  return (
+    <span className={`inline-flex flex-none items-center justify-center rounded-lg border bg-white ${box}`} style={{ borderColor: 'var(--light-gray)' }}>
+      {/* eslint-disable-next-line @next/next/no-img-element -- uploaded file served by /api/files, not a static asset */}
+      <img src={url} alt={`${name} logo`} className="max-h-full max-w-full object-contain" />
+    </span>
+  )
 }
 
 function MoaBadge({ validUntil }: { validUntil?: string | null }) {
@@ -402,6 +417,7 @@ export default function HmoDirectoryTab({ canEdit, focusWalletId = '' }: { canEd
             <h3 className="text-sm font-bold" style={{ color: missing.length ? MISSING_RED : 'var(--charcoal)', background: missing.length ? MISSING_BG : undefined }}>
               <button type="button" aria-expanded={isOpen} onClick={() => toggleRow(e.walletId)} className="w-full flex flex-wrap items-center gap-2 px-4 py-3 text-left">
                 {isOpen ? <ChevronDown size={16} style={{ color: 'var(--mid-gray)' }} /> : <ChevronRight size={16} style={{ color: 'var(--mid-gray)' }} />}
+                <HmoLogo url={e.logoUrl} name={e.hmoName} size="row" />
                 <span>{e.hmoName}</span>
                 <MoaBadge validUntil={e.moaValidUntil} />
                 {missing.length > 0 && (
@@ -495,6 +511,26 @@ export default function HmoDirectoryTab({ canEdit, focusWalletId = '' }: { canEd
               <h2 className="text-lg font-bold" style={{ color: 'var(--charcoal)' }}>{form.hmoName}</h2>
               <button onClick={() => setForm(null)} aria-label="Close"><X size={18} style={{ color: 'var(--mid-gray)' }} /></button>
             </div>
+
+            <section>
+              <p className="text-sm font-semibold mb-2" style={{ color: 'var(--charcoal)' }}>Logo</p>
+              <div className="flex flex-wrap items-center gap-3">
+                {form.logoUrl
+                  ? <HmoLogo url={form.logoUrl} name={form.hmoName} size="form" />
+                  : <span className="inline-flex h-16 w-44 items-center justify-center rounded-lg border border-dashed text-xs" style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>No logo yet</span>}
+                <div className="space-y-1">
+                  <ScanUpload prefix={`LOGO-${form.hmoName}`} section="hmo-directory" existingCount={form.logoUrl ? 1 : 0} accept="image/png,image/jpeg,image/webp"
+                    label={form.logoUrl ? 'Replace logo' : 'Upload logo'} compact qr={false}
+                    onUploaded={u => {
+                      if (!isLogoUrl(u)) { setFormError('The logo must be a PNG, JPG or WEBP image.'); return }
+                      setForm(f => (f ? { ...f, logoUrl: u } : f))
+                    }} />
+                  {form.logoUrl && (
+                    <button type="button" onClick={() => setForm(f => (f ? { ...f, logoUrl: '' } : f))} className="block text-xs underline" style={{ color: 'var(--mid-gray)' }}>Remove logo</button>
+                  )}
+                </div>
+              </div>
+            </section>
 
             <section>
               <p className="text-sm font-semibold mb-2" style={{ color: 'var(--charcoal)' }}>Accredited branches</p>
