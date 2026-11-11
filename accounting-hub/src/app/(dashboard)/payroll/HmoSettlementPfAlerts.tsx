@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { AlertTriangle, ChevronRight, Loader2 } from 'lucide-react'
+import { AlertTriangle, CheckCircle2, ChevronRight, Loader2 } from 'lucide-react'
 import { formatCurrency, formatDate } from '@/lib/utils'
 
 interface PfAlert {
@@ -51,8 +51,10 @@ function cutoffOptions(today = new Date()): string[] {
  * when the sale was later decreased to what the HMO paid ("Decrease due to HMO
  * Payment"). Nothing is deducted until the payroll officer picks the cutoff to
  * deduct it in and presses Record — that cutoff's payslip then carries the PF
- * recovery line. Recorded rows drop out of the list (and the bell) unless "Show
- * settled" is ticked; Undo takes the line off the payslip again.
+ * recovery line. Recorded rows stay listed in green with their cutoff and an
+ * Undo that takes the line off the payslip again — the same as PF Above Price
+ * (Hannah 2026-11-11); "Hide deducted" leaves only the open ones. The bell and
+ * the banner count open rows only.
  */
 export default function HmoSettlementPfAlerts({ canWrite, variant = 'full', onOpen, onCount }: {
   canWrite: boolean
@@ -63,18 +65,19 @@ export default function HmoSettlementPfAlerts({ canWrite, variant = 'full', onOp
   onCount?: (n: number) => void
 }) {
   const [alerts, setAlerts] = useState<PfAlert[] | null>(null)
-  const [showSettled, setShowSettled] = useState(false)
+  const [hideDeducted, setHideDeducted] = useState(false)
   const [cutoffFor, setCutoffFor] = useState<Record<string, string>>({})
   const [busyId, setBusyId] = useState('')
   const [error, setError] = useState('')
   const options = useMemo(() => cutoffOptions(), [])
 
   const load = useCallback(() => {
-    fetch(`/api/payroll/hmo-settlement-alerts${showSettled && variant === 'full' ? '?settled=1' : ''}`)
+    // The full section always loads the recorded rows too, so each can be undone.
+    fetch(`/api/payroll/hmo-settlement-alerts${variant === 'full' ? '?settled=1' : ''}`)
       .then(r => (r.ok ? r.json() : { alerts: [] }))
       .then(d => setAlerts(Array.isArray(d.alerts) ? d.alerts : []))
       .catch(() => setAlerts([]))
-  }, [showSettled, variant])
+  }, [variant])
   useEffect(() => { load() }, [load])
 
   const open = useMemo(() => (alerts || []).filter(a => !a.settled), [alerts])
@@ -126,20 +129,22 @@ export default function HmoSettlementPfAlerts({ canWrite, variant = 'full', onOp
   if (alerts === null) {
     return <p className="text-xs flex items-center gap-2" style={{ color: 'var(--mid-gray)' }}><Loader2 size={13} className="animate-spin" /> Loading…</p>
   }
-  const list = alerts
+  const deducted = alerts.filter(a => a.settled).length
+  const list = hideDeducted ? open : alerts
   const settledToggle = (
-    <label className="flex items-center gap-1.5 text-xs font-medium cursor-pointer select-none" style={{ color: 'var(--charcoal)' }}>
-      <input type="checkbox" checked={showSettled} onChange={e => setShowSettled(e.target.checked)} />
-      Show settled
+    <label className="flex items-center gap-1.5 text-xs cursor-pointer select-none" style={{ color: 'var(--charcoal)' }}>
+      <input type="checkbox" checked={hideDeducted} onChange={e => setHideDeducted(e.target.checked)} />
+      Hide deducted
     </label>
   )
 
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        {open.length
-          ? <p className="flex items-center gap-2 text-sm font-semibold" style={{ color: '#92400e' }}><AlertTriangle size={16} /> {headline}</p>
-          : <p className="text-sm" style={{ color: 'var(--mid-gray)' }}>No PF left to recover.</p>}
+        <p className="flex flex-wrap items-center gap-x-2 text-sm font-semibold" style={{ color: open.length ? '#92400e' : 'var(--mid-gray)' }}>
+          {open.length ? <><AlertTriangle size={16} /> {headline}</> : <span className="font-normal">No PF left to recover.</span>}
+          {deducted > 0 && <span className="text-xs" style={{ color: '#166534' }}>· {deducted} deducted</span>}
+        </p>
         {settledToggle}
       </div>
       <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>
@@ -147,8 +152,8 @@ export default function HmoSettlementPfAlerts({ canWrite, variant = 'full', onOp
         billed amount — a voided session earns no PF, so all of it is overpaid (unless it was re-entered as a corrected order for the
         same patient, day and clinician, which keeps the PF). Nothing is deducted until you pick the cutoff to deduct it in and
         press <strong>Record</strong>: that cutoff&apos;s payslip for the consultant, at the branch that paid the PF, then carries a
-        highlighted <strong>PF recovery</strong> line (generate or re-save it to pick the line up). The row hides (tick
-        <strong> Show settled</strong> to see it again); <strong>Undo</strong> takes the line off that payslip. If that cutoff&apos;s payslip is
+        highlighted <strong>PF recovery</strong> line (generate or re-save it to pick the line up) and the row turns green.
+        <strong> Undo</strong> takes the line off that payslip again and puts the row back to open. If that cutoff&apos;s payslip is
         already final or locked you&apos;ll be asked whether it was deducted there by hand. <strong>Outside hub</strong> = the session&apos;s payroll was run
         before the hub (Jan–Mar 2026): PF paid is the rule at the billed amount, so confirm it against the payslip.
       </p>
@@ -156,7 +161,7 @@ export default function HmoSettlementPfAlerts({ canWrite, variant = 'full', onOp
 
       {!list.length ? (
         <div className="rounded-xl border px-4 py-6 text-sm text-center" style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>
-          {showSettled ? 'Nothing recorded yet.' : 'When a session is decreased with “Decrease due to HMO Payment”, or its HMO order is voided, after its PF was released, it appears here.'}
+          {hideDeducted && alerts.length ? 'Every session here has been deducted.' : 'When a session is decreased with “Decrease due to HMO Payment”, or its HMO order is voided, after its PF was released, it appears here.'}
         </div>
       ) : (
         <div className="overflow-x-auto rounded-xl border bg-white" style={{ borderColor: '#fde68a' }}>
@@ -171,7 +176,7 @@ export default function HmoSettlementPfAlerts({ canWrite, variant = 'full', onOp
             <tbody>
               {list.map((a, i) => (
                 <tr key={`${a.settlementId}-${a.consultant}-${a.cutoffPeriod}-${i}`} className="border-t"
-                  style={{ borderColor: '#fef3c7', ...(a.settled ? { background: '#f8fafc', color: 'var(--mid-gray)' } : {}) }}>
+                  style={a.settled ? { borderColor: '#bbf7d0', background: '#dcfce7' } : { borderColor: '#fef3c7' }}>
                   <td className="px-2 py-1.5 whitespace-nowrap font-medium">{a.consultant}</td>
                   <td className="px-2 py-1.5 whitespace-nowrap">
                     {a.source === 'HUB' && a.cutoffPeriod
@@ -188,15 +193,15 @@ export default function HmoSettlementPfAlerts({ canWrite, variant = 'full', onOp
                   </td>
                   <td className="px-2 py-1.5 whitespace-nowrap">{formatCurrency(a.pfPaid)}{a.quantity !== 1 ? ` × ${a.quantity}` : ''}</td>
                   <td className="px-2 py-1.5 whitespace-nowrap">{formatCurrency(a.pfPolicy)}</td>
-                  <td className={`px-2 py-1.5 font-semibold whitespace-nowrap ${a.settled ? '' : 'text-red-700'}`}>{formatCurrency(a.overpaid)}</td>
+                  <td className="px-2 py-1.5 font-semibold whitespace-nowrap" style={{ color: a.settled ? '#166534' : '#b91c1c' }}>{formatCurrency(a.overpaid)}</td>
                   <td className="px-2 py-1.5 whitespace-nowrap">
                     {a.settled ? (
                       <span className="flex items-center gap-2">
-                        <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold" style={{ background: '#dcfce7', color: '#166534' }}
+                        <span className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold" style={{ background: '#bbf7d0', color: '#166534' }}
                           title={[a.resolvedBy && `Recorded by ${a.resolvedBy}`, a.resolvedAt && formatDate(a.resolvedAt),
                             a.resolvedNote?.toLowerCase().startsWith('by hand') ? `Deducted by hand${a.resolvedNote.length > 7 ? ` ${a.resolvedNote.slice(7)}` : ''}` : 'On that cutoff\'s payslip as a PF recovery line',
                             a.resolvedNote && !a.resolvedNote.toLowerCase().startsWith('by hand') ? a.resolvedNote : null].filter(Boolean).join(' · ')}>
-                          {a.deductedCutoff ? cutoffLabel(a.deductedCutoff) : 'Settled'}
+                          <CheckCircle2 size={11} /> {a.deductedCutoff ? cutoffLabel(a.deductedCutoff) : 'Settled'}
                         </span>
                         {canWrite && (
                           <button onClick={() => undo(a.settlementId)} disabled={busyId === a.settlementId}
