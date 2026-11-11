@@ -2009,6 +2009,20 @@ export default function ReportsPage() {
         }
       }
       if (sbpData.netRows?.length) section('Net Sales', sbpData.netRows, sbpData.netTotals, sbpData.monthlyNet)
+      // Net sales by department by month — the Monthly view's grid, one per measure.
+      if (sbpData.netRows?.length && sbpData.monthlyNet?.length) {
+        const ms = Array.from({ length: sbpData.to - sbpData.from + 1 }, (_, i) => sbpData.from + i)
+        for (const [k, lbl] of [['total', 'Net Sales'], ['cash', 'Cash — net sales'], ['gl', 'GL — net sales'], ['hmo', 'HMO — net sales']] as const) {
+          rows.push([])
+          rows.push([`${lbl} by department — monthly`, ...ms.map(m => MON[m - 1]), 'Total'])
+          for (const r of sbpData.netRows) {
+            const cells = ms.map(m => sbpData.monthlyNet.find(x => x.number === r.number && x.month === m)?.[k] || 0)
+            rows.push([r.number === 'DISC' ? r.title : `${r.number} ${r.title}`, ...cells.map(v => v.toFixed(2)), r[k].toFixed(2)])
+          }
+          const tot = ms.map(m => sbpData.monthlyNet.filter(x => x.month === m).reduce((t, x) => t + x[k], 0))
+          rows.push(['Total', ...tot.map(v => v.toFixed(2)), sbpData.netTotals[k].toFixed(2)])
+        }
+      }
       section('Gross Sales', sbpData.rows, sbpData.totals, sbpData.monthly)
       if (sbpData.cashMethods.length) {
         rows.push([])

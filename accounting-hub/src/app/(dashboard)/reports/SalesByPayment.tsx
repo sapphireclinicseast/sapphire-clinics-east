@@ -57,6 +57,12 @@ export default function SalesByPayment({ year, branch, onData }: {
   // lines or one line picked below) — Hannah 2026-11-11.
   const [view, setView] = useState<'summary' | 'monthly'>('summary')
   const [line, setLine] = useState('')
+  // Monthly view layout: one row per department with months as columns (the
+  // income-statement grid — Hannah 2026-11-11: "monthly view by department"),
+  // or one row per month for a picked line. Cells show the net (or gross) sales,
+  // or one payment type's share of them.
+  const [layout, setLayout] = useState<'departments' | 'months'>('departments')
+  const [metric, setMetric] = useState<'total' | 'cash' | 'gl' | 'hmo'>('total')
   // Net sales (after discounts — the default; PWD/SC discounts sit mostly on
   // cash-paying patients, so gross overstates Cash) or gross sales. Hannah 2026-11-11.
   const [basis, setBasis] = useState<'net' | 'gross'>('net')
@@ -117,7 +123,25 @@ export default function SalesByPayment({ year, branch, onData }: {
             </button>
           ))}
         </div>
-      ) : (
+      ) : (<>
+        <div className="flex items-center rounded-lg overflow-hidden" style={{ border: '1px solid var(--light-gray)' }}>
+          {([['departments', 'By department'], ['months', 'By month']] as const).map(([k, l]) => (
+            <button key={k} type="button" onClick={() => setLayout(k)} className="px-2.5 py-1.5 text-xs font-medium"
+              style={layout === k ? { background: 'var(--teal)', color: 'white' } : { background: 'white', color: 'var(--charcoal)' }}>
+              {l}
+            </button>
+          ))}
+        </div>
+        {layout === 'departments' ? (
+          <div className="flex items-center rounded-lg overflow-hidden" style={{ border: '1px solid var(--light-gray)' }} aria-label="Show in each month">
+            {([['total', basis === 'net' ? 'Net sales' : 'Gross sales'], ['cash', 'Cash'], ['gl', 'GL'], ['hmo', 'HMO']] as const).map(([k, l]) => (
+              <button key={k} type="button" onClick={() => setMetric(k)} className="px-2.5 py-1.5 text-xs font-medium"
+                style={metric === k ? { background: '#475569', color: 'white' } : { background: 'white', color: 'var(--charcoal)' }}>
+                {l}
+              </button>
+            ))}
+          </div>
+        ) : (
         <select value={line} onChange={e => setLine(e.target.value)} aria-label="Sales line"
           className="px-2 py-1.5 rounded-lg text-xs" style={{ border: '1px solid var(--light-gray)' }}>
           <option value="">All {basis === 'net' ? 'net' : 'gross'} sales</option>
@@ -125,7 +149,8 @@ export default function SalesByPayment({ year, branch, onData }: {
             <option key={r.number} value={r.number}>{r.number === 'DISC' ? r.title : `${r.number} ${r.title}`}</option>
           ))}
         </select>
-      )}
+        )}
+      </>)}
     </div>
   )
 
@@ -150,11 +175,11 @@ export default function SalesByPayment({ year, branch, onData }: {
     return { month, cash: sum('cash'), gl: sum('gl'), hmo: sum('hmo'), other: sum('other'), total: sum('total') }
   })
   const pickedRow = line ? srcRows.find(r => r.number === line) : null
-  const T = view === 'monthly' && pickedRow
+  const T = view === 'monthly' && layout === 'months' && pickedRow
     ? { cash: pickedRow.cash, gl: pickedRow.gl, hmo: pickedRow.hmo, other: pickedRow.other, total: pickedRow.total }
     : srcTotals
   // Gross shares beside the net ones, so the discount skew is visible.
-  const grossPicked = view === 'monthly' && line ? data.rows.find(r => r.number === line) : null
+  const grossPicked = view === 'monthly' && layout === 'months' && line ? data.rows.find(r => r.number === line) : null
   const G = grossPicked || data.totals
   const showOther = (view === 'monthly' ? monthRows : srcRows).some(r => Math.abs(r.other) >= 0.5)
   const cols = COLS.filter(c => c.key !== 'other' || showOther)
@@ -193,7 +218,68 @@ export default function SalesByPayment({ year, branch, onData }: {
         ))}
       </div>
 
-      {view === 'monthly' && (
+      {view === 'monthly' && layout === 'departments' && (() => {
+        const monthsIn = Array.from({ length: data.to - data.from + 1 }, (_, i) => data.from + i)
+        const cellOf = (num: string, month: number) => srcMonthly.find(x => x.number === num && x.month === month)
+        const val = (c: { cash: number; gl: number; hmo: number; total: number } | undefined) => (c ? (metric === 'total' ? c.total : c[metric]) : 0)
+        const colTotals = monthsIn.map(m => {
+          const own = srcMonthly.filter(x => x.month === m)
+          const t = (k: 'cash' | 'gl' | 'hmo' | 'total') => own.reduce((a, x) => a + x[k], 0)
+          return { cash: t('cash'), gl: t('gl'), hmo: t('hmo'), total: t('total') }
+        })
+        const grand = colTotals.reduce((a, c) => ({ cash: a.cash + c.cash, gl: a.gl + c.gl, hmo: a.hmo + c.hmo, total: a.total + c.total }), { cash: 0, gl: 0, hmo: 0, total: 0 })
+        const metricLabel = metric === 'total' ? basisLabel : `${COLS.find(c => c.key === metric)?.label} — ${basisLabel.toLowerCase()}`
+        const cellBox = (c: { cash: number; gl: number; hmo: number; total: number } | undefined, bold: boolean) => {
+          const v = val(c)
+          return (
+            <>
+              <span className={bold ? 'font-semibold' : ''} style={{ color: v < 0 ? '#b91c1c' : bold ? '#111827' : 'var(--charcoal)' }}>{Math.abs(v) < 0.5 ? '—' : fmt(v)}</span>
+              {metric !== 'total' && c && Math.abs(v) >= 0.5 && (
+                <span className="block text-[10px]" style={{ color: 'var(--mid-gray)' }}>{pct(v, c.total)}</span>
+              )}
+            </>
+          )
+        }
+        return (
+          <div className="rounded-lg overflow-x-auto bg-white" style={{ border: '1px solid var(--light-gray)' }}>
+            <table className="w-full table-auto">
+              <thead>
+                <tr style={{ background: 'var(--hr-head)' }}>
+                  <th className="sticky left-0 z-10 px-2 py-2 text-left text-[11px] font-bold uppercase tracking-[.4px]" style={{ color: 'var(--mid-gray)', background: 'var(--hr-head)' }}>
+                    {metric !== 'total' && <Swatch fill={COLS.find(c => c.key === metric)!.fill} />}{metricLabel} by department
+                  </th>
+                  {monthsIn.map(m => (
+                    <th key={m} className="px-2 py-2 text-right text-[11px] font-bold uppercase tracking-[.4px]" style={{ color: 'var(--mid-gray)' }}>{MONTHS[m - 1].slice(0, 3)}</th>
+                  ))}
+                  <th className="px-2 py-2 text-right text-[11px] font-bold uppercase tracking-[.4px]" style={{ color: 'var(--mid-gray)', borderLeft: '2px solid #94a3b8' }}>Total</th>
+                </tr>
+              </thead>
+              <tbody>
+                {srcRows.map(r => (
+                  <tr key={r.number} className="cursor-pointer hover:bg-slate-50" style={{ borderTop: '1px solid var(--light-gray)' }}
+                    onClick={() => { setLine(r.number); setLayout('months') }} title="Open this department by month, with the chart">
+                    <td className={`sticky left-0 bg-white px-2 py-1.5 text-xs whitespace-nowrap max-w-[200px] truncate ${r.number === 'DISC' ? 'italic' : ''}`}
+                      style={{ color: r.number === 'DISC' ? 'var(--mid-gray)' : 'var(--charcoal)' }} title={rowLabel(r)}>{rowLabel(r)}</td>
+                    {monthsIn.map(m => (
+                      <td key={m} className="px-1.5 py-1.5 text-right tabular-nums text-xs whitespace-nowrap">{cellBox(cellOf(r.number, m), false)}</td>
+                    ))}
+                    <td className="px-2 py-1.5 text-right tabular-nums text-xs whitespace-nowrap" style={{ borderLeft: '2px solid #94a3b8' }}>{cellBox(r, true)}</td>
+                  </tr>
+                ))}
+                <tr style={{ borderTop: '2px solid #94a3b8', background: '#f8fafc' }}>
+                  <td className="sticky left-0 px-2 py-1.5 text-xs font-semibold whitespace-nowrap" style={{ color: 'var(--charcoal)', background: '#f8fafc' }}>Total {basisLabel}</td>
+                  {colTotals.map((c, i) => (
+                    <td key={i} className="px-2 py-1.5 text-right tabular-nums text-xs whitespace-nowrap">{cellBox(c, true)}</td>
+                  ))}
+                  <td className="px-2 py-1.5 text-right tabular-nums text-xs whitespace-nowrap" style={{ borderLeft: '2px solid #94a3b8' }}>{cellBox(grand, true)}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        )
+      })()}
+
+      {view === 'monthly' && layout === 'months' && (
         <PaymentMixChart
           months={monthRows.map(r => ({ month: r.month, label: MONTHS[r.month - 1].slice(0, 3), cash: r.cash, gl: r.gl, hmo: r.hmo, other: r.other, total: r.total }))}
           series={cols}
@@ -201,7 +287,7 @@ export default function SalesByPayment({ year, branch, onData }: {
         />
       )}
 
-      {view === 'monthly' && (
+      {view === 'monthly' && layout === 'months' && (
         <div className="rounded-lg overflow-x-auto bg-white" style={{ border: '1px solid var(--light-gray)' }}>
           <table className="w-full table-auto">
             <thead>
