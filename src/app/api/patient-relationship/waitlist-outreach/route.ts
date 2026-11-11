@@ -17,7 +17,7 @@ import { encodeHeaderWord, formatFromHeader } from '@/lib/email-headers'
 import { getBranchNotifyConfig, getBranchSender, type BranchNotifyConfig } from '@/lib/branch-notify-config'
 import { hrFetch, serviceLabelsFrom, waitlistSources, SERVICE_QUESTION } from '@/lib/waitlist-source'
 import {
-  buildOutreachEmail, buildOutreachSms, contactFrom, type OutreachChannel,
+  buildOutreachEmail, buildOutreachSms, contactFrom, smsSize, type OutreachChannel,
 } from '@/lib/waitlist-outreach'
 
 export const maxDuration = 30
@@ -78,6 +78,15 @@ export async function POST(req: NextRequest) {
   // `confirmResend` is the browser saying the person was shown when this last
   // went out and chose to send it again.
   const confirmResend = body.confirmResend === true
+  // A dry run does everything a real send does — reads the submission, builds
+  // the words, resolves the branch mailbox — and then stops. Nothing leaves the
+  // building and nothing is logged.
+  //
+  // It exists because the alternative way to find out what this sends was to
+  // send it, and every row on that page is a real family. It also feeds the
+  // preview front desk see before the first send, so the thing they approve is
+  // the thing that goes out, rather than a sentence describing it.
+  const dryRun = body.dryRun === true
 
   if (!formId || !submissionId) {
     return NextResponse.json({ error: 'formId and submissionId are required' }, { status: 400 })
@@ -97,7 +106,10 @@ export async function POST(req: NextRequest) {
     where: { formId, submissionId, channel },
     orderBy: { sentAt: 'desc' },
   })
-  if (prior && !confirmResend) {
+  // A dry run never blocks on this — it is how you find out what a resend
+  // would say. The previous send is reported alongside the preview instead, so
+  // the modal can show both at once.
+  if (prior && !confirmResend && !dryRun) {
     return NextResponse.json({
       needsConfirm: true,
       lastSentAt: prior.sentAt,
@@ -173,6 +185,16 @@ export async function POST(req: NextRequest) {
       }, { status: 503 })
     }
 
+    // Everything above is the real path — the submission, the words, the
+    // mailbox. This is the last moment before it leaves.
+    if (dryRun) {
+      return NextResponse.json({
+        dryRun: true, channel, sentTo: contact.email, from: sender.email,
+        fromName: cfg.brandName, subject: built.subject, message: built.text,
+        services, previouslySentAt: prior?.sentAt ?? null, previouslySentTo: prior?.sentTo ?? null,
+      })
+    }
+
     try {
       const gmail = await getGmailClient(sender.refreshToken)
       await gmail.users.messages.send({
@@ -205,6 +227,17 @@ export async function POST(req: NextRequest) {
     }
     const text = buildOutreachSms({ contact, services, cfg })
     const to = toE164(contact.phone)
+
+    if (dryRun) {
+      return NextResponse.json({
+        dryRun: true, channel, sentTo: to, from: sms.phone,
+        fromName: `Aura Health Rehab ${cfg.brandShort}`, subject: null, message: text,
+        services, previouslySentAt: prior?.sentAt ?? null, previouslySentTo: prior?.sentTo ?? null,
+        // Segments decide what this costs. Measured, not divided by 160: one
+        // character outside GSM-7 halves the budget for the whole message.
+        ...smsSize(text), length: text.length,
+      })
+    }
 
     let res: Response
     try {

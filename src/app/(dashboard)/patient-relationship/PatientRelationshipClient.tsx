@@ -2214,44 +2214,60 @@ function OutreachBtns({ item, onSent }: {
   onSent: (channel: 'EMAIL' | 'SMS', state: OutreachState) => void
 }) {
   const [busy, setBusy] = useState<'EMAIL' | 'SMS' | null>(null)
+  const [preview, setPreview] = useState<Preview | null>(null)
   const emailState: OutreachState | null = item._outreach?.EMAIL ?? null
   const smsState: OutreachState | null = item._outreach?.SMS ?? null
 
   const who = item._name || 'this family'
 
-  async function send(channel: 'EMAIL' | 'SMS', confirmResend = false) {
+  /**
+   * Fetch the preview. Nothing is sent by this — the route builds the message
+   * and stops.
+   *
+   * A confirm() could only ever describe the message; this shows it. The thing
+   * front desk approve is then the thing that goes out, which matters most on
+   * the rows where it would NOT go out: no email on the form, a branch mailbox
+   * that is not connected. Those surface here rather than after a click that
+   * reads as "sent".
+   */
+  async function openPreview(channel: 'EMAIL' | 'SMS') {
     if (busy) return
-    const label = channel === 'EMAIL' ? 'email' : 'SMS'
-    if (!confirmResend && !confirm(
-      `Send the "we have slots available" ${label} to ${who}?\n\n`
-      + `It goes from the ${item._branch === 'SBGH' ? 'Greenhills' : 'East'} branch `
-      + `${channel === 'EMAIL' ? 'mailbox' : 'mobile number'} and names the services they asked about.`
-    )) return
-
     setBusy(channel)
     try {
       const r = await fetch('/api/patient-relationship/waitlist-outreach', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          formId: item._formId, submissionId: item.landing_id, channel, confirmResend,
+          formId: item._formId, submissionId: item.landing_id, channel, dryRun: true,
         }),
       })
       const d = await r.json()
+      if (!r.ok) { setPreview({ channel, error: d.error || `Could not build the message (${r.status})` }); return }
+      setPreview({ channel, ...d })
+    } catch (e) {
+      setPreview({ channel, error: (e as Error).message })
+    } finally {
+      setBusy(null)
+    }
+  }
 
-      if (r.status === 409 && d.needsConfirm) {
-        const when = new Date(d.lastSentAt).toLocaleString('en-PH', {
-          dateStyle: 'medium', timeStyle: 'short',
-        })
-        const by = d.lastSentByName ? ` by ${d.lastSentByName}` : ''
-        setBusy(null)
-        if (confirm(
-          `${who} was already sent this ${label} on ${when}${by}, to ${d.lastSentTo}.\n\n`
-          + `Send it again?`
-        )) await send(channel, true)
-        return
-      }
-
+  /** Send for real. Only ever reached from the preview's own button. */
+  async function confirmSend() {
+    if (!preview || preview.error) return
+    const channel = preview.channel
+    setBusy(channel)
+    try {
+      const r = await fetch('/api/patient-relationship/waitlist-outreach', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          formId: item._formId, submissionId: item.landing_id, channel,
+          // The preview already showed when the last one went out, so the
+          // 409 round trip would be asking a question already answered.
+          confirmResend: true,
+        }),
+      })
+      const d = await r.json()
       if (!r.ok) throw new Error(d.error || `Send failed (${r.status})`)
 
       const prev = channel === 'EMAIL' ? emailState : smsState
@@ -2261,8 +2277,9 @@ function OutreachBtns({ item, onSent }: {
         lastBy: null,
         history: [...(prev?.history ?? []), { sentAt: d.sentAt, sentTo: d.sentTo, sentByName: null }],
       })
+      setPreview(null)
     } catch (e) {
-      alert((e as Error).message)
+      setPreview(p => p ? { ...p, error: (e as Error).message } : p)
     } finally {
       setBusy(null)
     }
@@ -2283,19 +2300,143 @@ function OutreachBtns({ item, onSent }: {
 
   return (
     <>
-      <button onClick={e => { e.stopPropagation(); send('EMAIL') }} disabled={!!busy}
+      <button onClick={e => { e.stopPropagation(); openPreview('EMAIL') }} disabled={!!busy}
         className={ICON_BTN} style={style(!!emailState)}
         title={tip('EMAIL', emailState)}
-        aria-label={emailState ? `Slots email already sent to ${who}` : `Send slots email to ${who}`}>
+        aria-label={emailState ? `Slots email already sent to ${who} — review and send again` : `Review the slots email for ${who}`}>
         {busy === 'EMAIL' ? <Loader2 size={12} className="animate-spin" /> : <Mail size={12} />}
       </button>
-      <button onClick={e => { e.stopPropagation(); send('SMS') }} disabled={!!busy}
+      <button onClick={e => { e.stopPropagation(); openPreview('SMS') }} disabled={!!busy}
         className={ICON_BTN} style={style(!!smsState)}
         title={tip('SMS', smsState)}
-        aria-label={smsState ? `Slots SMS already sent to ${who}` : `Send slots SMS to ${who}`}>
+        aria-label={smsState ? `Slots SMS already sent to ${who} — review and send again` : `Review the slots SMS for ${who}`}>
         {busy === 'SMS' ? <Loader2 size={12} className="animate-spin" /> : <MessageSquare size={12} />}
       </button>
+      {preview && (
+        <OutreachPreview preview={preview} who={who} sending={!!busy}
+          onCancel={() => setPreview(null)} onSend={confirmSend} />
+      )}
     </>
+  )
+}
+
+/** What the dry run came back with, or why it could not be built. */
+interface Preview {
+  channel: 'EMAIL' | 'SMS'
+  error?: string
+  sentTo?: string
+  from?: string
+  fromName?: string
+  subject?: string | null
+  message?: string
+  services?: string[]
+  previouslySentAt?: string | null
+  previouslySentTo?: string | null
+  segments?: number
+  length?: number
+  encoding?: 'GSM-7' | 'UCS-2'
+  units?: number
+}
+
+/**
+ * The message, before it goes.
+ *
+ * Shown in full rather than summarised: this is the only moment anyone sees
+ * what a family will read, and the point of it is that approving the preview
+ * and approving the message are the same act.
+ *
+ * It is also where the refusals land — no email on the form, a branch mailbox
+ * that is not connected. Those used to arrive as an alert AFTER a click that
+ * felt like sending.
+ */
+function OutreachPreview({ preview, who, sending, onCancel, onSend }: {
+  preview: Preview; who: string; sending: boolean
+  onCancel: () => void; onSend: () => void
+}) {
+  const isEmail = preview.channel === 'EMAIL'
+  const label = isEmail ? 'email' : 'SMS'
+
+  // Esc closes, as every other dialog on this page does.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape' && !sending) onCancel() }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [onCancel, sending])
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      style={{ background: 'rgba(15,23,42,0.45)', backdropFilter: 'blur(4px)' }}
+      onClick={e => { e.stopPropagation(); if (!sending) onCancel() }}>
+      <div role="dialog" aria-modal="true" aria-labelledby="wo-title"
+        className="bg-white rounded-xl w-full max-w-[640px] max-h-[85vh] overflow-y-auto shadow-2xl"
+        onClick={e => e.stopPropagation()}>
+        <div className="px-5 pt-4 pb-3" style={{ borderBottom: '1px solid var(--light-gray)' }}>
+          <p id="wo-title" className="font-bold" style={{ color: 'var(--charcoal)' }}>
+            {preview.error ? `This ${label} cannot be sent` : `Send this ${label} to ${who}?`}
+          </p>
+          {!preview.error && (
+            <p className="text-[12px] mt-0.5" style={{ color: 'var(--mid-gray)' }}>
+              Nothing has been sent yet. This is exactly what will go out.
+            </p>
+          )}
+        </div>
+
+        <div className="px-5 py-4 space-y-3">
+          {preview.error ? (
+            <div className="rounded-lg px-3 py-2.5 text-[13px]"
+              style={{ background: '#FEF2F2', border: '1px solid #FECACA', color: '#991B1B' }}>
+              {preview.error}
+            </div>
+          ) : (
+            <>
+              <dl className="text-[12px] rounded-lg overflow-hidden" style={{ border: '1px solid var(--light-gray)' }}>
+                {[
+                  ['To', preview.sentTo],
+                  ['From', preview.fromName ? `${preview.fromName} <${preview.from}>` : preview.from],
+                  ...(isEmail ? [['Subject', preview.subject ?? '']] : []),
+                  ...(!isEmail && preview.length ? [['Length', `${preview.length} characters · ${preview.segments} SMS segment${preview.segments === 1 ? '' : 's'}${preview.encoding === 'UCS-2' ? ' (UCS-2 — a special character halved the budget)' : ''}`]] : []),
+                  ...(preview.services?.length ? [['Services named', preview.services.join(', ')]] : []),
+                ].map(([k, v]) => (
+                  <div key={String(k)} className="flex gap-3 px-3 py-2"
+                    style={{ borderBottom: '1px solid var(--light-gray)' }}>
+                    <dt className="font-semibold shrink-0" style={{ color: 'var(--mid-gray)', width: 108 }}>{k}</dt>
+                    <dd style={{ color: 'var(--charcoal)', wordBreak: 'break-word' }}>{v}</dd>
+                  </div>
+                ))}
+              </dl>
+
+              <div className="rounded-lg px-3 py-2.5 text-[13px]"
+                style={{ background: SUBTLE_BG, color: 'var(--charcoal)', whiteSpace: 'pre-wrap' }}>
+                {preview.message}
+              </div>
+
+              {preview.previouslySentAt && (
+                <div className="rounded-lg px-3 py-2 text-[12px]"
+                  style={{ background: '#FFFBEB', border: '1px solid #FDE68A', color: '#92400E' }}>
+                  Already sent on {new Date(preview.previouslySentAt).toLocaleString('en-PH', { dateStyle: 'medium', timeStyle: 'short' })}
+                  {preview.previouslySentTo ? ` to ${preview.previouslySentTo}` : ''}. Sending again is fine — this will be logged as a second message.
+                </div>
+              )}
+            </>
+          )}
+        </div>
+
+        <div className="px-5 py-3 flex justify-end gap-2" style={{ borderTop: '1px solid var(--light-gray)' }}>
+          <button onClick={onCancel} disabled={sending}
+            className="px-3 h-9 rounded-lg text-[13px] font-semibold"
+            style={{ background: '#F1F5F9', color: '#475569', border: '1px solid #E2E8F0' }}>
+            {preview.error ? 'Close' : 'Cancel'}
+          </button>
+          {!preview.error && (
+            <button onClick={onSend} disabled={sending}
+              className="px-3 h-9 rounded-lg text-[13px] font-semibold inline-flex items-center gap-1.5"
+              style={{ background: '#166534', color: '#fff', border: '1px solid #166534', opacity: sending ? 0.6 : 1 }}>
+              {sending ? <><Loader2 size={13} className="animate-spin" /> Sending…</> : <><Send size={13} /> Send {label}</>}
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
   )
 }
 

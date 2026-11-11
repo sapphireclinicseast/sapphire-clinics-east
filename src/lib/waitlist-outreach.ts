@@ -133,26 +133,69 @@ export function buildOutreachEmail(
   return { subject: OUTREACH_SUBJECT, text: lines.join('\n'), html }
 }
 
+// The GSM-7 alphabet, which is what decides whether an SMS costs one segment
+// or two and a half times that.
+//
+// A message made only of these characters is packed 7 bits each: 160 in a
+// single message, 153 per part once it splits. ONE character outside the set
+// — a curly apostrophe, an em dash, an emoji — moves the WHOLE message to
+// UCS-2, where the limits drop to 70 and 67. The text does not get longer; the
+// envelope gets smaller, and a 231-character message goes from 2 parts to 4.
+//
+// This is invisible until the phone bill, which is why it is computed rather
+// than assumed, and why the template below is written in plain punctuation.
+const GSM7 = new Set(
+  '@£$¥èéùìòÇ\nØø\rÅåΔ_ΦΓΛΩΠΨΣΘΞÆæßÉ !"#¤%&\'()*+,-./0123456789:;<=>?'
+  + '¡ABCDEFGHIJKLMNOPQRSTUVWXYZÄÖÑÜ§¿abcdefghijklmnopqrstuvwxyzäöñüà',
+)
+/** In GSM-7 these exist only as an escape pair, so each costs two units. */
+const GSM7_EXT = new Set('^{}\\[~]|€')
+
+export interface SmsSize { encoding: 'GSM-7' | 'UCS-2'; units: number; segments: number }
+
+/** What this text will actually cost to send. */
+export function smsSize(text: string): SmsSize {
+  let units = 0
+  let gsm = true
+  for (const ch of text) {
+    if (GSM7.has(ch)) units += 1
+    else if (GSM7_EXT.has(ch)) units += 2
+    else { gsm = false; break }
+  }
+  if (!gsm) {
+    // UCS-2 counts UTF-16 code units, which is what String#length gives.
+    const u = text.length
+    return { encoding: 'UCS-2', units: u, segments: u <= 70 ? 1 : Math.ceil(u / 67) }
+  }
+  return { encoding: 'GSM-7', units, segments: units <= 160 ? 1 : Math.ceil(units / 153) }
+}
+
 /**
  * The SMS.
  *
  * One message where it can be. A phone shows the sender's number, so the
  * branch names itself in the text rather than relying on the header, and the
  * services are named only when they still fit.
+ *
+ * Punctuation is deliberately plain — a hyphen, a straight apostrophe. An em
+ * dash here would read a fraction better and cost the clinic twice as much on
+ * every send, for the reason above. A patient's own name can still push a
+ * message to UCS-2, which is why the size is measured rather than assumed.
  */
 export function buildOutreachSms(
   { contact, services, cfg }: { contact: WaitlistContact; services: string[]; cfg: BranchNotifyConfig },
 ): string {
   const who = contact.firstName ? `Hi ${contact.firstName}'s family!` : 'Hello!'
   const asked = listServices(services)
-  const head = `${who} Good news from Aura Health Rehab ${cfg.brandShort} — we now have slots available`
+  const head = `${who} Good news from Aura Health Rehab ${cfg.brandShort} - we now have slots available`
   const tail = `. Reply or call ${cfg.phone.split('|')[0].trim()} and we'll find a schedule that suits you. We'd love to see you!`
 
   const withServices = `${head} for ${asked}${tail}`
-  // 320 is two segments. Past that the services come out rather than letting
-  // the message run to three — the point is to get them to reply, and the
-  // detail is in the email.
-  if (asked && withServices.length <= 320) return withServices
+  // Measured in SEGMENTS, not characters: what matters is what it costs to
+  // send, and the character budget depends on the encoding. Two parts is the
+  // ceiling — past that the services come out rather than letting it run on,
+  // because the point is to get a reply and the detail is in the email.
+  if (asked && smsSize(withServices).segments <= 2) return withServices
   return `${head}${tail}`
 }
 
