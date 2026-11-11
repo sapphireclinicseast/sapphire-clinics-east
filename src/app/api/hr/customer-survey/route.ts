@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { ratingFraction } from '@/lib/survey-scale'
 
 // ── Public API for HR Platform — authenticated via X-HR-Key header ──────────
 // Serves: leaderboard, staff details, settings (read + write)
@@ -136,7 +137,7 @@ export async function GET(req: NextRequest) {
     const maxCancelled = Math.max(1, ...staffList.map(s => s.sessionsCancelled))
 
     const scored = staffList.map(s => {
-      const satisfactionNorm = s.avgRating / 6
+      const satisfactionNorm = ratingFraction(s.avgRating)
       const confirmedNorm = s.sessionsTotal / maxConfirmed
       const rescheduledNorm = 1 - (s.sessionsRescheduled / maxRescheduled)
       const cancelledNorm = 1 - (s.sessionsCancelled / maxCancelled)

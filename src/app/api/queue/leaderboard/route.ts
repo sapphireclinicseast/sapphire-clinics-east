@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { ratingFraction } from '@/lib/survey-scale'
 
 // Public — no auth required (used by TV queue display)
 export async function GET(req: NextRequest) {
@@ -90,7 +91,7 @@ export async function GET(req: NextRequest) {
   const maxCancelled = Math.max(1, ...staffList.map(s => s.cancelled))
 
   const scored = staffList.map(s => {
-    const satisfactionNorm = s.avgRating / 6
+    const satisfactionNorm = ratingFraction(s.avgRating)
     const confirmedNorm = s.confirmed / maxConfirmed
     const rescheduledNorm = 1 - (s.rescheduled / maxRescheduled)
     const cancelledNorm = 1 - (s.cancelled / maxCancelled)

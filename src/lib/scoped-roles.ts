@@ -65,8 +65,36 @@ export function scopeFor(role: string | null | undefined): ScopedRole | null {
  * out-of-scope path, never on not knowing.
  */
 export function pathAllowedForRole(role: string | null | undefined, pathname: string): boolean {
+  // Admin-only paths are checked FIRST, because the rest of this function is
+  // about roles that see LESS than everything, and these paths are the
+  // opposite case: a page that even a full branch admin may not open.
+  if (pathname && isAdminOnlyPath(pathname) && role !== 'ADMIN') return false
+
   const scope = scopeFor(role)
   if (!scope) return true
   if (!pathname) return true
   return scope.prefixes.some(p => pathname === p || pathname.startsWith(p + '/'))
+}
+
+/**
+ * Paths only the main admin account may open.
+ *
+ * The inverse of SCOPED_ROLES. Those describe roles that see a slice of the
+ * Hub; this describes a page that is closed to everyone EXCEPT the top role,
+ * including MARKETING_ADMIN and the branch admins, who otherwise see all of
+ * it.
+ *
+ * /awards ranks named colleagues against each other and names everyone who did
+ * not qualify. That is the whole point of the page and also the reason it is
+ * not for general circulation — it is a management view, and it reads very
+ * differently to the person ranked eleventh.
+ *
+ * ADMIN is one account today (main@). If a second is ever created it will see
+ * this too, which is the right behaviour for a role that already grants
+ * everything else; pin it to an address here if that stops being true.
+ */
+export const ADMIN_ONLY_PREFIXES = ['/awards'] as const
+
+export function isAdminOnlyPath(pathname: string): boolean {
+  return ADMIN_ONLY_PREFIXES.some(p => pathname === p || pathname.startsWith(p + '/'))
 }

@@ -4,7 +4,7 @@ import { headers } from 'next/headers'
 import { SessionProvider } from 'next-auth/react'
 import DashboardShell from '@/components/layout/DashboardShell'
 import { BrandProvider } from '@/contexts/BrandContext'
-import { scopeFor, pathAllowedForRole } from '@/lib/scoped-roles'
+import { scopeFor, pathAllowedForRole, isAdminOnlyPath } from '@/lib/scoped-roles'
 import { canUseInquiries } from '@/lib/inquiry-access'
 import InquiryDock from '@/components/InquiryDock'
 
@@ -29,12 +29,19 @@ export default async function DashboardLayout({
 
   const role = (session.user as { role?: string })?.role ?? ''
   const scope = scopeFor(role)
+  // Read once: the admin-only check below applies to EVERY role, not only the
+  // scoped ones, so the path is needed whether or not a scope exists.
+  const pathname = (await headers()).get('x-pathname') ?? ''
   if (scope) {
-    const pathname = (await headers()).get('x-pathname') ?? ''
     // pathAllowedForRole fails OPEN on an empty pathname — see the note there;
     // an unknown path used to send scoped accounts into a redirect loop that
     // rendered as a permanently blank page.
     if (!pathAllowedForRole(role, pathname)) redirect(scope.home)
+  } else if (pathname && isAdminOnlyPath(pathname) && role !== 'ADMIN') {
+    // An unscoped role that is not the main admin. Bounced to the Hub home
+    // rather than shown an error: there is nothing they can do about it, and
+    // naming the page would only advertise it.
+    redirect('/dashboard')
   }
 
   return (
