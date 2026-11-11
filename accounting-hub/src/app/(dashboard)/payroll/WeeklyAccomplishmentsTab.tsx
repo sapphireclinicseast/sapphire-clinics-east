@@ -393,6 +393,18 @@ export default function WeeklyAccomplishmentsTab({ cutoffPeriod, branch, canWrit
   )
 }
 
+// Reports still outstanding for the cutoff (Hannah 2026-11-11): waiting for
+// approval, sent back for resubmission, or not submitted. Approved and
+// disapproved are complete; weeks not yet due don't count.
+const OUTSTANDING: WeekState[] = ['pending', 'resubmit', 'missed']
+export const outstandingReports = (people: Person[]) => people.reduce((t, p) => t + p.weeks.filter(w => OUTSTANDING.includes(w.state)).length, 0)
+
+/** The red count on the Weekly Accomplishments sub-tab. */
+export function useWeeklyOutstanding(cutoffPeriod: string, branch: string) {
+  const { data } = useWeeklyAccomplishments(cutoffPeriod, branch)
+  return data ? outstandingReports(data.people) : 0
+}
+
 /** One-line reminder on Payslip Generation, linking to the subsection above. */
 export function WeeklyAccomplishmentsNotice({ cutoffPeriod, branch, onOpen }: { cutoffPeriod: string; branch: string; onOpen: () => void }) {
   const { data, error } = useWeeklyAccomplishments(cutoffPeriod, branch)

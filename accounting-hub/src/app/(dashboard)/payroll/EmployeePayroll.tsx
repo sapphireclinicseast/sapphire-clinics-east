@@ -8,7 +8,7 @@ import {
   DollarSign, Shield, ShieldOff, Star, Mail, FileDown, ArrowUpDown, Landmark, Gift
 } from 'lucide-react'
 import SpecialPayRuns from './SpecialPayRuns'
-import WeeklyAccomplishmentsTab, { WeeklyAccomplishmentsNotice } from './WeeklyAccomplishmentsTab'
+import WeeklyAccomplishmentsTab, { WeeklyAccomplishmentsNotice, useWeeklyOutstanding } from './WeeklyAccomplishmentsTab'
 import { formatCurrency } from '@/lib/utils'
 import { BRANCH_INFO } from '@/lib/branch-info'
 
@@ -2155,6 +2155,8 @@ export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoff
     { key: 'special', label: '13th Month / Maternity / Final Pay', icon: Gift },
     { key: 'lates', label: 'Lates', icon: AlertCircle },
   ]
+  // Red count on Weekly Accomplishments: reports pending, sent back, or not submitted.
+  const waOutstanding = useWeeklyOutstanding(cutoffPeriod, branch)
 
   return (
     <div className="space-y-5">
@@ -2165,8 +2167,12 @@ export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoff
             className="flex-shrink-0 flex items-center gap-1.5 h-8 px-3 rounded-full border text-xs font-semibold whitespace-nowrap transition-colors hover:border-[var(--teal)]"
             style={subTab === t.key
               ? { background: 'var(--teal)', borderColor: 'var(--teal)', color: '#fff' }
-              : { background: '#fff', borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>
+              : { background: '#fff', borderColor: 'var(--light-gray)', color: t.key === 'weekly-accomplishments' && waOutstanding > 0 ? '#b45309' : 'var(--mid-gray)' }}>
             <t.icon size={14} /> {t.label}
+            {t.key === 'weekly-accomplishments' && waOutstanding > 0 && (
+              <span className="ml-0.5 px-1.5 rounded-full text-[10px] font-bold text-white" style={{ background: '#dc2626' }}
+                title={`${waOutstanding} weekly report${waOutstanding === 1 ? '' : 's'} waiting for approval, sent back for resubmission, or not submitted`}>{waOutstanding}</span>
+            )}
           </button>
         ))}
       </div>
