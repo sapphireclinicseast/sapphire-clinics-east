@@ -100,6 +100,8 @@ const BRANCH_LABEL: Record<string, string> = { SANDBOX_EAST: 'East', SANDBOX_GRE
 const API = '/api/accounts-receivable/hmo-directory'
 const inputClass = 'w-full px-3 py-2 rounded-xl border text-sm'
 const inputStyle = { borderColor: 'var(--light-gray)' }
+// Saved in ALL CAPS (Hannah 11/11), so these boxes show caps while typing; the server does the converting.
+const CAPS = 'uppercase placeholder:normal-case'
 
 const fileName = (url: string) => decodeURIComponent(url.split('/').pop() || url)
 const ymd = (iso?: string | null) => (iso ? iso.slice(0, 10) : '')
@@ -678,7 +680,7 @@ export default function HmoDirectoryTab({ canEdit, focusWalletId = '' }: { canEd
             <section>
               <label htmlFor="hmo-address" className="text-sm font-semibold block mb-1" style={{ color: 'var(--charcoal)' }}>Address for courier</label>
               <textarea id="hmo-address" rows={2} placeholder="Office address where couriered SOAs and documents go" value={form.address}
-                onChange={ev => setForm({ ...form, address: ev.target.value })} className={inputClass} style={inputStyle} />
+                onChange={ev => setForm({ ...form, address: ev.target.value })} className={`${inputClass} ${CAPS}`} style={inputStyle} />
             </section>
 
             <section className="space-y-3">
@@ -709,9 +711,9 @@ export default function HmoDirectoryTab({ canEdit, focusWalletId = '' }: { canEd
                     )}
                   </div>
                   <div className="grid gap-2 sm:grid-cols-3">
-                    <input aria-label={`${c.title} contact person`} placeholder="Contact person" value={val('Name')} readOnly={mirrored} onChange={ev => setForm({ ...form, [`${c.key}Name`]: ev.target.value })} className={inputClass} style={lockStyle} />
+                    <input aria-label={`${c.title} contact person`} placeholder="Contact person" value={val('Name')} readOnly={mirrored} onChange={ev => setForm({ ...form, [`${c.key}Name`]: ev.target.value })} className={`${inputClass} ${CAPS}`} style={lockStyle} />
                     <input aria-label={`${c.title} email`} placeholder="Email" value={val('Email')} readOnly={mirrored} onChange={ev => setForm({ ...form, [`${c.key}Email`]: ev.target.value })} className={inputClass} style={lockStyle} />
-                    <input aria-label={`${c.title} number`} placeholder="Number" value={val('Number')} readOnly={mirrored} onChange={ev => setForm({ ...form, [`${c.key}Number`]: ev.target.value })} className={inputClass} style={lockStyle} />
+                    <input aria-label={`${c.title} number`} placeholder="Number" value={val('Number')} readOnly={mirrored} onChange={ev => setForm({ ...form, [`${c.key}Number`]: ev.target.value })} className={`${inputClass} ${CAPS}`} style={lockStyle} />
                   </div>
                   {c.key === 'submission' && (
                     <div className="mt-2 sm:w-1/3">
@@ -817,7 +819,7 @@ export default function HmoDirectoryTab({ canEdit, focusWalletId = '' }: { canEd
                 </div>
                 <div className="sm:col-span-2">
                   <label htmlFor="early-notes" className="text-[11px] block mb-0.5" style={{ color: 'var(--mid-gray)' }}>Details</label>
-                  <input id="early-notes" value={form.earlyDiscountNotes} onChange={ev => setForm({ ...form, earlyDiscountNotes: ev.target.value })} className={inputClass} style={inputStyle} />
+                  <input id="early-notes" value={form.earlyDiscountNotes} onChange={ev => setForm({ ...form, earlyDiscountNotes: ev.target.value })} className={`${inputClass} ${CAPS}`} style={inputStyle} />
                 </div>
               </div>
             </section>

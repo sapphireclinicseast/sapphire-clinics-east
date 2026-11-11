@@ -165,6 +165,10 @@ const TEXT_FIELDS = [
   'serviceCategory',
 ] as const
 
+// Hannah 2026-11-11: directory details are saved in ALL CAPS. Emails, links and the
+// Services category (a reference to that page's own name) keep their case.
+const caps = (v: string) => v.toLocaleUpperCase('en-PH')
+
 const isBlank = (v: unknown) => v === null || v === undefined || (typeof v === 'string' && !v.trim())
 const pdfUrls = (v: unknown) => (Array.isArray(v) ? v : []).filter(isPdfUrl).slice(0, 20)
 
@@ -175,7 +179,9 @@ const pdfUrls = (v: unknown) => (Array.isArray(v) ? v : []).filter(isPdfUrl).sli
 export function cleanDirectoryInput(body: Record<string, unknown>): { data: Partial<HmoDirectoryFields>; error?: string } {
   const data: Partial<HmoDirectoryFields> = {}
   for (const f of TEXT_FIELDS) {
-    if (f in body) data[f] = typeof body[f] === 'string' && body[f].trim() ? body[f].trim().slice(0, 200) : null
+    if (!(f in body)) continue
+    const v = typeof body[f] === 'string' && body[f].trim() ? body[f].trim().slice(0, 200) : null
+    data[f] = v && f !== 'serviceCategory' && !f.endsWith('Email') ? caps(v) : v
   }
   if ('accreditedBranches' in body) {
     const picked = Array.isArray(body.accreditedBranches) ? body.accreditedBranches : []
@@ -194,11 +200,11 @@ export function cleanDirectoryInput(body: Record<string, unknown>): { data: Part
     else return { data, error: 'The logo must be a PNG, JPG or WEBP image' }
   }
   if ('address' in body) {
-    data.address = typeof body.address === 'string' && body.address.trim() ? body.address.trim().slice(0, 500) : null
+    data.address = typeof body.address === 'string' && body.address.trim() ? caps(body.address.trim().slice(0, 500)) : null
   }
   if ('notYetAccredited' in body) data.notYetAccredited = body.notYetAccredited === true
   if ('earlyDiscountNotes' in body) {
-    data.earlyDiscountNotes = typeof body.earlyDiscountNotes === 'string' && body.earlyDiscountNotes.trim() ? body.earlyDiscountNotes.trim().slice(0, 500) : null
+    data.earlyDiscountNotes = typeof body.earlyDiscountNotes === 'string' && body.earlyDiscountNotes.trim() ? caps(body.earlyDiscountNotes.trim().slice(0, 500)) : null
   }
   if ('mdPayment' in body) {
     if (isBlank(body.mdPayment)) data.mdPayment = null
