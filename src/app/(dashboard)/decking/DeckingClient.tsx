@@ -3,7 +3,7 @@
 import { Fragment, useEffect, useState, useRef, useCallback } from 'react'
 import { daySlots, dayStarts, hourlySlots, slotMinutes, splitSpan, toMinutes, fromMinutes, isCustomLength } from '@/lib/decking-slots'
 import { internWindowCovers, internWindowLabel } from '@/lib/intern-window'
-import { ChevronDown, Plus, X, Settings2, Ban, Search, Users, UserPlus, CalendarCheck, CalendarPlus, CalendarDays, Percent, BarChart3, Info, Lock, Loader2, Clock, Rows3, Rows4, ChevronsDownUp, ChevronsUpDown, GraduationCap, UserCheck, AlertTriangle, MapPin, Video, Home, Building2, Trash2} from 'lucide-react'
+import { ChevronDown, Plus, X, Settings2, Ban, Search, Users, UserPlus, CalendarCheck, CalendarPlus, CalendarDays, Percent, BarChart3, Info, Lock, Loader2, Clock, Rows3, Rows4, ChevronsDownUp, ChevronsUpDown, GraduationCap, UserCheck, AlertTriangle, MapPin, Video, Home, Building2, Trash2, Eye, EyeOff} from 'lucide-react'
 import { DashCard, KpiCard, Skeleton, EmptyState, DeptChip, CARD_STYLE } from '../patients/dashboard/ui'
 import {
   CONTROL, CONTROL_SM, CONTROL_STYLE, LABEL, BTN_PRIMARY, BTN_SECONDARY, BTN_SM, SUBTLE_BG, TEAL_HEX, DECK_CSS,
@@ -54,7 +54,7 @@ const shapeOfConfig = (c: { slotsPerDay?: number | null; slotMinutes?: number | 
 
 interface SlotCapacity { staffId: string; dayOfWeek: string; startTime: string; date: string | null; capacity: number }
 interface TherapistConfig { id: string; staffId: string; workDays: string[]; startTime: string; endTime: string; useDefault: boolean; branch: string; department: string; deliveryMode?: string | null; slotsPerDay?: number | null; slotMinutes?: number | null; breakStart?: string | null; breakMinutes?: number | null }
-interface DeckingSlot { id: string; staffId: string; patientId: string | null; patient: Patient | null; dayOfWeek: string; startTime: string; endTime: string; branch: string; department: string; notes: string | null; disabled: boolean; paymentType?: string; isClass?: boolean; deliveryMode?: string | null; supervisorId?: string | null; date?: string | null }
+interface DeckingSlot { id: string; staffId: string; patientId: string | null; patient: Patient | null; dayOfWeek: string; startTime: string; endTime: string; branch: string; department: string; notes: string | null; disabled: boolean; paymentType?: string; isClass?: boolean; deliveryMode?: string | null; supervisorId?: string | null; date?: string | null; sheetHidden?: boolean }
 
 // Cell colouring, the way front desk reads their spreadsheet: what needs
 // paperwork chased before the session stands out from what doesn't.
@@ -841,6 +841,8 @@ function TherapistRow({ staff, activeBranch, sectionMode, config, slots, default
   // Which one-off day is being removed, so its button can say so and the
   // others stay clickable.
   const [deletingDated, setDeletingDated] = useState<string | null>(null)
+  // Which one-off day is being hidden from (or returned to) the sheet.
+  const [hidingDated, setHidingDated] = useState<string | null>(null)
   /** Which date's slots are open in the window, if any. */
   const [openDatedDate, setOpenDatedDate] = useState<string | null>(null)
   // Past one-offs are folded away so the coming ones lead. Display only.
@@ -1845,6 +1847,44 @@ function TherapistRow({ staff, activeBranch, sectionMode, config, slots, default
                                 <Trash2 size={11} aria-hidden />
                                 {deletingDated === dateKey ? 'Removing…' : 'Remove'}
                               </button>
+                              {/* Out of the Google Sheet, still on the board.
+                                  One-off blocks accumulate down the sheet and
+                                  a lapsed date takes the same room as a live
+                                  one — but it is still the record of who was
+                                  seen that day, so it is hidden rather than
+                                  deleted, and by hand rather than by the
+                                  calendar: "past" and "finished with" are not
+                                  the same thing. */}
+                              {(() => {
+                                const hidden = mine.every(x => x.sheetHidden)
+                                return (
+                                  <button type="button" disabled={hidingDated === dateKey}
+                                    title={hidden
+                                      ? 'Currently hidden from the Google Sheet — put it back'
+                                      : 'Stop drawing this date in the Google Sheet. It stays here, with its bookings.'}
+                                    onClick={async () => {
+                                      setHidingDated(dateKey)
+                                      try {
+                                        const res = await fetch('/api/decking/slots', {
+                                          method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+                                          body: JSON.stringify({ staffId: staff.id, date: dateKey, sheetHidden: !hidden }),
+                                        })
+                                        const data = await res.json().catch(() => ({}))
+                                        if (!res.ok) throw new Error(data.error ?? `Could not change that (${res.status})`)
+                                        onDatedChanged?.()
+                                      } catch (err) {
+                                        alert(err instanceof Error ? err.message : 'Could not change that')
+                                      } finally { setHidingDated(null) }
+                                    }}
+                                    className="dk-btn text-[11.5px] font-semibold rounded-md px-2 py-1 inline-flex items-center gap-1"
+                                    style={hidden
+                                      ? { border: '1px solid #C7A008', color: '#8A6D1F', background: '#FFFBEB' }
+                                      : { border: '1px solid var(--light-gray)', color: 'var(--mid-gray)', background: '#fff' }}>
+                                    {hidden ? <Eye size={11} aria-hidden /> : <EyeOff size={11} aria-hidden />}
+                                    {hidingDated === dateKey ? 'Saving…' : hidden ? 'In sheet: hidden' : 'Hide from sheet'}
+                                  </button>
+                                )
+                              })()}
                             </div>
                           </div>
                         </div>
@@ -1864,7 +1904,56 @@ function TherapistRow({ staff, activeBranch, sectionMode, config, slots, default
                   </button>
                   {showPastDated && (
                     <ul className="mt-1.5 grid gap-1.5" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(230px, 1fr))' }}>
-                      {past.map(sl => renderRow(sl, true))}
+                      {/* Grouped by DATE, like the upcoming tiles, and for
+                          the same reason: a doctor's past day in half-hours
+                          was sixteen rows saying the same date sixteen times.
+                          Grouped, each past day is one line — and has
+                          somewhere to put the control that matters here,
+                          which is whether the Google Sheet still draws it. */}
+                      {[...new Map(past.map(sl => [String(sl.date).slice(0, 10), true])).keys()]
+                        .sort().reverse()
+                        .map(dateKey => {
+                          const mine = past.filter(sl => String(sl.date).slice(0, 10) === dateKey)
+                          const d = new Date(`${dateKey}T00:00:00Z`)
+                          const hidden = mine.every(x => x.sheetHidden)
+                          const booked = mine.filter(x => x.patient).length
+                          return (
+                            <li key={dateKey} className="flex flex-wrap items-center gap-x-2 gap-y-1 rounded-lg px-2 py-1.5"
+                              style={{ background: '#fff', border: '1px solid var(--light-gray)' }}>
+                              <span className="text-[12px] font-semibold tabular-nums whitespace-nowrap" style={{ color: 'var(--charcoal)' }}>
+                                {d.toLocaleDateString('en-PH', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' })}
+                              </span>
+                              <span className="text-[11px] whitespace-nowrap" style={{ color: 'var(--mid-gray)' }}>
+                                {mine.length} slot{mine.length === 1 ? '' : 's'} · {booked} booked
+                              </span>
+                              <button type="button" disabled={hidingDated === dateKey}
+                                title={hidden
+                                  ? 'Hidden from the Google Sheet — put it back'
+                                  : 'Stop drawing this date in the Google Sheet. It stays here, with its bookings.'}
+                                onClick={async () => {
+                                  setHidingDated(dateKey)
+                                  try {
+                                    const res = await fetch('/api/decking/slots', {
+                                      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+                                      body: JSON.stringify({ staffId: staff.id, date: dateKey, sheetHidden: !hidden }),
+                                    })
+                                    const data = await res.json().catch(() => ({}))
+                                    if (!res.ok) throw new Error(data.error ?? `Could not change that (${res.status})`)
+                                    onDatedChanged?.()
+                                  } catch (err) {
+                                    alert(err instanceof Error ? err.message : 'Could not change that')
+                                  } finally { setHidingDated(null) }
+                                }}
+                                className="dk-btn ml-auto text-[11px] font-semibold rounded-md px-2 py-0.5 inline-flex items-center gap-1"
+                                style={hidden
+                                  ? { border: '1px solid #C7A008', color: '#8A6D1F', background: '#FFFBEB' }
+                                  : { border: '1px solid var(--light-gray)', color: 'var(--mid-gray)', background: '#fff' }}>
+                                {hidden ? <Eye size={11} aria-hidden /> : <EyeOff size={11} aria-hidden />}
+                                {hidingDated === dateKey ? 'Saving…' : hidden ? 'Hidden' : 'Hide from sheet'}
+                              </button>
+                            </li>
+                          )
+                        })}
                     </ul>
                   )}
                 </div>

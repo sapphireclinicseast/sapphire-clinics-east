@@ -135,8 +135,44 @@ export async function POST(req: NextRequest) {
 export async function PATCH(req: NextRequest) {
   const session = await auth()
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const patchBody = await req.json()
 
-  const { id, paymentType, staffId, deliveryMode, supervisorId, patientId } = await req.json()
+  // ── Hide (or show) a whole one-off date in the Google Sheet ──────────────
+  //
+  // Per DAY, like the delete beside it: a one-off is one offer and the clinic
+  // hides it as one. Nothing about the slots changes except whether the sheet
+  // draws them — the board, the bookings, the payments and the history are
+  // all untouched, which is the point. A lapsed date is still the record of
+  // who was seen that day.
+  if (!patchBody.id && patchBody.staffId && patchBody.date && typeof patchBody.sheetHidden === 'boolean') {
+    const dateKey = String(patchBody.date).slice(0, 10)
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(dateKey)) {
+      return NextResponse.json({ error: 'date must be YYYY-MM-DD' }, { status: 400 })
+    }
+    const role = (session.user as { role?: string })?.role ?? ''
+    const dayStart = new Date(`${dateKey}T00:00:00.000Z`)
+    const dayEnd = new Date(`${dateKey}T23:59:59.999Z`)
+
+    const slots = await prisma.deckingSlot.findMany({
+      where: { staffId: String(patchBody.staffId), date: { gte: dayStart, lte: dayEnd } },
+      select: { id: true, branch: true, deliveryMode: true },
+    })
+    if (slots.length === 0) {
+      return NextResponse.json({ error: 'No one-off slots on that date' }, { status: 404 })
+    }
+    const denied = slots.find(sl => !canWriteSlot(role, sl.branch, sl.deliveryMode))
+    if (denied) return NextResponse.json({ error: CROSS_BRANCH_DENIED }, { status: 403 })
+
+    const { count } = await prisma.deckingSlot.updateMany({
+      where: { id: { in: slots.map(sl => sl.id) } },
+      data: { sheetHidden: patchBody.sheetHidden },
+    })
+    return NextResponse.json({ ok: true, updated: count, sheetHidden: patchBody.sheetHidden })
+  }
+
+  // Destructured from the body already read above — a request body can only
+  // be consumed once, and the day-level branch needed it first.
+  const { id, paymentType, staffId, deliveryMode, supervisorId, patientId } = patchBody
   if (!id) return NextResponse.json({ error: 'id is required' }, { status: 400 })
 
   // Putting a patient into an existing slot, or taking them out.
