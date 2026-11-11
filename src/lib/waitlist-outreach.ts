@@ -90,12 +90,17 @@ export const OUTREACH_SUBJECT = 'Good news! We have slots available at Aura Heal
  * the actual schedule in the reply.
  */
 export function buildOutreachEmail(
-  { contact, services, cfg }: { contact: WaitlistContact; services: string[]; cfg: BranchNotifyConfig },
+  { contact, cfg }: { contact: WaitlistContact; cfg: BranchNotifyConfig },
 ): { subject: string; text: string; html: string } {
-  const asked = listServices(services)
-  const forWhat = asked
-    ? `the ${asked} sessions you enquired about`
-    : 'the services you enquired about'
+  // The services are DELIBERATELY not named.
+  //
+  // Naming them reads as a promise. A family who ticked OT, Speech and Psych
+  // and are told "slots have opened for Occupational Therapy, Speech Therapy
+  // and Psychological Services" will arrive expecting all three, when what
+  // actually opened might be one hour of OT. The message says there is
+  // something available and invites them to reply; which department, and
+  // when, is settled in that conversation by somebody who can see the board.
+  const forWhat = 'the services you enquired about'
 
   const lines = [
     greeting(contact.firstName),
@@ -120,10 +125,6 @@ export function buildOutreachEmail(
     <p style="margin:0 0 16px;">${esc(greeting(contact.firstName))}</p>
     <p style="margin:0 0 16px;">Thank you for your patience — we know waiting is the hard part.</p>
     <p style="margin:0 0 16px;">We're happy to let you know that <strong>slots have opened up</strong> at ${esc(cfg.brandName)} for ${esc(forWhat)}.</p>
-    ${services.length ? `<p style="margin:0 0 16px;padding:12px 16px;background:#EDF5F2;border-radius:10px;">
-      <span style="font-size:12px;text-transform:uppercase;letter-spacing:.04em;color:#5C7A72;">What you asked about</span><br>
-      <strong style="color:#1F3A5F;">${esc(asked)}</strong>
-    </p>` : ''}
     <p style="margin:0 0 16px;">If you would still like to proceed, simply reply to this email or call us at ${esc(cfg.phone)}, and we'll find a schedule that works for your family. We'd be glad to walk you through what the first session looks like if it would help.</p>
     <p style="margin:0 0 4px;">Warmly,</p>
     <p style="margin:0 0 16px;"><strong>${esc(cfg.teamName)}</strong></p>
@@ -183,19 +184,14 @@ export function smsSize(text: string): SmsSize {
  * message to UCS-2, which is why the size is measured rather than assumed.
  */
 export function buildOutreachSms(
-  { contact, services, cfg }: { contact: WaitlistContact; services: string[]; cfg: BranchNotifyConfig },
+  { contact, cfg }: { contact: WaitlistContact; cfg: BranchNotifyConfig },
 ): string {
   const who = contact.firstName ? `Hi ${contact.firstName}'s family!` : 'Hello!'
-  const asked = listServices(services)
   const head = `${who} Good news from Aura Health Rehab ${cfg.brandShort} - we now have slots available`
   const tail = `. Reply or call ${cfg.phone.split('|')[0].trim()} and we'll find a schedule that suits you. We'd love to see you!`
-
-  const withServices = `${head} for ${asked}${tail}`
-  // Measured in SEGMENTS, not characters: what matters is what it costs to
-  // send, and the character budget depends on the encoding. Two parts is the
-  // ceiling — past that the services come out rather than letting it run on,
-  // because the point is to get a reply and the detail is in the email.
-  if (asked && smsSize(withServices).segments <= 2) return withServices
+  // No services named — see buildOutreachEmail. In 160 characters the risk is
+  // worse, not better: a list with no room for a qualification reads as a
+  // guarantee of every item on it.
   return `${head}${tail}`
 }
 

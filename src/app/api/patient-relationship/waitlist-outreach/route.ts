@@ -15,7 +15,7 @@ import { prisma } from '@/lib/prisma'
 import { getGmailClient } from '@/lib/email'
 import { encodeHeaderWord, formatFromHeader } from '@/lib/email-headers'
 import { getBranchNotifyConfig, getBranchSender, type BranchNotifyConfig } from '@/lib/branch-notify-config'
-import { hrFetch, serviceLabelsFrom, waitlistSources, SERVICE_QUESTION } from '@/lib/waitlist-source'
+import { hrFetch, waitlistSources } from '@/lib/waitlist-source'
 import {
   buildOutreachEmail, buildOutreachSms, contactFrom, smsSize, type OutreachChannel,
 } from '@/lib/waitlist-outreach'
@@ -140,17 +140,10 @@ export async function POST(req: NextRequest) {
   )
   const contact = contactFrom(item, titles)
 
-  // The services question, resolved with the list's own matcher rather than a
-  // copy of it — a second regex here would drift, and the email would then
-  // name different services from the column front desk read before clicking.
-  const serviceFieldId = fields.find(
-    f => f?.type === 'multiple_choice' && SERVICE_QUESTION.test(String(f?.title ?? '')),
-  )?.id
-  const answer = serviceFieldId
-    ? (item.answers as Array<Record<string, unknown>> | undefined)?.find(
-        a => (a.field as { id?: string } | undefined)?.id === serviceFieldId)
-    : undefined
-  const services = serviceLabelsFrom(answer)
+  // The services the family ticked are deliberately NOT read here any more.
+  // The messages no longer name them — see buildOutreachEmail for why — and
+  // resolving a value nothing uses only invites someone to put it back into
+  // the template without knowing it was removed on purpose.
 
   const cfg: BranchNotifyConfig = await getBranchNotifyConfig(branch)
 
@@ -169,7 +162,7 @@ export async function POST(req: NextRequest) {
         { status: 400 },
       )
     }
-    const built = buildOutreachEmail({ contact, services, cfg })
+    const built = buildOutreachEmail({ contact, cfg })
     const sender = await getBranchSender(cfg)
     if (!sender) {
       return NextResponse.json({
@@ -191,7 +184,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({
         dryRun: true, channel, sentTo: contact.email, from: sender.email,
         fromName: cfg.brandName, subject: built.subject, message: built.text,
-        services, previouslySentAt: prior?.sentAt ?? null, previouslySentTo: prior?.sentTo ?? null,
+        previouslySentAt: prior?.sentAt ?? null, previouslySentTo: prior?.sentTo ?? null,
       })
     }
 
@@ -225,14 +218,14 @@ export async function POST(req: NextRequest) {
     if (!sms?.httpSmsKey) {
       return NextResponse.json({ error: `SMS is not configured for ${cfg.branchName}` }, { status: 503 })
     }
-    const text = buildOutreachSms({ contact, services, cfg })
+    const text = buildOutreachSms({ contact, cfg })
     const to = toE164(contact.phone)
 
     if (dryRun) {
       return NextResponse.json({
         dryRun: true, channel, sentTo: to, from: sms.phone,
         fromName: `Aura Health Rehab ${cfg.brandShort}`, subject: null, message: text,
-        services, previouslySentAt: prior?.sentAt ?? null, previouslySentTo: prior?.sentTo ?? null,
+        previouslySentAt: prior?.sentAt ?? null, previouslySentTo: prior?.sentTo ?? null,
         // Segments decide what this costs. Measured, not divided by 160: one
         // character outside GSM-7 halves the budget for the whole message.
         ...smsSize(text), length: text.length,
