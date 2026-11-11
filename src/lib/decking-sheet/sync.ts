@@ -631,9 +631,9 @@ function openSlotsFor(
  * Write the OPEN SLOTS tab and the hidden list behind it.
  *
  * Two tabs because of the search box: `_open` is the data, `OPEN SLOTS` is one
- * FILTER over it that narrows as front desk type. The box itself (B5) is
- * theirs and is never written — a sync that cleared what somebody was in the
- * middle of typing would be worse than no search at all.
+ * FILTER over it that narrows as front desk type. The box itself (B6, merged
+ * across to D6) is theirs and is never written — a sync that cleared what
+ * somebody was in the middle of typing would be worse than no search at all.
  */
 async function pushOpenSlots(
   api: sheets_v4.Sheets, spreadsheetId: string, branchLabel: string, rows: OpenSlot[], bookable: number,
@@ -785,6 +785,41 @@ async function pushOpenSlots(
   await api.spreadsheets.batchUpdate({ spreadsheetId, requestBody: { requests: [
     { updateDimensionProperties: { range: { sheetId, dimension: 'COLUMNS', startIndex: 4, endIndex: 5 }, properties: { hiddenByUser: true }, fields: 'hiddenByUser' } },
   ] } })
+
+  // Keep the tab's protection pointing at the box.
+  //
+  // The tab is generated, so it is protected with one hole in it: the search
+  // box. The box used to be B5 and is now B6, and the protection did not move
+  // with it — East's hole still named row 5, so the only cell front desk are
+  // meant to type into was the one cell they could not. It blocked nobody in
+  // the end, because every account with edit access happened to be a named
+  // editor of the range, but the next person given access would have found a
+  // search box that refuses to be typed in.
+  //
+  // This realigns whatever protection is there rather than creating one:
+  // Greenhills has none, and adding one would make that tab read-only for
+  // everybody not named in it — a lockout nobody asked for. Editors are left
+  // exactly as they are for the same reason.
+  const prot = await api.spreadsheets
+    .get({ spreadsheetId, fields: 'sheets(properties.sheetId,protectedRanges(protectedRangeId,range,unprotectedRanges))' })
+    .then(r => (r.data.sheets ?? []).find(s => s.properties?.sheetId === sheetId)?.protectedRanges ?? [])
+    .catch(() => [])
+  const box = { sheetId, startRowIndex: 5, endRowIndex: 6, startColumnIndex: 1, endColumnIndex: 4 }
+  const misaligned = prot.filter(p => {
+    const u = p.unprotectedRanges ?? []
+    // Whole-tab protections only; a narrower one was somebody's own doing.
+    if (p.range?.startRowIndex != null || p.range?.startColumnIndex != null) return false
+    return u.length !== 1 || u[0].startRowIndex !== 5 || u[0].endRowIndex !== 6
+      || u[0].startColumnIndex !== 1 || u[0].endColumnIndex !== 4
+  })
+  if (misaligned.length) {
+    await api.spreadsheets.batchUpdate({ spreadsheetId, requestBody: { requests: misaligned.map(p => ({
+      updateProtectedRange: {
+        protectedRange: { protectedRangeId: p.protectedRangeId!, unprotectedRanges: [box] },
+        fields: 'unprotectedRanges',
+      },
+    })) } }).catch(() => { /* cosmetic — never fail a sync over a protection */ })
+  }
 
   return rows.length
 }
