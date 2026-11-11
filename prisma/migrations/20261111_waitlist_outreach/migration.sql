@@ -5,7 +5,10 @@
 --
 -- No unique constraint on (submission, channel) — slots open again, and the
 -- same family may be told twice months apart. Every send is a row.
-CREATE TABLE "WaitlistOutreach" (
+--
+-- Guarded throughout — the deploy replays every migration on every run, so an
+-- unguarded CREATE would report an error on every deploy after the first.
+CREATE TABLE IF NOT EXISTS "WaitlistOutreach" (
     "id"           TEXT NOT NULL,
     "formId"       TEXT NOT NULL,
     "submissionId" TEXT NOT NULL,
@@ -20,5 +23,5 @@ CREATE TABLE "WaitlistOutreach" (
     CONSTRAINT "WaitlistOutreach_pkey" PRIMARY KEY ("id")
 );
 
-CREATE INDEX "WaitlistOutreach_formId_submissionId_idx" ON "WaitlistOutreach"("formId", "submissionId");
-CREATE INDEX "WaitlistOutreach_sentAt_idx" ON "WaitlistOutreach"("sentAt");
+CREATE INDEX IF NOT EXISTS "WaitlistOutreach_formId_submissionId_idx" ON "WaitlistOutreach"("formId", "submissionId");
+CREATE INDEX IF NOT EXISTS "WaitlistOutreach_sentAt_idx" ON "WaitlistOutreach"("sentAt");
