@@ -15,6 +15,16 @@ export const MD_PAYMENT_LABEL = {
 } as const
 export type MdPayment = keyof typeof MD_PAYMENT_LABEL
 
+// How the HMO takes our SOAs (Hannah 11/11: a dropdown per HMO, email or courier).
+export const SOA_SUBMISSION_LABEL = {
+  EMAIL: 'Email',
+  COURIER: 'Courier',
+  EMAIL_AND_COURIER: 'Email and courier',
+} as const
+export type SoaSubmission = keyof typeof SOA_SUBMISSION_LABEL
+export const isSoaSubmission = (v: unknown): v is SoaSubmission =>
+  typeof v === 'string' && (Object.keys(SOA_SUBMISSION_LABEL) as string[]).includes(v)
+
 export const ACCREDITABLE_BRANCHES = [
   { value: 'SANDBOX_EAST', label: 'East' },
   { value: 'SANDBOX_GREENHILLS', label: 'Greenhills' },
@@ -61,6 +71,7 @@ export interface HmoDirectoryFields {
   moaFileUrls: string[]
   priceListFileUrls: string[]
   mdPayment: MdPayment | null
+  soaSubmission: SoaSubmission | null
   earlyDiscountPct: number | null
   earlyDiscountDays: number | null
   earlyDiscountNotes: string | null
@@ -69,8 +80,8 @@ export interface HmoDirectoryFields {
 }
 
 // What an HMO's directory card still lacks, in the order the card shows it.
-// Every contact, the accredited branches, the MOA (date and signed copy), the
-// price list, the doctor-payment rule and the Services category are expected
+// Every contact, how SOAs are submitted, the accredited branches, the MOA (date
+// and signed copy), the price list, the doctor-payment rule and the Services category are expected
 // of every HMO; the early-submission discount and the LOA application link are
 // not — many HMOs simply have neither. Hannah 2026-11-10: highlight the HMOs
 // with missing information in red.
@@ -80,6 +91,7 @@ type CompletenessInput = Partial<Record<`${'accreditation' | 'submission' | 'col
   moaFileUrls?: string[] | null
   priceListFileUrls?: string[] | null
   mdPayment?: string | null
+  soaSubmission?: string | null
   serviceCategory?: string | null
 }
 const DIRECTORY_CONTACTS = [['accreditation', 'Accreditation'], ['submission', 'Submission'], ['collection', 'Collection']] as const
@@ -93,6 +105,7 @@ export function missingInfo(e: CompletenessInput): string[] {
     if (name) out.push(`${title} contact name`)
     if (email) out.push(`${title} email`)
     if (number) out.push(`${title} number`)
+    if (key === 'submission' && !e.soaSubmission) out.push('How SOAs are submitted')
   }
   if (!e.accreditedBranches?.length) out.push('Accredited branches')
   if (!e.mdPayment) out.push('Doctor payment')
@@ -127,6 +140,11 @@ export function cleanDirectoryInput(body: Record<string, unknown>): { data: Part
   if ('accreditedBranches' in body) {
     const picked = Array.isArray(body.accreditedBranches) ? body.accreditedBranches : []
     data.accreditedBranches = ACCREDITABLE_BRANCHES.map(b => b.value as string).filter(b => picked.includes(b))
+  }
+  if ('soaSubmission' in body) {
+    if (isBlank(body.soaSubmission)) data.soaSubmission = null
+    else if (isSoaSubmission(body.soaSubmission)) data.soaSubmission = body.soaSubmission
+    else return { data, error: 'Choose how SOAs are submitted: email, courier, or both' }
   }
   if ('moaFileUrls' in body) data.moaFileUrls = pdfUrls(body.moaFileUrls)
   if ('priceListFileUrls' in body) data.priceListFileUrls = pdfUrls(body.priceListFileUrls)

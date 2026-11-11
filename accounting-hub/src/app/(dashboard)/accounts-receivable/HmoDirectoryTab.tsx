@@ -4,13 +4,13 @@
 // with it says. Reference only; nothing here posts or changes a receivable. The
 // renewal popup and the bell read the MOA date saved here.
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { ChevronDown, ChevronRight, ExternalLink, FileText, Loader2, Pencil, Search, X } from 'lucide-react'
 import { ScanUpload } from '@/components/ScanUpload'
 import { NameCombobox } from '@/components/NameCombobox'
 import { formatCurrency } from '@/lib/utils'
 import {
-  ACCREDITABLE_BRANCHES, MD_PAYMENT_LABEL, MOA_ALERT_DAYS, categoriesMatching, missingInfo, moaDaysLeft, moaNeedsRenewal, moaStatusText, type MdPayment,
+  ACCREDITABLE_BRANCHES, MD_PAYMENT_LABEL, MOA_ALERT_DAYS, SOA_SUBMISSION_LABEL, categoriesMatching, missingInfo, moaDaysLeft, moaNeedsRenewal, moaStatusText, type MdPayment, type SoaSubmission,
 } from '@/lib/hmo-directory'
 
 // Red for an HMO whose card still has gaps (lib/hmo-directory missingInfo).
@@ -35,6 +35,7 @@ type Entry = Partial<Record<ContactField, string | null>> & {
   moaFileUrls?: string[]
   priceListFileUrls?: string[]
   mdPayment?: MdPayment | null
+  soaSubmission?: SoaSubmission | null
   earlyDiscountPct?: number | null
   earlyDiscountDays?: number | null
   earlyDiscountNotes?: string | null
@@ -63,6 +64,7 @@ type Form = Record<ContactField, string> & {
   moaFileUrls: string[]
   priceListFileUrls: string[]
   mdPayment: MdPayment | null
+  soaSubmission: SoaSubmission | ''
   earlyDiscountPct: string
   earlyDiscountDays: string
   earlyDiscountNotes: string
@@ -87,6 +89,7 @@ function toForm(e: Entry): Form {
     moaFileUrls: e.moaFileUrls || [],
     priceListFileUrls: e.priceListFileUrls || [],
     mdPayment: e.mdPayment || null,
+    soaSubmission: e.soaSubmission || '',
     earlyDiscountPct: e.earlyDiscountPct != null ? String(e.earlyDiscountPct) : '',
     earlyDiscountDays: e.earlyDiscountDays != null ? String(e.earlyDiscountDays) : '',
     earlyDiscountNotes: e.earlyDiscountNotes || '',
@@ -127,7 +130,7 @@ function FileChips({ label, urls, missing }: { label: string; urls: string[]; mi
   )
 }
 
-function ContactCard({ title, name, email, number }: { title: string; name?: string | null; email?: string | null; number?: string | null }) {
+function ContactCard({ title, name, email, number, extra }: { title: string; name?: string | null; email?: string | null; number?: string | null; extra?: ReactNode }) {
   return (
     <div className="min-w-0">
       <p className="text-[11px] font-semibold uppercase tracking-wide mb-1" style={{ color: 'var(--mid-gray)' }}>{title}</p>
@@ -140,6 +143,7 @@ function ContactCard({ title, name, email, number }: { title: string; name?: str
           {number && <p className="truncate">{number}</p>}
         </div>
       )}
+      {extra}
     </div>
   )
 }
@@ -400,7 +404,16 @@ export default function HmoDirectoryTab({ canEdit, focusWalletId = '' }: { canEd
             </div>
 
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
-              {CONTACTS.map(c => <ContactCard key={c.key} title={c.title} name={e[`${c.key}Name`]} email={e[`${c.key}Email`]} number={e[`${c.key}Number`]} />)}
+              {CONTACTS.map(c => (
+                <ContactCard key={c.key} title={c.title} name={e[`${c.key}Name`]} email={e[`${c.key}Email`]} number={e[`${c.key}Number`]}
+                  extra={c.key === 'submission' && (
+                    <p className="text-xs mt-1">
+                      {e.soaSubmission
+                        ? <>SOAs by <span className="font-semibold">{SOA_SUBMISSION_LABEL[e.soaSubmission].toLowerCase()}</span></>
+                        : <span className="font-medium" style={{ color: MISSING_RED }}>How SOAs are submitted not set</span>}
+                    </p>
+                  )} />
+              ))}
               <div className="min-w-0">
                 <p className="text-[11px] font-semibold uppercase tracking-wide mb-1" style={{ color: 'var(--mid-gray)' }}>Accredited branches</p>
                 <p className={`text-xs${branches.length ? '' : ' font-medium'}`} style={{ color: branches.length ? 'var(--charcoal)' : MISSING_RED }}>
@@ -476,6 +489,16 @@ export default function HmoDirectoryTab({ canEdit, focusWalletId = '' }: { canEd
                     <input aria-label={`${c.title} email`} placeholder="Email" value={form[`${c.key}Email`]} onChange={ev => setForm({ ...form, [`${c.key}Email`]: ev.target.value })} className={inputClass} style={inputStyle} />
                     <input aria-label={`${c.title} number`} placeholder="Number" value={form[`${c.key}Number`]} onChange={ev => setForm({ ...form, [`${c.key}Number`]: ev.target.value })} className={inputClass} style={inputStyle} />
                   </div>
+                  {c.key === 'submission' && (
+                    <div className="mt-2 sm:w-1/3">
+                      <label htmlFor="soa-submission" className="text-[11px] block mb-0.5" style={{ color: 'var(--mid-gray)' }}>How SOAs are submitted</label>
+                      <select id="soa-submission" value={form.soaSubmission} onChange={ev => setForm({ ...form, soaSubmission: ev.target.value as SoaSubmission | '' })}
+                        className={inputClass} style={inputStyle}>
+                        <option value="">Not set</option>
+                        {(Object.keys(SOA_SUBMISSION_LABEL) as SoaSubmission[]).map(k => <option key={k} value={k}>{SOA_SUBMISSION_LABEL[k]}</option>)}
+                      </select>
+                    </div>
+                  )}
                 </div>
               ))}
             </section>
