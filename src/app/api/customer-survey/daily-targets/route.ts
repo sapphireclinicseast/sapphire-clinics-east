@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { surveyExpiresAt } from '@/lib/survey-window'
 
 // ── Daily Targets API ────────────────────────────────────────────────────────
 // GET  /api/customer-survey/daily-targets?branch=SBEA|SBGH
@@ -241,7 +242,7 @@ export async function GET(req: NextRequest) {
           sessionType,
           surveyType,
           status: 'PENDING',
-          expiresAt: todayEnd,
+          expiresAt: surveyExpiresAt(),
         },
       })
       assignment = { ...created, status: created.status, expiresAt: created.expiresAt }
@@ -334,7 +335,7 @@ export async function GET(req: NextRequest) {
           branch:      authedBranch,
           surveyType:  'HR12',
           status:      'PENDING',
-          expiresAt:   todayEnd,
+          expiresAt:   surveyExpiresAt(),
         },
       })
 

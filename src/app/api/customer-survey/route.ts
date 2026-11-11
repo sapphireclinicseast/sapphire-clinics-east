@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { surveyExpiresAt } from '@/lib/survey-window'
 
 // Roles that can access the Results tab
 const RESULTS_ROLES = ['MARKETING_ADMIN', 'SUPERADMIN', 'ADMIN', 'AHEA_ADMIN', 'AHGH_ADMIN']
@@ -612,7 +613,7 @@ export async function POST(req: NextRequest) {
       branch,
       sessionType: sessionType ?? 'individual',
       assignedBy: (session.user as { id: string }).id,
-      expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+      expiresAt: surveyExpiresAt(),
     },
   })
 
