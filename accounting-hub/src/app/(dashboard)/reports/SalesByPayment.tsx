@@ -155,7 +155,7 @@ export default function SalesByPayment({ year, branch, onData }: {
               <p className="text-[11px] mt-1" style={{ color: 'var(--mid-gray)' }}>Cash, cards, GCash/Maya, package, VIP and prepaid card, advance and downpayment</p>
             )}
             {c.key === 'other' && (
-              <p className="text-[11px] mt-1" style={{ color: 'var(--mid-gray)' }}>Revenue booked by journal entry, not a POS sale (e.g. other income)</p>
+              <p className="text-[11px] mt-1" style={{ color: 'var(--mid-gray)' }}>Sales booked by journal entry rather than a POS sale, or with no payment recorded</p>
             )}
           </div>
         ))}
@@ -281,7 +281,7 @@ export default function SalesByPayment({ year, branch, onData }: {
 
       <div className="space-y-1">
         <p className="text-[11px]" style={{ color: '#94a3b8' }}>
-          Gross sales before discounts, as on the Income Statement. Each sale is split by how its order was paid; an order paid partly by HMO and partly in cash is split in proportion.
+          Gross sales before discounts, as on the Income Statement&apos;s sales lines (other income and interest left out). Each sale is split by how its order was paid; an order paid partly by HMO and partly in cash is split in proportion.
           {view === 'monthly' && ' In the Monthly view each % is of that month\u2019s sales.'}
           Amounts in whole pesos.
         </p>

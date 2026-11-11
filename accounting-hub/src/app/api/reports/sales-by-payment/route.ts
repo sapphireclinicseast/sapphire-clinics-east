@@ -20,10 +20,14 @@ import { computeLedgerStatements, ledgerBranchValues } from '@/lib/reports/v2/en
  * Revenue not posted from a POS sale (manual journals, EWT other income…) and
  * sales with no payment recorded stay in "Not from POS", so every line adds up.
  * `monthly` carries the same split per line per month (the Monthly view).
+ * Sales only: non-operating revenue (other income, interest, rental, dividends)
+ * is left out (Hannah 2026-11-11).
  */
 
 const READ_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'VIEWER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN']
 const POS_SALE_TYPES = ['POS_ORDER', 'POS_ORDER_REVERSAL', 'MD_PASSTHROUGH_REMOVAL']
+/** Revenue that is not a sale — left out of this report. */
+const NON_OPERATING = 'NON_OPERATING_REVENUE'
 /** Before 2026 the books are the imported QuickBooks GL, which carries no payment method. */
 const FIRST_POS_YEAR = 2026
 
@@ -52,11 +56,18 @@ export async function GET(req: Request) {
 
   try {
     // ── Line totals: the Income Statement's Gross Revenue rows (ledger engine), by month ──
+    // Sales only: non-operating revenue — other income, interest, rental and
+    // dividend income — is left out (Hannah 2026-11-11), from the lines and the split.
+    const nonOperating = new Set((await prisma.account.findMany({
+      where: { accountType: 'REVENUE', subType: NON_OPERATING },
+      select: { accountNumber: true },
+    })).map(a => a.accountNumber))
     const lines = new Map<string, { number: string; title: string; monthly: number[] }>()
     for (const b of branches) {
       const st = await computeLedgerStatements(year, b)
       const sec = st.incomeStatement.sections.find(s => s.key === 'REVENUE')
       for (const r of sec?.rows || []) {
+        if (r.subType === NON_OPERATING || nonOperating.has(r.number)) continue
         const cur = lines.get(r.number) || { number: r.number, title: r.title, monthly: Array(12).fill(0) }
         for (let m = 0; m < 12; m++) cur.monthly[m] += r.monthly?.[m] || 0
         lines.set(r.number, cur)
@@ -72,7 +83,7 @@ export async function GET(req: Request) {
       arr[m][cat] += v
     }
     const byMethod: Record<string, number> = {}
-    const notes: string[] = []
+    const notes: string[] = ['Other income and interest (non-operating revenue) are left out — sales only.']
     if (year >= FIRST_POS_YEAR) {
       const branchValues = branches.includes('ALL') ? null
         : Array.from(new Set(branches.flatMap(b => ledgerBranchValues(b) || [])))
@@ -120,6 +131,7 @@ export async function GET(req: Request) {
       await loadPayments([...perOrder.keys()])
       /** Spread an amount over the order's payments, in proportion. false = no payment recorded. */
       const allocate = (orderId: string, acct: string, m: number, amount: number) => {
+        if (nonOperating.has(acct)) return true // not a sales line (see above)
         const ps = (payments.get(orderId) || []).filter(p => p.amount > 0)
         const paid = ps.reduce((t, p) => t + p.amount, 0)
         if (paid <= 0) return false
