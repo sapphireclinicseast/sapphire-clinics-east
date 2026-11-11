@@ -421,6 +421,7 @@ export default function HmoDirectoryTab({ canEdit, focusWalletId = '' }: { canEd
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
       {shown.map(e => {
         const missing = missingByWallet.get(e.walletId) || []
+        const branches = ACCREDITABLE_BRANCHES.filter(b => (e.accreditedBranches || []).includes(b.value))
         const acc = { name: e.accreditationName, email: e.accreditationEmail, number: e.accreditationNumber }
         return (
           <button key={e.walletId} type="button" onClick={() => setDetailsId(e.walletId)} aria-haspopup="dialog"
@@ -428,11 +429,23 @@ export default function HmoDirectoryTab({ canEdit, focusWalletId = '' }: { canEd
             style={{ borderColor: missing.length ? MISSING_BORDER : 'var(--light-gray)', outlineColor: 'var(--teal)' }}>
             <div className="flex items-start justify-between gap-3">
               <HmoLogo url={e.logoUrl} name={e.hmoName} size="card" />
-              {missing.length > 0 && (
-                <span title={`Missing: ${missing.join(', ')}`} className="px-2 py-0.5 rounded-full text-[11px] font-semibold whitespace-nowrap text-white" style={{ background: MISSING_RED }}>
-                  {missing.length} missing
-                </span>
-              )}
+              {/* Missing count, then the branches the HMO accredits us for (Hannah 11/11) */}
+              <div className="flex flex-col items-end gap-1">
+                {missing.length > 0 && (
+                  <span title={`Missing: ${missing.join(', ')}`} className="px-2 py-0.5 rounded-full text-[11px] font-semibold whitespace-nowrap text-white" style={{ background: MISSING_RED }}>
+                    {missing.length} missing
+                  </span>
+                )}
+                {branches.length ? (
+                  <div className="flex flex-wrap justify-end gap-1" aria-label="Accredited branches">
+                    {branches.map(b => (
+                      <span key={b.value} className="px-2 py-0.5 rounded-full text-[11px] font-semibold whitespace-nowrap" style={{ background: 'var(--pale-teal, #E6F4F2)', color: 'var(--teal)' }}>{b.label}</span>
+                    ))}
+                  </div>
+                ) : (
+                  <span className="text-[11px] font-medium whitespace-nowrap" style={{ color: MISSING_RED }}>No branch set</span>
+                )}
+              </div>
             </div>
             <div className="min-w-0">
               <p className="text-sm font-bold truncate" style={{ color: 'var(--charcoal)' }}>{e.hmoName}</p>
