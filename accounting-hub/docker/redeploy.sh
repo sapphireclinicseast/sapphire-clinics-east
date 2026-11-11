@@ -1137,6 +1137,7 @@ CREATE TABLE IF NOT EXISTS "EwtAdjustment" (
   CONSTRAINT "EwtAdjustment_pkey" PRIMARY KEY ("id")
 );
 CREATE INDEX IF NOT EXISTS "EwtAdjustment_payrollBranch_idx" ON "EwtAdjustment"("payrollBranch");
+ALTER TYPE "Role" ADD VALUE IF NOT EXISTS 'CLINIC_AIDE';
 CREATE TABLE IF NOT EXISTS "CollectionReportSettings" (
   "branch"          TEXT NOT NULL,
   "tin"             TEXT,

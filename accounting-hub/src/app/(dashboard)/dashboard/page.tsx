@@ -33,6 +33,7 @@ export default async function DashboardPage() {
   if (isHmoOfficer) redirect('/accounts-receivable')
   // Med rep only has Reports — send them straight there
   if (role === 'MEDREP') redirect('/reports')
+  if (role === 'CLINIC_AIDE') redirect('/asset-management') // Asset Management only (lib/clinic-aide)
   if (role === 'INVESTOR') redirect('/reports')
 
   // Greeting and date in Manila time.

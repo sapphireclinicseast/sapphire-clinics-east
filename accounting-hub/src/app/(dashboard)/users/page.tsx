@@ -43,6 +43,7 @@ const ROLE_OPTIONS = [
   { value: 'HMO_OFFICER', label: 'HMO Officer' },
   { value: 'MEDREP', label: 'Medical Representative (Reports — Gross Revenue only)' },
   { value: 'INVESTOR', label: 'Investor (Financial Reports view-only — no drill-downs; BS/CF whole-company)' },
+  { value: 'CLINIC_AIDE', label: 'Clinic Aide (Asset Management only — view; set the branch)' },
 ]
 
 const BRANCH_OPTIONS = [
@@ -67,6 +68,7 @@ const ROLE_LABELS: Record<string, string> = {
   HMO_OFFICER: 'HMO Officer',
   MEDREP: 'Medical Representative',
   INVESTOR: 'Investor',
+  CLINIC_AIDE: 'Clinic Aide',
 }
 
 const BRANCH_LABELS: Record<string, string> = {
@@ -80,12 +82,12 @@ const BRANCH_LABELS: Record<string, string> = {
 type UserGroup = 'finance' | 'branch' | 'reports' | 'off'
 const GROUP_ROLES: Record<Exclude<UserGroup, 'off'>, string[]> = {
   finance: ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'VIEWER'],
-  branch: ['AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN', 'AHEA_FRONTDESK', 'AHGH_FRONTDESK', 'PAYROLL_OFFICER', 'HMO_OFFICER'],
+  branch: ['AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN', 'AHEA_FRONTDESK', 'AHGH_FRONTDESK', 'PAYROLL_OFFICER', 'HMO_OFFICER', 'CLINIC_AIDE'],
   reports: ['MEDREP', 'INVESTOR'],
 }
 const GROUP_META: Record<UserGroup, { label: string; sub: string; line: string }> = {
   finance: { label: 'Finance team', sub: 'Admin, accountant, bookkeeper, viewer', line: '#4A8073' },
-  branch: { label: 'Branch staff & officers', sub: 'Branch admins, front desk, payroll, HMO', line: '#2563eb' },
+  branch: { label: 'Branch staff & officers', sub: 'Branch admins, front desk, payroll, HMO, clinic aides', line: '#2563eb' },
   reports: { label: 'Reports only', sub: 'Medical reps and investors', line: '#8A9AA0' },
   off: { label: 'Deactivated', sub: 'Cannot sign in · records kept', line: '#dc2626' },
 }

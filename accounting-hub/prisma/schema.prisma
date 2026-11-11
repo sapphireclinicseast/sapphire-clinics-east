@@ -23,6 +23,7 @@ enum Role {
   AHGH_FRONTDESK
   HMO_OFFICER
   MEDREP
+  CLINIC_AIDE // Asset Management only, view (Hannah 2026-11-11)
 }
 
 enum Branch {

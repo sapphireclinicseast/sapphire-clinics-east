@@ -329,8 +329,12 @@ function AssetManagementInner() {
   const { data: session, status } = useSession()
 
   const userRole = session?.user?.role as string
+  // A clinic aide's branch is the one on their account (the assets API forces it too).
+  const aideBranch = userRole === 'CLINIC_AIDE' ? ((session?.user as { branch?: string | null } | undefined)?.branch || '') : ''
   const isBranchRestricted = ['AHEA_ADMIN', 'AHEA_FRONTDESK', 'AHGH_ADMIN', 'AHGH_FRONTDESK', 'VERDANA_ADMIN'].includes(userRole)
-  const userBranch = userRole?.includes('AHEA')
+    || (!!aideBranch && aideBranch !== 'ALL')
+  const userBranch = aideBranch && aideBranch !== 'ALL' ? aideBranch
+    : userRole?.includes('AHEA')
     ? 'SANDBOX_EAST'
     : userRole?.includes('AHGH')
     ? 'SANDBOX_GREENHILLS'

@@ -41,8 +41,10 @@ export async function GET(req: Request) {
   const { searchParams } = new URL(req.url)
   const userRole = session.user.role as string
 
-  // Branch-restricted roles always see their own branch
+  // Branch-restricted roles always see their own branch; a clinic aide, the branch on their account.
+  const accountBranch = (session.user as { branch?: string | null }).branch
   const forcedBranch = getBranchForRole(userRole)
+    ?? (userRole === 'CLINIC_AIDE' && accountBranch && accountBranch !== 'ALL' ? accountBranch : null)
   const branchFilter = forcedBranch ?? searchParams.get('branch') ?? ''
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any

@@ -101,7 +101,7 @@ export const NAV_SECTIONS: NavSection[] = [
       { href: '/refunds', icon: Undo2, label: 'Refunds', roles: ENTRY_ACCESS },
       { href: '/cash-advances', icon: HandCoins, label: 'Cash Advances', roles: TAX_ACCESS },
       { href: '/inventory', icon: Package, label: 'Inventory & Procurement', roles: INVENTORY_ACCESS },
-      { href: '/asset-management', icon: Building2, label: 'Asset Management', roles: SERVICES_POS_ACCESS },
+      { href: '/asset-management', icon: Building2, label: 'Asset Management', roles: [...SERVICES_POS_ACCESS, 'CLINIC_AIDE'] },
       { href: '/services', icon: Stethoscope, label: 'Services', roles: SERVICES_POS_PAYROLL },
       { href: '/pos', icon: ShoppingCart, label: 'Point of Sale', roles: SERVICES_POS_PAYROLL },
       { href: '/quotations', icon: FileSignature, label: 'Quotations', roles: SERVICES_POS_ACCESS },
@@ -212,8 +212,12 @@ export default function Sidebar({ userRole, open, onClose, collapsed = false }: 
         {/* Navigation */}
         <nav className="flex-1 overflow-y-auto py-4 px-3 space-y-5">
           {NAV_SECTIONS.map((section) => {
+            // A clinic aide sees only what is opened to them by name (Asset Management) —
+            // not even the every-role links like the Handbook (lib/clinic-aide).
             const visibleItems = section.items.filter(
-              (item) => !item.roles || item.roles.includes(userRole || '')
+              (item) => userRole === 'CLINIC_AIDE'
+                ? !!item.roles?.includes('CLINIC_AIDE')
+                : !item.roles || item.roles.includes(userRole || '')
             )
             if (visibleItems.length === 0) return null
 

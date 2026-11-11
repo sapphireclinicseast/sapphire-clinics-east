@@ -27,6 +27,7 @@ const ROLE_LABELS: Record<string, string> = {
   VERDANA_ADMIN: 'Verdana Admin',
   AHEA_FRONTDESK: 'AHEA Front Desk',
   AHGH_FRONTDESK: 'AHGH Front Desk',
+  CLINIC_AIDE: 'Clinic Aide',
 }
 
 export default function TopBar({ user, onMenuClick, sidebarCollapsed, onToggleSidebar }: TopBarProps) {
@@ -74,7 +75,8 @@ export default function TopBar({ user, onMenuClick, sidebarCollapsed, onToggleSi
       </button>
 
       <div className="flex-1 flex justify-center px-2 lg:px-4">
-        <GlobalSearch />
+        {/* Hub-wide search is not for clinic aides (Asset Management only — lib/clinic-aide). */}
+        {user.role !== 'CLINIC_AIDE' && <GlobalSearch />}
       </div>
 
       {/* Deadlines and payroll adjustments that need action */}
