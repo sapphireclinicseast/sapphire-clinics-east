@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { branchForRole } from '@/lib/role-branch'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { dayStarts } from '@/lib/decking-slots'
 
 // INVESTOR is deliberately NOT in this list — investor accounts are scoped to
 // the Patient Dashboard only and must not be able to read therapist
@@ -17,14 +18,38 @@ function initials(fullName: string): string {
   return parts.map(p => p[0].toUpperCase()).join('')
 }
 
-// Rostered hours in a shift. Times are "HH:MM" 24h strings; a shift never
-// crosses midnight here, so a plain difference is enough. Guards against a
-// malformed or inverted config rather than emitting a negative capacity.
-function hoursBetween(startTime: string, endTime: string): number {
-  const [sh, sm] = (startTime ?? '').split(':').map(Number)
-  const [eh, em] = (endTime ?? '').split(':').map(Number)
-  if ([sh, sm, eh, em].some(n => !Number.isFinite(n))) return 0
-  return Math.max(0, (eh * 60 + em - (sh * 60 + sm)) / 60)
+/**
+ * Bookable slots in one working day, counted the way the board builds them.
+ *
+ * This used to be the shift's LENGTH IN HOURS, which silently assumed every
+ * slot is an hour long. It is not: a consultant can set a slot length, a
+ * number of slots per day, or a break, and four configs already do. An eight
+ * hour day split into five slots then measured five decked slots against
+ * eight "rostered hours" and reported a completely full week as 62%.
+ *
+ * Counting through dayStarts() — the same function the decking board and the
+ * Google Sheet use — means the denominator is exactly the slots the board
+ * offers, whatever shape they are. For an ordinary hourly roster the figure is
+ * unchanged, which is 161 of the 165 configs.
+ */
+function slotsPerWorkingDay(cfg: {
+  startTime: string; endTime: string
+  slotsPerDay?: number | null; slotMinutes?: number | null
+  breakStart?: string | null; breakMinutes?: number | null
+}): number {
+  try {
+    return dayStarts(cfg.startTime, cfg.endTime, {
+      slotsPerDay: cfg.slotsPerDay ?? null,
+      slotMinutes: cfg.slotMinutes ?? null,
+      breakStart: cfg.breakStart ?? null,
+      breakMinutes: cfg.breakMinutes ?? null,
+    }).length
+  } catch {
+    // A malformed or inverted config yields no capacity rather than a
+    // negative one — the therapist drops out of the average instead of
+    // dragging it down.
+    return 0
+  }
 }
 
 const DAY_MAP: Record<number, string> = {
@@ -62,7 +87,14 @@ export async function GET(req: NextRequest) {
     OR: [{ staff: { employmentType: null } }, { staff: { employmentType: { not: 'intern' } } }],
   }
   if (branch && branch !== 'all') configWhere.branch = branch
-  if (department && department !== 'all') configWhere.department = department
+  // A list, because the page's department filter is a set of tick boxes and
+  // the headline tile has to be scoped to the same set the figures beside it
+  // are. A single name still works, for the panel below that sends one.
+  if (department && department !== 'all') {
+    const wanted = department.split(',').map(d => d.trim()).filter(Boolean)
+    if (wanted.length === 1) configWhere.department = wanted[0]
+    else if (wanted.length > 1) configWhere.department = { in: wanted }
+  }
   if (staffId) configWhere.staffId = staffId
   configWhere.staff = { active: true }
 
@@ -234,7 +266,9 @@ export async function GET(req: NextRequest) {
     // questions separate cleanly — how full the week is, versus how often the
     // people in it turn up.
     const deckedByDay = deckedTimeslotsByStaff.get(cfg.staffId)
-    const shiftHours = hoursBetween(cfg.startTime, cfg.endTime)
+    // Slots per day, not hours per day — decked is counted in slots, so the
+    // denominator has to be too, or a non-hourly roster reads as half empty.
+    const slotsPerDay = slotsPerWorkingDay(cfg)
 
     let totalSlots = 0
     for (const day of workDays) {
@@ -266,7 +300,7 @@ export async function GET(req: NextRequest) {
       if (workDays.includes(day)) deckedPerWeek += times.size
       else deckedOffRoster += times.size
     }
-    const rosteredPerWeek = shiftHours * workDays.length
+    const rosteredPerWeek = slotsPerDay * workDays.length
 
     therapistMap.set(cfg.staffId, {
       staffId: cfg.staffId,
@@ -366,5 +400,43 @@ export async function GET(req: NextRequest) {
     summary.overbooked  += t.overbooked
   }
 
-  return NextResponse.json({ therapists, summary })
+  // ── 7. How full the clinicians themselves are ─────────────────────────────
+  //
+  // A different question from clinic utilization, and the one that decides
+  // whether to hire. Clinic utilization measures sessions against the daily
+  // caps in Settings — the room's capacity. This measures decked slots against
+  // the slots each consultant personally offered. The two come apart exactly
+  // when it matters: if the clinic is at 13% but the consultants are at 95%,
+  // the building has room and the people do not, and more rooms will not take
+  // another patient.
+  //
+  // The MEAN OF EACH PERSON'S RATE, not the pooled total. Pooled, one
+  // consultant offering forty slots outvotes four offering five, and the
+  // figure stops describing a typical consultant — which is who gets hired.
+  // Both are returned so the UI can say which it is showing.
+  const fills = therapists
+    .filter(t => t.rosteredPerWeek > 0)
+    .map(t => (t.deckedPerWeek / t.rosteredPerWeek) * 100)
+
+  const fill = {
+    // Null rather than 0 when nobody has a roster: "no consultant has set
+    // their days" and "every consultant is empty" are different facts, and a
+    // zero on this tile would send someone hiring.
+    avgPct: fills.length ? fills.reduce((a, b) => a + b, 0) / fills.length : null,
+    pooledPct: summary.rosteredPerWeek > 0
+      ? (summary.deckedPerWeek / summary.rosteredPerWeek) * 100
+      : null,
+    // The hiring signal. Counted at 90 rather than 100 because a consultant
+    // with one slot left is, in practice, full.
+    fullCount: fills.filter(f => f >= 90).length,
+    counted: fills.length,
+  }
+
+  // Names are the expensive part of the payload and the part worth not
+  // sending when only the headline is wanted.
+  if (searchParams.get('summaryOnly') === '1') {
+    return NextResponse.json({ therapists: [], summary, fill })
+  }
+
+  return NextResponse.json({ therapists, summary, fill })
 }
