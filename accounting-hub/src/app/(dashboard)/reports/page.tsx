@@ -1992,6 +1992,19 @@ export default function ReportsPage() {
       }
       rows.push(['Total Gross Sales', T.cash.toFixed(2), pct(T.cash), T.gl.toFixed(2), pct(T.gl), T.hmo.toFixed(2), pct(T.hmo),
         ...(withOther ? [T.other.toFixed(2), pct(T.other)] : []), T.total.toFixed(2), '100%'])
+      // Monthly — all gross sales, one row per month (% of that month's sales).
+      if (sbpData.monthly?.length) {
+        rows.push([])
+        rows.push(['Monthly — all gross sales', 'Cash', '% of month', 'GL', '% of month', 'HMO', '% of month', ...(withOther ? ['Not from POS', '% of month'] : []), 'Total'])
+        for (let m = sbpData.from; m <= sbpData.to; m++) {
+          const own = sbpData.monthly.filter(x => x.month === m)
+          const sum = (k: 'cash' | 'gl' | 'hmo' | 'other' | 'total') => own.reduce((t, x) => t + x[k], 0)
+          const tot = sum('total')
+          const mp = (v: number) => (tot ? `${((v / tot) * 100).toFixed(1)}%` : '')
+          rows.push([MON[m - 1], sum('cash').toFixed(2), mp(sum('cash')), sum('gl').toFixed(2), mp(sum('gl')), sum('hmo').toFixed(2), mp(sum('hmo')),
+            ...(withOther ? [sum('other').toFixed(2), mp(sum('other'))] : []), tot.toFixed(2)])
+        }
+      }
       if (sbpData.cashMethods.length) {
         rows.push([])
         rows.push(['What makes up Cash', 'Amount', '% of cash'])

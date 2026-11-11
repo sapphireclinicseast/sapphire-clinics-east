@@ -19,6 +19,7 @@ import { computeLedgerStatements, ledgerBranchValues } from '@/lib/reports/v2/en
  * on each revenue account is divided by the order's own payments, in proportion.
  * Revenue not posted from a POS sale (manual journals, EWT other income…) and
  * sales with no payment recorded stay in "Not from POS", so every line adds up.
+ * `monthly` carries the same split per line per month (the Monthly view).
  */
 
 const READ_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'VIEWER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN']
@@ -50,23 +51,26 @@ export async function GET(req: Request) {
   const branches = branchSel === 'ALL' ? ['ALL'] : branchSel.split('+').filter(Boolean)
 
   try {
-    // ── Line totals: the Income Statement's Gross Revenue rows (ledger engine) ──
-    const lines = new Map<string, { number: string; title: string; total: number }>()
+    // ── Line totals: the Income Statement's Gross Revenue rows (ledger engine), by month ──
+    const lines = new Map<string, { number: string; title: string; monthly: number[] }>()
     for (const b of branches) {
       const st = await computeLedgerStatements(year, b)
       const sec = st.incomeStatement.sections.find(s => s.key === 'REVENUE')
       for (const r of sec?.rows || []) {
-        let v = 0
-        if (fromM === 1 && toM === 12) v = r.closing
-        else for (let m = fromM - 1; m <= toM - 1; m++) v += r.monthly?.[m] || 0
-        const cur = lines.get(r.number) || { number: r.number, title: r.title, total: 0 }
-        cur.total += v
+        const cur = lines.get(r.number) || { number: r.number, title: r.title, monthly: Array(12).fill(0) }
+        for (let m = 0; m < 12; m++) cur.monthly[m] += r.monthly?.[m] || 0
         lines.set(r.number, cur)
       }
     }
 
-    // ── The split: POS sale entries in the same window and branches ──
-    const split = new Map<string, Record<Cat, number>>() // account number → per category
+    // ── The split, by month: POS sale entries in the same window and branches ──
+    // account number → month (0–11) → per category
+    const split = new Map<string, Record<Cat, number>[]>()
+    const addSplit = (acct: string, m: number, cat: Cat, v: number) => {
+      let arr = split.get(acct)
+      if (!arr) { arr = Array.from({ length: 12 }, () => ({ CASH: 0, GL: 0, HMO: 0 })); split.set(acct, arr) }
+      arr[m][cat] += v
+    }
     const byMethod: Record<string, number> = {}
     const notes: string[] = []
     if (year >= FIRST_POS_YEAR) {
@@ -86,51 +90,60 @@ export async function GET(req: Request) {
         select: {
           debit: true, credit: true,
           account: { select: { accountNumber: true } },
-          journalEntry: { select: { referenceId: true } },
+          journalEntry: { select: { referenceId: true, entryDate: true } },
         },
       })
-      // order → account → gross sale (credit − debit)
+      // order → "account|month" → gross sale (credit − debit). Months as the
+      // engine buckets them: the UTC month of the entry date.
       const perOrder = new Map<string, Map<string, number>>()
       for (const l of jeLines) {
         const oid = l.journalEntry.referenceId
         if (!oid) continue
         const amt = Number(l.credit) - Number(l.debit)
         if (!amt) continue
+        const k = `${l.account.accountNumber}|${new Date(l.journalEntry.entryDate).getUTCMonth()}`
         const m = perOrder.get(oid) || new Map<string, number>()
-        m.set(l.account.accountNumber, (m.get(l.account.accountNumber) || 0) + amt)
+        m.set(k, (m.get(k) || 0) + amt)
         perOrder.set(oid, m)
       }
-      const orderIds = [...perOrder.keys()]
       const payments = new Map<string, { method: string; amount: number }[]>()
-      for (let i = 0; i < orderIds.length; i += 5000) {
-        const chunk = orderIds.slice(i, i + 5000)
-        const ps = await prisma.orderPayment.findMany({ where: { orderId: { in: chunk } }, select: { orderId: true, method: true, amount: true } })
-        for (const p of ps) {
-          const arr = payments.get(p.orderId) || []
-          arr.push({ method: String(p.method), amount: Math.max(0, Number(p.amount) || 0) })
-          payments.set(p.orderId, arr)
+      const loadPayments = async (ids: string[]) => {
+        for (let i = 0; i < ids.length; i += 5000) {
+          const ps = await prisma.orderPayment.findMany({ where: { orderId: { in: ids.slice(i, i + 5000) } }, select: { orderId: true, method: true, amount: true } })
+          for (const p of ps) {
+            const arr = payments.get(p.orderId) || []
+            arr.push({ method: String(p.method), amount: Math.max(0, Number(p.amount) || 0) })
+            payments.set(p.orderId, arr)
+          }
         }
       }
-      let unpaidOrders = 0
-      for (const [oid, accts] of perOrder) {
-        const ps = (payments.get(oid) || []).filter(p => p.amount > 0)
-        const paid = ps.reduce((s, p) => s + p.amount, 0)
-        if (paid <= 0) { unpaidOrders++; continue } // stays in "Not from POS / no payment"
-        for (const [acct, gross] of accts) {
-          const row = split.get(acct) || { CASH: 0, GL: 0, HMO: 0 }
-          for (const p of ps) {
-            const part = gross * (p.amount / paid)
-            const cat = categoryOf(p.method)
-            row[cat] += part
-            if (cat === 'CASH') byMethod[p.method] = (byMethod[p.method] || 0) + part
-          }
-          split.set(acct, row)
+      await loadPayments([...perOrder.keys()])
+      /** Spread an amount over the order's payments, in proportion. false = no payment recorded. */
+      const allocate = (orderId: string, acct: string, m: number, amount: number) => {
+        const ps = (payments.get(orderId) || []).filter(p => p.amount > 0)
+        const paid = ps.reduce((t, p) => t + p.amount, 0)
+        if (paid <= 0) return false
+        for (const p of ps) {
+          const part = amount * (p.amount / paid)
+          const cat = categoryOf(p.method)
+          addSplit(acct, m, cat, part)
+          if (cat === 'CASH') byMethod[p.method] = (byMethod[p.method] || 0) + part
         }
+        return true
+      }
+      let unpaidOrders = 0
+      for (const [oid, parts] of perOrder) {
+        let any = false
+        for (const [k, gross] of parts) {
+          const [acct, m] = k.split('|')
+          if (allocate(oid, acct, Number(m), gross)) any = true
+        }
+        if (!any) unpaidOrders++ // stays in "Not from POS / no payment"
       }
       // Period fees (tuition): the Income Statement recognizes them over the months
       // they cover (engine 3b), not all in the payment month as the POS entry does.
       // Reshape the split the same way, by each order's own payment mix, so the
-      // split ties to the statement line.
+      // split ties to the statement line month by month.
       const pfItems = await prisma.orderItem.findMany({
         where: {
           service: { recognitionMonths: { gt: 1 } },
@@ -147,7 +160,8 @@ export async function GET(req: Request) {
           order: { select: { id: true, transactionDate: true, subtotal: true, netAmount: true } },
         },
       })
-      const pfAdj: { orderId: string; acct: string; amount: number }[] = []
+      const pfAdj: { orderId: string; acct: string; m: number; amount: number }[] = []
+      const inWindow = (m: number) => m >= fromM && m <= toM
       for (const it of pfItems) {
         const N = it.service?.recognitionMonths || 1
         if (N <= 1) continue
@@ -156,55 +170,44 @@ export async function GET(req: Request) {
         const subtotal = Number(o.subtotal)
         const net = round2(subtotal > 0 ? gross * Number(o.netAmount) / subtotal : gross)
         if (net <= 0) continue
+        const acct = it.service?.revenueAccount?.accountNumber || '7000'
         const td = new Date(o.transactionDate)
         const startAbs = (td.getUTCFullYear() - year) * 12 + td.getUTCMonth() + 1
-        const inWindow = (m: number) => m >= fromM && m <= toM
-        let adj = 0
-        if (startAbs >= 1 && startAbs <= 12 && inWindow(startAbs)) adj -= net
+        if (startAbs >= 1 && startAbs <= 12 && inWindow(startAbs)) pfAdj.push({ orderId: o.id, acct, m: startAbs - 1, amount: -net })
         const per = round2(net / N)
         for (let k = 0; k < N; k++) {
           const m = startAbs + k
           if (m < 1 || m > 12 || !inWindow(m)) continue
-          adj += k === N - 1 ? round2(net - per * (N - 1)) : per
-        }
-        if (Math.abs(adj) > 0.004) pfAdj.push({ orderId: o.id, acct: it.service?.revenueAccount?.accountNumber || '7000', amount: adj })
-      }
-      const missing = [...new Set(pfAdj.map(a => a.orderId))].filter(id => !payments.has(id))
-      if (missing.length) {
-        const ps = await prisma.orderPayment.findMany({ where: { orderId: { in: missing } }, select: { orderId: true, method: true, amount: true } })
-        for (const p of ps) {
-          const arr = payments.get(p.orderId) || []
-          arr.push({ method: String(p.method), amount: Math.max(0, Number(p.amount) || 0) })
-          payments.set(p.orderId, arr)
+          pfAdj.push({ orderId: o.id, acct, m: m - 1, amount: k === N - 1 ? round2(net - per * (N - 1)) : per })
         }
       }
-      for (const a of pfAdj) {
-        const ps = (payments.get(a.orderId) || []).filter(p => p.amount > 0)
-        const paid = ps.reduce((t, p) => t + p.amount, 0)
-        if (paid <= 0) continue
-        const row = split.get(a.acct) || { CASH: 0, GL: 0, HMO: 0 }
-        for (const p of ps) {
-          const part = a.amount * (p.amount / paid)
-          const cat = categoryOf(p.method)
-          row[cat] += part
-          if (cat === 'CASH') byMethod[p.method] = (byMethod[p.method] || 0) + part
-        }
-        split.set(a.acct, row)
-      }
+      await loadPayments([...new Set(pfAdj.map(a => a.orderId))].filter(id => !payments.has(id)))
+      for (const a of pfAdj) allocate(a.orderId, a.acct, a.m, a.amount)
       if (pfAdj.length) notes.push('Tuition and other period fees count in the months they cover, as on the Income Statement — split by how each was paid.')
       if (unpaidOrders) notes.push(`${unpaidOrders} sale${unpaidOrders === 1 ? '' : 's'} with no payment recorded (fully discounted or free) stay in "Not from POS".`)
     } else {
       notes.push(`Before ${FIRST_POS_YEAR} the books are the imported QuickBooks journals, which carry no payment method — every line shows under "Not from POS".`)
     }
 
+    // One row per line per month in the window, then the summary rows over the window.
+    const monthsIn = Array.from({ length: toM - fromM + 1 }, (_, i) => fromM - 1 + i)
+    const cell = (acct: string, m: number, lineTotal: number) => {
+      const s = split.get(acct)?.[m] || { CASH: 0, GL: 0, HMO: 0 }
+      const cash = round2(s.CASH), gl = round2(s.GL), hmo = round2(s.HMO), total = round2(lineTotal)
+      return { cash, gl, hmo, other: round2(total - cash - gl - hmo), total }
+    }
+    const nonZero = (r: { cash: number; gl: number; hmo: number; total: number }) =>
+      Math.abs(r.total) > 0.004 || Math.abs(r.cash) + Math.abs(r.gl) + Math.abs(r.hmo) > 0.004
+    const monthly = [...lines.values()]
+      .flatMap(l => monthsIn.map(m => ({ number: l.number, month: m + 1, ...cell(l.number, m, l.monthly[m]) })))
+      .filter(nonZero)
     const rows = [...lines.values()]
       .map(l => {
-        const s = split.get(l.number) || { CASH: 0, GL: 0, HMO: 0 }
-        const cash = round2(s.CASH), gl = round2(s.GL), hmo = round2(s.HMO)
-        const total = round2(l.total)
-        return { number: l.number, title: l.title, cash, gl, hmo, other: round2(total - cash - gl - hmo), total }
+        const own = monthly.filter(x => x.number === l.number)
+        const sum = (k: 'cash' | 'gl' | 'hmo' | 'other' | 'total') => round2(own.reduce((t, x) => t + x[k], 0))
+        return { number: l.number, title: l.title, cash: sum('cash'), gl: sum('gl'), hmo: sum('hmo'), other: sum('other'), total: sum('total') }
       })
-      .filter(r => Math.abs(r.total) > 0.004 || Math.abs(r.cash) + Math.abs(r.gl) + Math.abs(r.hmo) > 0.004)
+      .filter(nonZero)
       .sort((a, b) => a.number.localeCompare(b.number))
     const totals = rows.reduce((t, r) => ({
       cash: t.cash + r.cash, gl: t.gl + r.gl, hmo: t.hmo + r.hmo, other: t.other + r.other, total: t.total + r.total,
@@ -217,6 +220,7 @@ export async function GET(req: Request) {
     return NextResponse.json({
       year, branch: branchSel, from: fromM, to: toM,
       rows,
+      monthly,
       totals: Object.fromEntries(Object.entries(totals).map(([k, v]) => [k, round2(v)])),
       cashMethods,
       notes,

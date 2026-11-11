@@ -10,9 +10,12 @@ import { Loader2 } from 'lucide-react'
 import { formatCurrency } from '@/lib/utils'
 
 export type SbpRow = { number: string; title: string; cash: number; gl: number; hmo: number; other: number; total: number }
+export type SbpMonthRow = { number: string; month: number; cash: number; gl: number; hmo: number; other: number; total: number }
 export type SbpPayload = {
   year: number; branch: string; from: number; to: number
   rows: SbpRow[]
+  /** Same split per line per month (Monthly view). */
+  monthly: SbpMonthRow[]
   totals: { cash: number; gl: number; hmo: number; other: number; total: number }
   cashMethods: { method: string; label: string; amount: number }[]
   notes: string[]
@@ -36,6 +39,10 @@ export default function SalesByPayment({ year, branch, onData }: {
   const [toM, setToM] = useState(12)
   // % of total sales (every cell against the grand total) or of the line itself.
   const [pctOf, setPctOf] = useState<'total' | 'line'>('total')
+  // Summary (one row per gross sales line) or Monthly (one row per month, for all
+  // lines or one line picked below) — Hannah 2026-11-11.
+  const [view, setView] = useState<'summary' | 'monthly'>('summary')
+  const [line, setLine] = useState('')
   const key = `${year}|${branch}|${fromM}|${toM}`
   const [result, setResult] = useState<{ key: string; data: SbpPayload | null; error: string | null }>({ key: '', data: null, error: null })
 
@@ -69,13 +76,29 @@ export default function SalesByPayment({ year, branch, onData }: {
         {MONTHS.map((m, i) => <option key={m} value={i + 1}>{m}</option>)}
       </select>
       <div className="flex items-center rounded-lg overflow-hidden ml-2" style={{ border: '1px solid var(--light-gray)' }}>
-        {([['total', '% of total sales'], ['line', '% of the line']] as const).map(([k, l]) => (
-          <button key={k} type="button" onClick={() => setPctOf(k)} className="px-2.5 py-1.5 text-xs font-medium"
-            style={pctOf === k ? { background: 'var(--teal)', color: 'white' } : { background: 'white', color: 'var(--charcoal)' }}>
+        {([['summary', 'Summary'], ['monthly', 'Monthly']] as const).map(([k, l]) => (
+          <button key={k} type="button" onClick={() => setView(k)} className="px-2.5 py-1.5 text-xs font-semibold"
+            style={view === k ? { background: 'var(--deep-teal, #14532d)', color: 'white' } : { background: 'white', color: 'var(--charcoal)' }}>
             {l}
           </button>
         ))}
       </div>
+      {view === 'summary' ? (
+        <div className="flex items-center rounded-lg overflow-hidden" style={{ border: '1px solid var(--light-gray)' }}>
+          {([['total', '% of total sales'], ['line', '% of the line']] as const).map(([k, l]) => (
+            <button key={k} type="button" onClick={() => setPctOf(k)} className="px-2.5 py-1.5 text-xs font-medium"
+              style={pctOf === k ? { background: 'var(--teal)', color: 'white' } : { background: 'white', color: 'var(--charcoal)' }}>
+              {l}
+            </button>
+          ))}
+        </div>
+      ) : (
+        <select value={line} onChange={e => setLine(e.target.value)} aria-label="Gross sales line"
+          className="px-2 py-1.5 rounded-lg text-xs" style={{ border: '1px solid var(--light-gray)' }}>
+          <option value="">All gross sales</option>
+          {(result.data?.rows || []).map(r => <option key={r.number} value={r.number}>{r.number} {r.title}</option>)}
+        </select>
+      )}
     </div>
   )
 
@@ -87,8 +110,17 @@ export default function SalesByPayment({ year, branch, onData }: {
   )
   if (result.error || !data) return <div className="py-16 text-center text-sm" style={{ color: 'var(--mid-gray)' }}>{result.error || 'No data'}</div>
 
-  const T = data.totals
-  const showOther = data.rows.some(r => Math.abs(r.other) >= 0.5)
+  // Monthly view: one row per month for the picked line (or every line).
+  const monthRows = Array.from({ length: data.to - data.from + 1 }, (_, i) => data.from + i).map(month => {
+    const own = (data.monthly || []).filter(x => x.month === month && (!line || x.number === line))
+    const sum = (k: Col | 'total') => own.reduce((t, x) => t + x[k], 0)
+    return { month, cash: sum('cash'), gl: sum('gl'), hmo: sum('hmo'), other: sum('other'), total: sum('total') }
+  })
+  const pickedRow = line ? data.rows.find(r => r.number === line) : null
+  const T = view === 'monthly' && pickedRow
+    ? { cash: pickedRow.cash, gl: pickedRow.gl, hmo: pickedRow.hmo, other: pickedRow.other, total: pickedRow.total }
+    : data.totals
+  const showOther = (view === 'monthly' ? monthRows : data.rows).some(r => Math.abs(r.other) >= 0.5)
   const cols = COLS.filter(c => c.key !== 'other' || showOther)
   // Negatives in brackets like the amounts; a rounding −0.0% reads 0.0%.
   const pct = (v: number, base: number) => {
@@ -121,6 +153,60 @@ export default function SalesByPayment({ year, branch, onData }: {
         ))}
       </div>
 
+      {view === 'monthly' && (
+        <div className="rounded-lg overflow-x-auto bg-white" style={{ border: '1px solid var(--light-gray)' }}>
+          <table className="w-full table-auto">
+            <thead>
+              <tr style={{ background: 'var(--hr-head)' }}>
+                <th className="px-2 py-2 text-left text-[11px] font-bold uppercase tracking-[.4px]" style={{ color: 'var(--mid-gray)' }}>
+                  {pickedRow ? `${pickedRow.number} ${pickedRow.title}` : 'All gross sales'}
+                </th>
+                {cols.map(c => (
+                  <th key={c.key} colSpan={2} className="px-2 py-2 text-right text-[11px] font-bold uppercase tracking-[.4px]" style={{ color: c.color }}>{c.label}</th>
+                ))}
+                <th className="px-2 py-2 text-right text-[11px] font-bold uppercase tracking-[.4px]" style={{ color: 'var(--mid-gray)', borderLeft: '2px solid #94a3b8' }}>Total</th>
+                <th className="px-3 py-2 text-left text-[11px] font-bold uppercase tracking-[.4px]" style={{ color: 'var(--mid-gray)', minWidth: 140 }}>Mix</th>
+              </tr>
+            </thead>
+            <tbody>
+              {[...monthRows, { month: 0, ...T }].map(r => {
+                const isTotal = r.month === 0
+                return (
+                  <tr key={r.month} style={{ borderTop: isTotal ? '2px solid #94a3b8' : '1px solid var(--light-gray)', background: isTotal ? '#f8fafc' : undefined }}>
+                    <td className={`px-2 py-1.5 text-xs whitespace-nowrap ${isTotal ? 'font-semibold' : ''}`} style={{ color: 'var(--charcoal)' }}>
+                      {isTotal ? `Total ${MONTHS[data.from - 1].slice(0, 3)}–${MONTHS[data.to - 1].slice(0, 3)}` : MONTHS[r.month - 1]}
+                    </td>
+                    {cols.map(c => {
+                      const v = r[c.key]
+                      return [
+                        <td key={`${c.key}a`} className={`pl-2 py-1.5 text-right tabular-nums text-xs whitespace-nowrap ${isTotal ? 'font-semibold' : ''}`}
+                          style={{ color: v < 0 ? '#b91c1c' : isTotal ? c.color : 'var(--charcoal)' }}>{Math.abs(v) < 0.5 ? '—' : fmt(v)}</td>,
+                        <td key={`${c.key}p`} className={`pr-3 pl-1 py-1.5 text-right tabular-nums text-[11px] whitespace-nowrap ${isTotal ? 'font-semibold' : ''}`}
+                          style={{ color: isTotal ? c.color : 'var(--mid-gray)' }}>{Math.abs(v) < 0.5 ? '' : pct(v, r.total)}</td>,
+                      ]
+                    })}
+                    <td className={`pl-2 pr-2 py-1.5 text-right tabular-nums text-xs whitespace-nowrap ${isTotal ? 'font-bold' : 'font-semibold'}`}
+                      style={{ color: '#111827', borderLeft: '2px solid #94a3b8' }}>{Math.abs(r.total) < 0.5 ? '—' : fmt(r.total)}</td>
+                    <td className="px-3 py-1.5">
+                      {r.total > 0.5 && (
+                        <div className="flex h-2.5 rounded-full overflow-hidden" style={{ background: '#eef2f6', minWidth: 120 }}
+                          title={cols.map(c => `${c.label} ${pct(r[c.key], r.total)}`).join(' · ')}>
+                          {cols.map(c => {
+                            const w = Math.max(0, (r[c.key] / r.total) * 100)
+                            return w > 0 ? <div key={c.key} style={{ width: `${w}%`, background: c.color }} /> : null
+                          })}
+                        </div>
+                      )}
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {view === 'summary' && (
       <div className="rounded-lg overflow-x-auto bg-white" style={{ border: '1px solid var(--light-gray)' }}>
         <table className="w-full table-auto">
           <thead>
@@ -161,10 +247,11 @@ export default function SalesByPayment({ year, branch, onData }: {
           </tbody>
         </table>
       </div>
+      )}
 
       {data.cashMethods.length > 0 && (
         <div className="rounded-lg px-4 py-3 bg-white" style={{ border: '1px solid var(--light-gray)' }}>
-          <p className="text-[11px] font-bold uppercase tracking-[.4px] mb-2" style={{ color: '#166534' }}>What makes up Cash</p>
+          <p className="text-[11px] font-bold uppercase tracking-[.4px] mb-2" style={{ color: '#166534' }}>What makes up Cash{view === 'monthly' && line ? ' (all lines)' : ''}</p>
           <div className="flex flex-wrap gap-x-5 gap-y-1">
             {data.cashMethods.map(m => (
               <span key={m.method} className="text-xs tabular-nums" style={{ color: 'var(--charcoal)' }}>
@@ -179,6 +266,7 @@ export default function SalesByPayment({ year, branch, onData }: {
       <div className="space-y-1">
         <p className="text-[11px]" style={{ color: '#94a3b8' }}>
           Gross sales before discounts, as on the Income Statement. Each sale is split by how its order was paid; an order paid partly by HMO and partly in cash is split in proportion.
+          {view === 'monthly' && ' In the Monthly view each % is of that month\u2019s sales.'}
           Amounts in whole pesos.
         </p>
         {data.notes.map((n, i) => <p key={i} className="text-[11px]" style={{ color: '#94a3b8' }}>{n}</p>)}
