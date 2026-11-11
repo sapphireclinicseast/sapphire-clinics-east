@@ -16,6 +16,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import type { StaffDepartment, SurveyType } from '@prisma/client'
+import { SURVEY_SCALE_MAX } from '@/lib/survey-scale'
 
 export const dynamic = 'force-dynamic'
 
@@ -29,7 +30,7 @@ export const dynamic = 'force-dynamic'
 export const MIN_RESPONSES = 5
 
 /** The rating scale the surveys and peer evaluations are answered on. */
-const SCALE_MAX = 5
+const SCALE_MAX = SURVEY_SCALE_MAX
 
 const CLINICAL = ['OT', 'PT', 'SLP', 'SPED', 'PSYCHOLOGY'] as const
 /** Patient-facing survey forms. HR12 rates admin, so it is not one of these. */
@@ -147,6 +148,15 @@ function rank(contenders: Contender[], basis: 'rating' | 'sessions'): Ranked {
 export async function GET(req: NextRequest) {
   const session = await auth()
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  // Main admin only, and enforced HERE rather than only on the route.
+  //
+  // The page gate in (dashboard)/layout.tsx stops the page rendering; it does
+  // nothing about a branch admin who knows the URL of this endpoint. The
+  // figures are the sensitive part — every colleague's rating, and a list of
+  // who fell short — so the gate has to be where the figures are.
+  const role = (session.user as { role?: string } | undefined)?.role ?? ''
+  if (role !== 'ADMIN') return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const yearRaw = Number(req.nextUrl.searchParams.get('year'))
   const year = Number.isInteger(yearRaw) && yearRaw >= 2020 && yearRaw <= 2100

@@ -66,9 +66,16 @@ function getFullNav(isAdmin: boolean, isMarketingAdmin: boolean) {
       label: 'Settings',
       items: [
         { href: '/settings/accounts', icon: Link2, label: 'Connected Accounts' },
-        // Team management and handbook are ADMIN only
+        // Team management, handbook and the awards are ADMIN only.
+        //
+        // The awards page ranks named colleagues and lists everyone who did
+        // not qualify — a management view, and one that reads very differently
+        // to the person ranked eleventh. Hiding the link is only the cosmetic
+        // half: the route gate in (dashboard)/layout.tsx and the 403 on
+        // /api/awards are what actually hold it shut.
         ...(isAdmin ? [
           { href: '/settings/users', icon: Users, label: 'Team' },
+          { href: '/awards', icon: Trophy, label: 'Annual Awards' },
           { href: '/handbook', icon: BookOpen, label: 'User Handbook' },
         ] : []),
       ],
@@ -99,7 +106,6 @@ const FRONT_DESK_NAV = [
       { href: '/loa-submissions', icon: FileCheck, label: 'LOA Submission' },
       { href: '/patient-relationship', icon: HeartHandshake, label: 'Patient Relationship' },
       { href: '/peer-eval', icon: UsersRound, label: 'Peer Evaluation' },
-      { href: '/awards', icon: Trophy, label: 'Annual Awards' },
       { href: '/partner-institutions', icon: Building2, label: 'Partner Institutions' },
     ],
   },
