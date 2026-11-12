@@ -6,23 +6,30 @@ import { GL_STAGES } from '@/lib/gl-stage'
 /**
  * PUT /api/accounts-receivable/gl-case/bulk
  *   { glStage?:        { value: 'BILLING' | '' , caseIds: [], walletIds: [] },
+ *     glReleasedAt?:   { value: 'YYYY-MM-DD',    caseIds: [], walletIds: [] },
  *     soaSubmittedAt?: { value: 'YYYY-MM-DD',    caseIds: [], walletIds: [] },
  *     soaResubmittedAt?: { value: 'YYYY-MM-DD',  caseIds: [], walletIds: [] } }
  *
  * Detailed GL bulk edit for the ticked letters (Hannah 2026-11-11: "allow me to
  * tick all and set the stage in bulk", then "also allow bulk setting the SOA
- * submission date", "also allow bulk setting the SOA resubmission date"). The same writes as editing one row: a row backed by a
- * Detailed GL entry stores them on the entry, a wallet-only row on the GL wallet.
- * Only these fields are touched. A blank stage clears it; neither SOA date can
- * be in the future (the single-row rule in ../route.ts). All in one transaction.
+ * submission date", "also allow bulk setting the SOA resubmission date",
+ * 2026-11-12 "also allow bulk setting the GL release date"). The same writes as
+ * editing one row: a row backed by a Detailed GL entry stores them on the entry,
+ * a wallet-only row on the GL wallet. Only these fields are touched. A blank
+ * stage clears it; neither SOA date can be in the future (the single-row rule in
+ * ../route.ts — the GL release date has no such rule there, so none here
+ * either). All in one transaction.
  */
 const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN',
   'HMO_OFFICER', 'AHEA_FRONTDESK', 'AHGH_FRONTDESK']
 const MAX = 1000
 const YMD = /^\d{4}-\d{2}-\d{2}$/
-const DATE_FIELDS = ['soaSubmittedAt', 'soaResubmittedAt'] as const
+const DATE_FIELDS = ['glReleasedAt', 'soaSubmittedAt', 'soaResubmittedAt'] as const
 type DateField = typeof DATE_FIELDS[number]
-const DATE_LABEL: Record<DateField, string> = { soaSubmittedAt: 'SOA submission date', soaResubmittedAt: 'SOA resubmission date' }
+const DATE_LABEL: Record<DateField, string> = {
+  glReleasedAt: 'GL release date', soaSubmittedAt: 'SOA submission date', soaResubmittedAt: 'SOA resubmission date',
+}
+const NO_FUTURE: readonly DateField[] = ['soaSubmittedAt', 'soaResubmittedAt']
 
 type Part = { caseIds: string[]; walletIds: string[] }
 const ids = (v: unknown) => (Array.isArray(v) ? [...new Set(v.filter((x): x is string => typeof x === 'string' && !!x))] : [])
@@ -57,7 +64,7 @@ export async function PUT(req: Request) {
       if (!ids) continue
       const day = String(body[field].value ?? '').slice(0, 10)
       if (!YMD.test(day)) return NextResponse.json({ error: `Pick the ${DATE_LABEL[field]}` }, { status: 400 })
-      if (day > todayManila) {
+      if (NO_FUTURE.includes(field) && day > todayManila) {
         return NextResponse.json({ error: `The ${DATE_LABEL[field]} is in the future. Record it once it has actually happened.` }, { status: 400 })
       }
       dates.push({ field, day, at: new Date(`${day}T00:00:00+08:00`), ids })
