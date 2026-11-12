@@ -1631,12 +1631,24 @@ function TherapistRow({ staff, activeBranch, sectionMode, config, slots, default
 
       {/* No work days configured */}
       {showBody && config && configuredDays.length === 0 && (
-        <div className="flex items-start justify-center gap-2 px-4 py-5 text-xs" style={{ color: 'var(--mid-gray)' }}>
-          <CalendarPlus size={14} className="flex-shrink-0 mt-px" aria-hidden />
-          <p className="max-w-md leading-relaxed">
-            No work days set. Use <strong style={{ color: 'var(--charcoal)' }}>Configure</strong> to add them, or add a
-            <strong style={{ color: ONEOFF_FG }}> one-off date</strong> below.
-          </p>
+        <div className="flex flex-col items-center gap-2.5 px-4 py-5 text-xs" style={{ color: 'var(--mid-gray)' }}>
+          <div className="flex items-start gap-2">
+            <CalendarPlus size={14} className="flex-shrink-0 mt-px" aria-hidden />
+            <p className="max-w-md leading-relaxed">
+              No work days set. Use <strong style={{ color: 'var(--charcoal)' }}>Configure</strong> to add them, or add a
+              <strong style={{ color: ONEOFF_FG }}> one-off date</strong> below.
+            </p>
+          </div>
+          {/* The same button as the no-config state above. A consultant with
+              a config row but no days ticked is in exactly the same position
+              as one with no row at all — and an annulment case needs neither. */}
+          {onAddCase && (
+            <button type="button" onClick={() => setAddingCase(true)} className={BTN_SM}
+              title="A patient on this clinician's list with no day and no hour"
+              style={{ background: '#fff', border: `1px dashed ${CASE_BORDER}`, color: CASE_FG }}>
+              <UserPlus size={12} aria-hidden /> Add patients with no fixed schedule
+            </button>
+          )}
         </div>
       )}
 
@@ -1742,9 +1754,26 @@ function TherapistRow({ staff, activeBranch, sectionMode, config, slots, default
                 {upcoming.length > 0 ? `${upcoming.length} coming` : 'none coming'}{past.length > 0 ? ` · ${past.length} past` : ''}
               </span>
             )}
+            {/* Reachable WHILE the Configure panel is open.
+                The empty-state copy above carries this button too, but
+                opening Configure replaces that block with the schedule form —
+                so for the one consultant who most needs it, somebody sitting
+                in the configure panel trying to work out where to put an
+                annulment case, the button disappeared exactly when they went
+                looking for it. Only shown without a weekly grid; with a grid
+                it already lives in the card footer, and two of the same button
+                on one card is worse than none. */}
+            {onAddCase && !hasGrid && (
+              <button type="button" onClick={() => setAddingCase(true)}
+                className="ml-auto inline-flex items-center gap-1 h-7 text-[11px] font-semibold rounded-md px-2.5 transition-colors hover:bg-violet-50"
+                title="A patient on this clinician's list with no day and no hour"
+                style={{ border: `1px dashed ${CASE_BORDER}`, color: CASE_FG, background: '#fff' }}>
+                <UserPlus size={12} aria-hidden /> No fixed schedule
+              </button>
+            )}
             {onAddDated && (
               <button type="button" onClick={() => { setDatedIsMakeup(false); setShowDatedModal(true) }}
-                className="ml-auto inline-flex items-center gap-1 h-7 text-[11px] font-semibold rounded-md px-2.5 transition-colors hover:bg-pink-50"
+                className={`${onAddCase && !hasGrid ? '' : 'ml-auto '}inline-flex items-center gap-1 h-7 text-[11px] font-semibold rounded-md px-2.5 transition-colors hover:bg-pink-50`}
                 style={{ border: '1px dashed #F9A8D4', color: ONEOFF_FG, background: '#fff' }}>
                 <Plus size={12} aria-hidden /> Add a date
               </button>
