@@ -15,6 +15,22 @@ export async function GET(req: NextRequest) {
   const dayOfWeek = searchParams.get('dayOfWeek')
   const supervised = searchParams.get('includeSupervised') === '1'
   const includeDated = searchParams.get('includeDated') === '1'
+  // One named calendar date — the make-up / one-off hours for that day, and
+  // nothing recurring. Clinic Schedule asks for this so a clinician who is not
+  // normally in on a Thursday still shows the hours they ARE in for.
+  const dateParam = searchParams.get('date')
+  // Every dated row and no weekly ones. Reading make-ups across the calendar
+  // used to mean pulling the whole weekly board and filtering in the browser.
+  const onlyDated = searchParams.get('dated') === '1'
+
+  const exactDate = (() => {
+    if (!dateParam) return undefined
+    const d = new Date(`${dateParam.slice(0, 10)}T00:00:00Z`)
+    return Number.isNaN(d.getTime()) ? null : d
+  })()
+  // An unparseable date matches nothing rather than falling through to "every
+  // slot": a bad parameter should return an empty day, not the whole board.
+  if (exactDate === null) return NextResponse.json([])
 
   const slots = await prisma.deckingSlot.findMany({
     where: {
@@ -32,7 +48,13 @@ export async function GET(req: NextRequest) {
       // appear in its weekday column every week, for ever. includeDated lifts
       // that for the board itself, which lists the one-offs separately — and
       // has to, or front desk would create a dated slot and watch it vanish.
-      ...(includeDated ? {} : { date: null }),
+      //
+      // `date` and `dated` are the other way round: dated rows ONLY. They are
+      // checked first because asking for one date and being given the weekly
+      // pattern as well would put a recurring Tuesday into a Thursday make-up.
+      ...(exactDate ? { date: exactDate }
+        : onlyDated ? { date: { not: null } }
+        : includeDated ? {} : { date: null }),
     },
     include: {
       patient: { select: { id: true, firstName: true, lastName: true } },

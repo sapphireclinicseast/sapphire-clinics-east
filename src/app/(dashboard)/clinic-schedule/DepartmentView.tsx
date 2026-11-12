@@ -398,7 +398,7 @@ function ScheduleForm({ dept, allStaff, values, onChange, onSubmit, onCancel, er
 
 // ─── Staff card with schedules ─────────────────────────────────────────────────
 // `flat` drops the card chrome so the row can sit inside a department card.
-function StaffCard({ staff, allStaff, selectedDate, schedulingBranch, flat = false }: { staff: StaffMember; allStaff: StaffMember[]; selectedDate: string; schedulingBranch: string; flat?: boolean }) {
+function StaffCard({ staff, allStaff, selectedDate, schedulingBranch, flat = false, makeup = false }: { staff: StaffMember; allStaff: StaffMember[]; selectedDate: string; schedulingBranch: string; flat?: boolean; makeup?: boolean }) {
   const [open, setOpen] = useState(false)
   // Renting clinicians can still be BOOKED here — the room is ours to schedule,
   // and the queue shows their sessions like anyone else's. What stops is the
@@ -445,6 +445,9 @@ function StaffCard({ staff, allStaff, selectedDate, schedulingBranch, flat = fal
   const [deckingSuggestions, setDeckingSuggestions] = useState<{
     id: string; patient: Patient | null; startTime: string; endTime: string; dayOfWeek: string
     staff?: { id: string; firstName: string; lastName: string; employmentType: string | null } | null
+    /** Set on a slot booked for this one date — a make-up or a one-off. */
+    date?: string | null
+    isMakeup?: boolean
   }[]>([])
 
   const loadSchedules = useCallback(async () => {
@@ -500,9 +503,28 @@ function StaffCard({ staff, allStaff, selectedDate, schedulingBranch, flat = fal
     const DOW_NAMES = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT']
     const dow = DOW_NAMES[new Date(selectedDate + 'T12:00:00').getDay()]
     try {
-      // includeSupervised: also the intern hours this clinician oversees.
-      const res = await fetch(`/api/decking/slots?staffId=${staff.id}&dayOfWeek=${dow}&includeSupervised=1`)
-      if (res.ok) setDeckingSuggestions(await res.json())
+      // Two lists, because the board holds two kinds of hour:
+      //
+      //  - the weekly pattern for this weekday (includeSupervised: also the
+      //    intern hours this clinician oversees), and
+      //  - the hours booked for THIS DATE only — make-ups and one-offs.
+      //
+      // Only the first was asked for, which is why a make-up could be
+      // arranged in Decking and then be unbookable here: on a Thursday the
+      // clinician does not normally work, the weekday query returns nothing
+      // and front desk were left typing the hour in from the screenshot.
+      const [weekly, dated] = await Promise.all([
+        fetch(`/api/decking/slots?staffId=${staff.id}&dayOfWeek=${dow}&includeSupervised=1`),
+        fetch(`/api/decking/slots?staffId=${staff.id}&date=${selectedDate}&includeSupervised=1`),
+      ])
+      const rows = [
+        ...(weekly.ok ? await weekly.json() : []),
+        ...(dated.ok ? await dated.json() : []),
+      ]
+      // Deduped by id: the two queries cannot overlap today, but a dated slot
+      // that also carried a weekday would otherwise offer the same hour twice.
+      const seen = new Set<string>()
+      setDeckingSuggestions(rows.filter((s: { id: string }) => !seen.has(s.id) && seen.add(s.id)))
     } catch { /* silent */ }
   }
 
@@ -721,14 +743,24 @@ function StaffCard({ staff, allStaff, selectedDate, schedulingBranch, flat = fal
   const TONE_ABSENT  = { background: '#FEF2F2', color: '#B91C1C', border: '1px solid #FECACA' }
   const TONE_CLINIC  = { background: '#F0FDF4', color: '#15803D', border: '1px solid #BBF7D0' }
 
+  // A make-up day wears Decking's make-up colour, so the two screens agree
+  // about what orange means. The tint is on the card rather than only on a
+  // chip: front desk scan this list down the left edge, and a badge among six
+  // other badges is not a difference you catch at a glance.
+  const MAKEUP_FG = '#C2410C'
+  const makeupCard: React.CSSProperties = makeup
+    ? { background: '#FFFBF8', borderLeft: `3px solid ${MAKEUP_FG}` }
+    : {}
+
   return (
-    <div className={flat ? '' : 'rounded-xl overflow-hidden'} style={flat ? { background: '#fff' } : CARD_STYLE}>
+    <div className={flat ? '' : 'rounded-xl overflow-hidden'}
+      style={flat ? { background: '#fff', ...makeupCard } : { ...CARD_STYLE, ...makeupCard }}>
       {/* Staff header row */}
       <button
         type="button"
         onClick={() => setOpen(o => !o)}
         aria-expanded={open}
-        className="cs-btn w-full flex items-center gap-3 px-4 py-3 hover:bg-[#F7FAFA] transition-colors text-left"
+        className={`cs-btn w-full flex items-center gap-3 px-4 py-3 transition-colors text-left ${makeup ? 'hover:bg-[#FFF3EA]' : 'hover:bg-[#F7FAFA]'}`}
       >
         <Avatar text={`${staff.firstName[0] ?? ''}${staff.lastName[0] ?? ''}`.toUpperCase() || '?'} />
         <div className="flex-1 min-w-0">
@@ -737,6 +769,13 @@ function StaffCard({ staff, allStaff, selectedDate, schedulingBranch, flat = fal
           </p>
           <div className="flex flex-wrap items-center gap-1 mt-1">
             <DeptChip code={staff.department} color={deptColor(staff.department)} />
+            {makeup && (
+              <span title={`Make-up session booked in Decking for ${new Date(selectedDate + 'T12:00:00').toLocaleDateString('en-PH', { weekday: 'long', month: 'short', day: 'numeric' })} — not part of this clinician's usual week`}
+                className="px-1.5 py-0.5 rounded text-[10px] font-bold whitespace-nowrap leading-none"
+                style={{ background: '#FFF1E8', color: MAKEUP_FG, border: '1px solid #FBD5BC' }}>
+                Make-up
+              </span>
+            )}
             {staff.isInternshipSupervisor && (
               <span title="Supervises students on clinical placement — sessions may be run by an intern"
                 className="px-1.5 py-0.5 rounded text-[10px] font-bold whitespace-nowrap leading-none"
@@ -850,6 +889,10 @@ function StaffCard({ staff, allStaff, selectedDate, schedulingBranch, flat = fal
                           ? { background: '#EEF0FF', color: '#4338CA', border: '1px solid #C7CCF7' }
                           : { background: '#FFF1E8', color: '#C2410C', border: '1px solid #FBD5BC' }}
                       >
+                        {/* Said on the chip, not just in the colour: this one
+                            is here because of a date, and booking it as an
+                            ordinary weekly hour is the mistake to prevent. */}
+                        {s.isMakeup ? 'Make-up · ' : s.date ? 'One-off · ' : ''}
                         {s.patient ? `${s.patient.lastName}, ${s.patient.firstName[0]}.` : '(slot)'}
                         {' · '}{formatTime(s.startTime)}
                         {s.staff && s.staff.id !== staff.id
@@ -1093,7 +1136,7 @@ export default function DepartmentView({ role, selectedDate, onDateChange }: { r
   // was ever written down. A make-up is now a real dated slot created in the
   // Decking module, so this reads them back and shows what was actually
   // arranged rather than what somebody typed into this page once.
-  const [makeupSlots, setMakeupSlots] = useState<{ staffId: string }[]>([])
+  const [makeupSlots, setMakeupSlots] = useState<{ staffId: string; date: string }[]>([])
   // Display-only: the roster load's error, and a counter "Try again" bumps to
   // re-run the same request.
   const [staffError, setStaffError] = useState('')
@@ -1120,28 +1163,28 @@ export default function DepartmentView({ role, selectedDate, onDateChange }: { r
       .catch(() => setConfigs([]))
   }, [])
 
-  // Make-ups booked for tomorrow, from Decking.
+  // Every make-up on the calendar for this branch, from Decking.
   //
-  // Dated slots are excluded from the weekly board by default, so they have to
-  // be asked for — includeDated. Filtered to tomorrow and to make-ups here
-  // rather than in the query, because the endpoint has no date filter and the
-  // list is small; what matters is that the source is the board, not this
-  // page's memory.
+  // Not just tomorrow's. A make-up arranged for next Thursday is the one front
+  // desk most needs warning about — the clinician is not normally in that day,
+  // so nothing else on this page would put their name on it — and reading only
+  // tomorrow meant it stayed invisible until the evening before.
   //
-  // A failure leaves the section empty rather than failing the view: the
-  // clinicians working tomorrow are the point, and a make-up that does not
+  // `dated=1` asks for rows that carry a date and nothing recurring, so this
+  // is a short list however big the weekly board gets.
+  //
+  // A failure leaves the make-ups empty rather than failing the view: the
+  // clinicians working that day are the point, and a make-up that does not
   // render is a smaller problem than a page that does not.
   useEffect(() => {
     const ctl = new AbortController()
-    const forDate = tomorrowStr()
-    fetch('/api/decking/slots?includeDated=1', { signal: ctl.signal })
+    fetch(`/api/decking/slots?dated=1&branch=${encodeURIComponent(activeBranch)}`, { signal: ctl.signal })
       .then(r => r.ok ? r.json() : [])
-      .then((rows: Array<{ staffId: string; date?: string | null; isMakeup?: boolean; branch?: string }>) => {
+      .then((rows: Array<{ staffId: string; date?: string | null; isMakeup?: boolean }>) => {
         if (!Array.isArray(rows)) { setMakeupSlots([]); return }
-        setMakeupSlots(rows.filter(sl =>
-          sl.isMakeup
-          && String(sl.date ?? '').slice(0, 10) === forDate
-          && (!sl.branch || sl.branch === activeBranch)))
+        setMakeupSlots(rows
+          .filter(sl => sl.isMakeup && sl.date)
+          .map(sl => ({ staffId: sl.staffId, date: String(sl.date).slice(0, 10) })))
       })
       .catch(err => { if (err.name !== 'AbortError') setMakeupSlots([]) })
     return () => ctl.abort()
@@ -1185,7 +1228,15 @@ export default function DepartmentView({ role, selectedDate, onDateChange }: { r
   // board for that day anyway, and a second card for the same person reads as
   // two different sessions.
   const autoIds = new Set(tomorrowClinicians.map(x => x.staff.id))
-  const makeupClinicians = [...new Set(makeupSlots.map(sl => sl.staffId))]
+  /** Who has a make-up on one named date. */
+  const makeupIdsOn = (iso: string) =>
+    new Set(makeupSlots.filter(sl => sl.date === iso).map(sl => sl.staffId))
+  const makeupTomorrowIds = makeupIdsOn(tomorrowDate)
+  // The date the picker is on, which the All / single-department lists below
+  // are showing. Usually not tomorrow, which is the whole point: a make-up has
+  // to be visible on the day it was actually booked for.
+  const makeupSelectedIds = makeupIdsOn(selectedDate)
+  const makeupClinicians = [...makeupTomorrowIds]
     .map(id => staffById.get(id))
     .filter((s): s is StaffMember => !!s && !isIntern(s) && !autoIds.has(s.id))
 
@@ -1318,8 +1369,16 @@ export default function DepartmentView({ role, selectedDate, onDateChange }: { r
             value={tomorrowClinicians.length} sub={WEEKDAY_FULL[tomorrowCode]} />
           <KpiCard label="Departments" icon={<Layers size={15} />} accent="var(--gold)"
             value={presentDepts.length} sub="with clinicians here" />
-          <KpiCard label="Make-up sessions" icon={<UserPlus size={15} />} accent="#8B5CF6"
-            value={makeupClinicians.length} sub={makeupClinicians.length ? 'added for tomorrow' : 'none added'} />
+          {/* Follows the tab. Counting tomorrow's make-ups while the page is
+              showing next Thursday is a number that answers a question nobody
+              asked — and reads as "none" on the very day one was booked. */}
+          {activeDept === 'Tomorrow' ? (
+            <KpiCard label="Make-up sessions" icon={<UserPlus size={15} />} accent="#C2410C"
+              value={makeupTomorrowIds.size} sub={makeupTomorrowIds.size ? 'booked for tomorrow' : 'none tomorrow'} />
+          ) : (
+            <KpiCard label="Make-up sessions" icon={<UserPlus size={15} />} accent="#C2410C"
+              value={makeupSelectedIds.size} sub={makeupSelectedIds.size ? `on ${fmtDateShort(selectedDate)}` : 'none this date'} />
+          )}
         </div>
       )}
 
@@ -1351,7 +1410,12 @@ export default function DepartmentView({ role, selectedDate, onDateChange }: { r
                 <div className="space-y-3">
                   {tomorrowByDept.map(g => deptCard(g.dept, g.list.length,
                     g.list.map(({ staff: s }) => (
-                      <StaffCard key={s.id} flat staff={s} allStaff={staff} selectedDate={tomorrowDate} schedulingBranch={activeBranch} />
+                      // Somebody already on tomorrow's weekly deck who ALSO
+                      // has a make-up booked is not listed twice — but the
+                      // card has to say so, or the extra hour reads as part
+                      // of their ordinary day.
+                      <StaffCard key={s.id} flat staff={s} allStaff={staff} selectedDate={tomorrowDate}
+                        schedulingBranch={activeBranch} makeup={makeupTomorrowIds.has(s.id)} />
                     )),
                   ))}
                 </div>
@@ -1381,7 +1445,7 @@ export default function DepartmentView({ role, selectedDate, onDateChange }: { r
                             two screens disagree. It is taken off in Decking,
                             where it was put on. */}
                       </div>
-                      <StaffCard flat staff={s} allStaff={staff} selectedDate={tomorrowDate} schedulingBranch={activeBranch} />
+                      <StaffCard flat staff={s} allStaff={staff} selectedDate={tomorrowDate} schedulingBranch={activeBranch} makeup />
                     </div>
                   ))}
                 </div>
@@ -1432,9 +1496,31 @@ export default function DepartmentView({ role, selectedDate, onDateChange }: { r
         </div>
       ) : (
         <div className="space-y-3">
+          {/* Said once at the top as well as on each card.
+              The list is long and grouped by department, so a clinician in
+              for a single make-up is one tinted row somewhere down a page of
+              forty — findable once you know to look, useless if you don't. */}
+          {makeupSelectedIds.size > 0 && (
+            <div role="note" className="rounded-xl px-3.5 py-2.5 flex flex-wrap items-center gap-x-2 gap-y-1"
+              style={{ background: '#FFF7F1', border: '1px solid #FBD5BC' }}>
+              <UserPlus size={14} className="flex-shrink-0" style={{ color: '#C2410C' }} aria-hidden />
+              <span className="text-[12.5px] font-bold" style={{ color: '#C2410C' }}>
+                Make-up {makeupSelectedIds.size === 1 ? 'session' : 'sessions'} on {fmtDateShort(selectedDate)}:
+              </span>
+              <span className="text-[12.5px]" style={{ color: '#7C3A14' }}>
+                {[...makeupSelectedIds]
+                  .map(id => staffById.get(id))
+                  .filter((s): s is StaffMember => !!s)
+                  .map(s => `${s.lastName}, ${s.firstName}`)
+                  .sort()
+                  .join(' · ') || 'clinician not on this branch roster'}
+              </span>
+            </div>
+          )}
           {filteredByDept.map(g => deptCard(g.dept, g.list.length,
             g.list.map(s => (
-              <StaffCard key={s.id} flat staff={s} allStaff={staff} selectedDate={selectedDate} schedulingBranch={activeBranch} />
+              <StaffCard key={s.id} flat staff={s} allStaff={staff} selectedDate={selectedDate}
+                schedulingBranch={activeBranch} makeup={makeupSelectedIds.has(s.id)} />
             )),
           ))}
         </div>
