@@ -45,6 +45,8 @@ import { downloadXlsx, downloadPdf } from '@/lib/export'
 import { ScanUpload } from '@/components/ScanUpload'
 import BranchStockPanel from './BranchStockPanel'
 import SkuGuidePanel from './SkuGuidePanel'
+import PriceListPanel from './PriceListPanel'
+import { priceTiers } from '@/lib/price-tiers'
 import PsychTestsPanel from './PsychTestsPanel'
 import { SKU_HIERARCHY } from '@/lib/sku-taxonomy'
 import DownloadMenu from '@/components/ui/DownloadMenu'
@@ -353,7 +355,7 @@ const CURRENCIES = [
   { value: 'INR', label: 'INR — Indian Rupee' },
 ]
 
-const TABS = ['Inventory', 'SKU Guide', 'Supplier Request', 'Adjustments', 'Consignments', 'Branch Stock', 'Forms', 'Psych Tests'] as const
+const TABS = ['Inventory', 'Price List', 'SKU Guide', 'Supplier Request', 'Adjustments', 'Consignments', 'Branch Stock', 'Forms', 'Psych Tests'] as const
 type Tab = (typeof TABS)[number]
 
 const STATUS_BADGE: Record<string, { bg: string; color: string }> = {
@@ -2566,6 +2568,7 @@ setTimeout(()=>window.print(),500);
          TAB 1: INVENTORY ITEMS
          ════════════════════════════════════════════════════ */}
       {activeTab === 'SKU Guide' && <SkuGuidePanel canWrite={canWrite} />}
+      {activeTab === 'Price List' && <PriceListPanel canWrite={canWrite} />}
 
       {activeTab === 'Inventory' && (
         <>
@@ -3436,6 +3439,21 @@ setTimeout(()=>window.print(),500);
                       <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--charcoal)' }}>Selling Price (PHP)</label>
                       <input type="number" step="0.01" min="0" value={fSellingPrice} onChange={(e) => setFSellingPrice(e.target.value)}
                         className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
+                      {(() => {
+                        // Price tiers from the cost typed above (rule in lib/price-tiers.ts).
+                        const t = priceTiers(parseFloat(fUnitCost))
+                        if (!t) return null
+                        const isStd = Number(fSellingPrice) === t.standard
+                        return (
+                          <p className="mt-1 text-[11px] leading-snug" style={{ color: 'var(--mid-gray)' }}>
+                            Lowest ₱{t.lowest.toLocaleString()} · <b style={{ color: 'var(--teal)' }}>Standard ₱{t.standard.toLocaleString()}</b> · Highest ₱{t.highest.toLocaleString()}
+                            {!isStd && (
+                              <button type="button" onClick={() => setFSellingPrice(String(t.standard))}
+                                className="ml-1.5 font-semibold hover:underline" style={{ color: 'var(--teal)' }}>Use Standard</button>
+                            )}
+                          </p>
+                        )
+                      })()}
                     </div>
                   </div>
 
