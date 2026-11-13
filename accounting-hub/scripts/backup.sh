@@ -6,16 +6,21 @@
 # Keeps 14 local copies (accounting data is critical).
 #
 # Cron entry (add with: crontab -e):
-#   30 2 * * * /opt/accounting/scripts/backup.sh >> /var/log/accounting-backup.log 2>&1
+#   0 2 * * * bash /opt/accounting/scripts/backup.sh >> /var/log/accounting-backup.log 2>&1
+# (call via `bash` so a lost executable bit after rsync can never stop it again)
 # ============================================================
 
 set -e
 
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
-BACKUP_DIR="/opt/accounting/backups"
+# Lives OUTSIDE /opt/accounting: the deploy rsyncs that tree with --delete and
+# wiped the old /opt/accounting/backups folder on every push (found 2026-11-13).
+BACKUP_DIR="/opt/backups/accounting_db/nightly"
 FILENAME="accounting_${TIMESTAMP}.sql.gz"
 FULL_PATH="${BACKUP_DIR}/${FILENAME}"
-ENV_FILE="/opt/accounting/docker/.env.production"
+# The real env file on the VPS is .env (hand-maintained); .env.production is a
+# fallback name only. Without this the script aborted "POSTGRES_PASSWORD not set".
+ENV_FILE="/opt/accounting/docker/.env"; [ -f "$ENV_FILE" ] || ENV_FILE="/opt/accounting/docker/.env.production"
 KEEP_DAYS=14
 
 # ── Load environment
