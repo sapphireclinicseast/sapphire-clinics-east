@@ -10,6 +10,10 @@ import { linkReferredPatientFromOrder } from '@/lib/referral-link'
 import { normalizeSI } from '@/lib/sales-invoice'
 import { recordHmoSessionVoid, decreaseRowsOnly } from '@/lib/hmo-session-void'
 import { settledPaymentEdits, settledEditMessage, SettledPaymentEditError } from '@/lib/settled-payment-guard'
+import {
+  giftCardLegs, giftCardLegsProblem, drawGiftCards, recordGiftCardUses, putBackOrderGiftCards,
+  giftCardLegsUnchanged, unsellGiftCards, spentCardsSoldBy, GiftCardPaymentError, GIFT_CARD_SALE_METHODS,
+} from '@/lib/gift-cards'
 
 const WRITE_ROLES = ['ADMIN', 'PAYROLL_OFFICER', 'ACCOUNTANT', 'BOOKKEEPER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN', 'AHEA_FRONTDESK', 'AHGH_FRONTDESK']
 
@@ -84,6 +88,17 @@ export async function PUT(
     if (body.action === 'refund') {
       const order = await prisma.order.findUnique({ where: { id }, include: { items: true } })
       if (!order) return NextResponse.json({ error: 'Order not found' }, { status: 404 })
+      // Gift cards: a refund would leave the card's value standing. Void instead —
+      // a void un-sells the card or puts its balance back.
+      const [soldCards, gcPaid] = await Promise.all([
+        prisma.giftCard.count({ where: { soldOrderId: id } }),
+        prisma.orderPayment.count({ where: { orderId: id, method: 'GIFT_CARD' } }),
+      ])
+      if (soldCards || gcPaid) {
+        return NextResponse.json({ error: soldCards
+          ? 'This order sold a gift card — void the order instead of refunding it.'
+          : 'This order was paid with a gift card — void the order instead, so the card gets its balance back.' }, { status: 400 })
+      }
       for (const oi of order.items) {
         if (oi.inventoryItemId) {
           const soldUnits = oi.quantity - (oi.returnedQuantity || 0)   // units still deducted from stock
@@ -122,7 +137,18 @@ export async function PUT(
         )
       }
       const payDate = body.paymentDate ? new Date(`${body.paymentDate}T08:00:00+08:00`) : new Date()
+      const giftLegs = giftCardLegs(pays)
+      if (giftLegs.size) {
+        const problem = await giftCardLegsProblem(prisma, giftLegs)
+        if (problem) return NextResponse.json({ error: problem }, { status: 400 })
+      }
+      try {
       await prisma.$transaction(async (tx) => {
+        if (giftLegs.size) {
+          const err = await drawGiftCards(tx, giftLegs)
+          if (err) throw new GiftCardPaymentError(err)
+          await recordGiftCardUses(tx, giftLegs, id, session.user.id ?? null)
+        }
         await tx.orderPayment.createMany({
           data: pays.map(p => ({ orderId: id, method: p.method as never, amount: Number(p.amount), walletId: p.walletId || null, reference: p.reference || null, paymentModeId: p.paymentModeId || null })),
         })
@@ -134,6 +160,10 @@ export async function PUT(
           },
         })
       })
+      } catch (e) {
+        if (e instanceof GiftCardPaymentError) return NextResponse.json({ error: e.message }, { status: 400 })
+        throw e
+      }
       try { await postOrderJournal(prisma, id, session.user.id) } catch (e) { console.error('[GL] recordPayment posting threw:', e) }
       return NextResponse.json({ ok: true, paid: true })
     }
@@ -221,6 +251,16 @@ export async function PUT(
       // A buyer return reverses the sale (VOIDED) and is also flagged returnedByBuyer.
       const newStatus = body.action === 'reopen' ? 'REOPENED' : 'VOIDED'
 
+      // A gift card this order sold that has since been spent can't be un-sold:
+      // the orders that used it have to be voided first.
+      if (newStatus === 'VOIDED') {
+        const spent = await spentCardsSoldBy(prisma, id)
+        if (spent.length) {
+          const list = spent.map(c => `${c.code} (₱${c.spent.toLocaleString('en-PH', { minimumFractionDigits: 2 })} spent)`).join(', ')
+          return NextResponse.json({ error: `Gift card ${list} from this sale has already been used. Void the orders that used it first, then void this sale.` }, { status: 400 })
+        }
+      }
+
       const updated = await prisma.order.update({
         where: { id },
         data: { status: newStatus, ...(isReturn ? { returnedByBuyer: true } : {}) },
@@ -241,6 +281,10 @@ export async function PUT(
           where: { usedOrderId: id, status: 'USED' },
           data: { status: 'ACTIVE', usedAt: null, usedOrderId: null, usedById: null },
         }).catch(() => {})
+        // Gift cards: a voided sale returns its cards to Unsold (they can be
+        // sold again); a voided purchase puts the amount back on the card.
+        await unsellGiftCards(prisma, { orderId: id })
+        await putBackOrderGiftCards(prisma, id, session.user.id ?? null)
         for (const p of updated.payments) {
           if (!p.walletId) continue
           // Allow PACKAGE through even at amount=0 — session still needs to be restored
@@ -594,6 +638,23 @@ export async function PUT(
       }
     }
 
+    // Gift cards. A sale of gift cards keeps its lines exactly (a card's value
+    // is fixed when sold) and stays paid with money, not a wallet/card/HMO.
+    const soldCards = await prisma.giftCard.findMany({ where: { soldOrderId: id }, select: { code: true } })
+    if (soldCards.length) {
+      if (items?.length) {
+        const cur = await prisma.orderItem.findMany({ where: { orderId: id }, select: { name: true, lineTotal: true } })
+        const key = (r: { name: string; lineTotal: unknown }) => `${r.name}|${Number(r.lineTotal).toFixed(2)}`
+        const a = cur.map(key).sort().join(','), b = (items as { name: string; lineTotal: unknown }[]).map(key).sort().join(',')
+        if (a !== b) return NextResponse.json({ error: 'This order sold a gift card — its lines can\'t be changed. Void it and sell the card again instead.' }, { status: 400 })
+      }
+      if (Number(discountAmount ?? 0) > 0) return NextResponse.json({ error: 'A gift card is sold at its full value — remove the discount.' }, { status: 400 })
+      if (payments?.length && (payments as { method: string; amount: number }[]).some(p => Number(p.amount) > 0 && !GIFT_CARD_SALE_METHODS.includes(p.method))) {
+        return NextResponse.json({ error: 'Pay for a gift card with cash, GCash, Maya, a card or PayMongo.' }, { status: 400 })
+      }
+    }
+    const newGiftLegs = payments?.length ? giftCardLegs(payments) : new Map<string, number>()
+
     // Use a transaction to replace items/payments atomically
     const updated = await prisma.$transaction(async (tx) => {
       // Delete and recreate items if provided. The client often resends lines
@@ -660,6 +721,17 @@ export async function PUT(
               where: { id: op.walletId },
               data: { balance: { decrement: Number(op.amount) } },
             })
+          }
+        }
+
+        // Gift cards: put back what this order held and draw the new lines —
+        // skipped when the edit leaves the gift card payments as they were.
+        if (!(await giftCardLegsUnchanged(tx, id, newGiftLegs))) {
+          await putBackOrderGiftCards(tx, id, session.user.id ?? null)
+          if (newGiftLegs.size) {
+            const err = await drawGiftCards(tx, newGiftLegs)
+            if (err) throw new GiftCardPaymentError(err)
+            await recordGiftCardUses(tx, newGiftLegs, id, session.user.id ?? null)
           }
         }
 
@@ -778,6 +850,9 @@ export async function PUT(
   } catch (e) {
     if (e instanceof SettledPaymentEditError) {
       return NextResponse.json({ error: e.message, settledPayments: e.edits }, { status: 409 })
+    }
+    if (e instanceof GiftCardPaymentError) {
+      return NextResponse.json({ error: e.message }, { status: 400 })
     }
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }

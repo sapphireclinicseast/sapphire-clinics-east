@@ -9,6 +9,7 @@
  *   DR Unearned Revenue 4050                   PAYMONGO leg of an order raised from a
  *                                              paid payment link (the collection entry
  *                                              PAYMONGO_SALE already holds the cash)
+ *   DR Unearned Revenue 4050                   GIFT_CARD leg (the card's sale holds the cash)
  *   DR Discount (contra-revenue)               discount amount
  *   DR Sales Returns 7160 (contra-revenue)     item refund amounts
  *     CR Revenue (per item revenue account)    gross item subtotal
@@ -27,6 +28,7 @@
 
 import type { PrismaClient } from '@prisma/client'
 import { postJournalEntry, UnbalancedJournalEntryError, type PostingLine } from './posting'
+import { giftCardCodeFromItem } from '../gift-cards'
 
 const CASH_METHODS = new Set(['CASH', 'GCASH', 'PAYMAYA', 'PAYMONGO', 'DEBIT', 'CREDIT_CARD', 'SHOPEE', 'LAZADA', 'TIKTOK'])
 const AR_METHODS   = new Set(['HMO', 'GL'])
@@ -260,6 +262,14 @@ export async function postOrderJournal(
   for (const item of order.items) {
     const lineTotal = Number(item.lineTotal)
     if (lineTotal <= 0) continue   // free samples / zero-priced items have their own JE
+    // A gift card sold (lib/gift-cards): the money is owed back as services —
+    // CR 4050 Unearned Revenue directly, never revenue.
+    const giftCode = order.revenueType === 'UNEARNED' ? giftCardCodeFromItem(item.name) : null
+    if (giftCode) {
+      if (!defaultUnearnedAccount) return { posted: false, reason: `gift card ${giftCode} sale has no 4050 Unearned Revenue account` }
+      addLine(defaultUnearnedAccount.id, 'credit', lineTotal, `Gift card sold — ${giftCode}`)
+      continue
+    }
     const revAcct = item.service?.revenueAccount
       || item.inventoryItem?.revenueAccount
       || revByName.get(norm(item.name || ''))
@@ -328,6 +338,16 @@ export async function postOrderJournal(
       // Simpler: if UNEARNED, also credit Unearned Revenue and zero out the
       // matching Revenue credit. We do this in step 5 below.
       addLine(arAcct.id, 'debit', gross, `AR — ${p.method}`)
+      continue
+    }
+
+    if (p.method === 'GIFT_CARD') {
+      // Spent from a gift card: its sale already credited 4050, so the payment
+      // draws that liability down — revenue stays at full price.
+      if (!defaultUnearnedAccount) {
+        return { posted: false, reason: `gift card payment of ${gross} has no 4050 Unearned Revenue account to draw down` }
+      }
+      addLine(defaultUnearnedAccount.id, 'debit', gross, `Gift card applied${p.reference ? ` — ${p.reference}` : ''}`)
       continue
     }
 

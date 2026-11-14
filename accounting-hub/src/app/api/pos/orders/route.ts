@@ -10,6 +10,10 @@ import { postJournalEntry, UnbalancedJournalEntryError } from '@/lib/accounting/
 import { postOrderJournal } from '@/lib/accounting/post-order'
 import { linkReferredPatientFromOrder } from '@/lib/referral-link'
 import { decreaseRowsOnly } from '@/lib/hmo-session-void'
+import {
+  prepareGiftCardSale, claimGiftCardSale, unsellGiftCards,
+  giftCardLegs, giftCardLegsProblem, drawGiftCards, restoreGiftCards, recordGiftCardUses,
+} from '@/lib/gift-cards'
 
 /* ── Free-sample JE: DR 8120 Marketing, CR Inventory ──────────────
    Tier 3: routed through the central posting service so any future
@@ -163,6 +167,10 @@ export async function POST(req: Request) {
 
   try {
     const body = await req.json()
+    // Gift card sale: the lines are rebuilt from the cards (face value, name)
+    // and the order is UNEARNED — see lib/gift-cards.
+    const giftSale = await prepareGiftCardSale(prisma, body)
+    if (giftSale && 'error' in giftSale) return NextResponse.json({ error: giftSale.error }, { status: 400 })
     const {
       orderType,
       branch,
@@ -267,6 +275,27 @@ export async function POST(req: Request) {
       }
     }
 
+    // Gift cards spent on this order: check, then draw them down BEFORE the
+    // order exists (same claim-first pattern as the voucher below). Put back
+    // if anything after this fails.
+    const giftLegs = giftCardLegs(payLines)
+    if (giftLegs.size) {
+      const problem = await giftCardLegsProblem(prisma, giftLegs)
+      if (problem) return NextResponse.json({ error: problem }, { status: 400 })
+    }
+    const giftCardIds = giftSale && 'cardIds' in giftSale ? giftSale.cardIds : []
+    if (giftCardIds.length) {
+      const err = await claimGiftCardSale(prisma, giftCardIds, { branch, buyerName: buyerName || patientName, userId: session.user.id ?? null })
+      if (err) return NextResponse.json({ error: err }, { status: 400 })
+    }
+    if (giftLegs.size) {
+      const err = await drawGiftCards(prisma, giftLegs)
+      if (err) {
+        if (giftCardIds.length) await unsellGiftCards(prisma, { ids: giftCardIds })
+        return NextResponse.json({ error: err }, { status: 400 })
+      }
+    }
+
     // Claim the voucher BEFORE creating the order — the status guard makes the
     // claim atomic, so the same code scanned at two counters can only redeem
     // once. Released again if order creation fails below.
@@ -276,6 +305,8 @@ export async function POST(req: Request) {
         data: { status: 'USED', usedAt: new Date(), usedById: session.user.id },
       })
       if (claim.count === 0) {
+        if (giftLegs.size) await restoreGiftCards(prisma, giftLegs)
+        if (giftCardIds.length) await unsellGiftCards(prisma, { ids: giftCardIds })
         return NextResponse.json({ error: 'This voucher is no longer valid — it may have just been redeemed, voided, or expired.' }, { status: 400 })
       }
     }
@@ -377,7 +408,16 @@ export async function POST(req: Request) {
       if (voucherId) {
         await prisma.serviceVoucher.updateMany({ where: { id: String(voucherId), status: 'USED', usedOrderId: null }, data: { status: 'ACTIVE', usedAt: null, usedById: null } }).catch(() => {})
       }
+      if (giftLegs.size) await restoreGiftCards(prisma, giftLegs).catch(() => {})
+      if (giftCardIds.length) await unsellGiftCards(prisma, { ids: giftCardIds }).catch(() => {})
       throw e
+    }
+    // Gift cards: tie sold cards to their sale, and log what this order spent.
+    if (giftCardIds.length) {
+      await prisma.giftCard.updateMany({ where: { id: { in: giftCardIds } }, data: { soldOrderId: order.id } })
+    }
+    if (giftLegs.size) {
+      await recordGiftCardUses(prisma, giftLegs, order.id, session.user.id ?? null)
     }
     // Tie the redeemed voucher to the order it paid for.
     if (voucherId) {

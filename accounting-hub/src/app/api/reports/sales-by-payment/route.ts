@@ -44,7 +44,7 @@ type Split = Record<Cat, number>
 const categoryOf = (method: string): Cat => (method === 'HMO' ? 'HMO' : method === 'GL' ? 'GL' : 'CASH')
 const METHOD_LABEL: Record<string, string> = {
   CASH: 'Cash', CREDIT_CARD: 'Credit card', DEBIT: 'Debit card', GCASH: 'GCash', PAYMAYA: 'Maya',
-  PAYMONGO: 'PayMongo', PACKAGE: 'Package', VIP_CARD: 'VIP card', PREPAID_CARD: 'Prepaid card',
+  PAYMONGO: 'PayMongo', PACKAGE: 'Package', VIP_CARD: 'VIP card', PREPAID_CARD: 'Prepaid card', GIFT_CARD: 'Gift card',
   ADVANCE: 'Advance payment', DOWNPAYMENT: 'Downpayment', REWARD_POINTS: 'Reward points', TIKTOK: 'TikTok',
 }
 const round2 = (n: number) => Math.round(n * 100) / 100

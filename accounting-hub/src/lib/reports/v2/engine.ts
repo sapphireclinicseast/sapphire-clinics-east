@@ -916,7 +916,7 @@ export async function computeLedgerStatements(
          funded when it was first received — they are NOT new cash. Routing
          them to cash (worse: the no-branch default, which lands on the SCEI
          Main corporate account) invented deposits the bank never saw. */
-      if (['VIP_CARD', 'PREPAID_CARD', 'REWARD_POINTS', 'PACKAGE', 'ADVANCE', 'DOWNPAYMENT'].includes(p.method as string)) {
+      if (['VIP_CARD', 'PREPAID_CARD', 'REWARD_POINTS', 'PACKAGE', 'ADVANCE', 'DOWNPAYMENT', 'GIFT_CARD'].includes(p.method as string)) {
         lines.push({ acct: unearnedAccount(), debit: amt }) // draw-down consumes the liability
         continue
       }

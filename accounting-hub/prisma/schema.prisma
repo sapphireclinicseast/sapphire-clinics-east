@@ -864,6 +864,7 @@ enum PaymentMethod {
   ADVANCE
   HMO
   GL
+  GIFT_CARD // a prepaid gift card code (GiftCard) — draws down 4050
 }
 
 enum DiscountType {
@@ -1453,6 +1454,58 @@ model ServiceVoucher {
 
   @@index([batchId])
   @@index([status])
+}
+
+// Gift cards (POS → Services → Vouchers): a prepaid peso value on a
+// CODE128-scannable code. Cards are generated UNSOLD and are worth nothing
+// until rung up at the Cashier: that sale is an UNEARNED order (DR cash /
+// CR 4050 Unearned Revenue). Each use at checkout is a GIFT_CARD payment that
+// draws the balance down (DR 4050 / CR revenue at full price — not a
+// discount); what is left stays on the code. No expiry: RA 10962 (Gift Check
+// Act of 2017) bars expiry dates on gift checks. Hannah, 2026-11-14.
+model GiftCardBatch {
+  id          String     @id @default(cuid())
+  reason      String // what the cards are for (e.g. Christmas 2026 gift cards)
+  faceValue   Decimal // ₱ value of each card in the batch
+  createdById String?
+  createdAt   DateTime   @default(now())
+  cards       GiftCard[]
+}
+
+model GiftCard {
+  id          String        @id @default(cuid())
+  code        String        @unique // e.g. GC-7K3M9XPQ — printed under the barcode
+  batchId     String
+  batch       GiftCardBatch @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  faceValue   Decimal
+  balance     Decimal       @default(0) // value left to spend (0 until sold)
+  status      String        @default("UNSOLD") // UNSOLD | ACTIVE | USED_UP | VOIDED
+  soldAt      DateTime?
+  soldOrderId String? // the POS order that sold it
+  soldById    String?
+  soldBranch  String?
+  buyerName   String?
+  createdAt   DateTime      @default(now())
+  uses        GiftCardUse[]
+
+  @@index([batchId])
+  @@index([status])
+  @@index([soldOrderId])
+}
+
+// One row per draw-down of a gift card by a POS order (+amount), and per
+// put-back when that order is voided or its payment is edited (−amount).
+model GiftCardUse {
+  id          String   @id @default(cuid())
+  cardId      String
+  card        GiftCard @relation(fields: [cardId], references: [id], onDelete: Cascade)
+  orderId     String
+  amount      Decimal
+  createdById String?
+  createdAt   DateTime @default(now())
+
+  @@index([cardId])
+  @@index([orderId])
 }
 
 model DiscountSetting {

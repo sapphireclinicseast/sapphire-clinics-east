@@ -10,7 +10,7 @@ const READ_ROLES = ['ADMIN', 'VIEWER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMI
 const PAYMENT_LABELS: Record<string, string> = {
   CASH: 'Cash', GCASH: 'GCash', PAYMAYA: 'PayMaya', PAYMONGO: 'PayMongo',
   DEBIT: 'Debit Card', CREDIT_CARD: 'Credit Card', VIP_CARD: 'VIP Card',
-  PREPAID_CARD: 'Prepaid Card', REWARD_POINTS: 'Reward Points', SHOPEE: 'Shopee',
+  PREPAID_CARD: 'Prepaid Card', GIFT_CARD: 'Gift Card', REWARD_POINTS: 'Reward Points', SHOPEE: 'Shopee',
   LAZADA: 'Lazada', TIKTOK: 'TikTok', DOWNPAYMENT: 'Downpayment', PACKAGE: 'Package',
   ADVANCE: 'Advance', HMO: 'HMO', GL: 'GL',
 }

@@ -1162,4 +1162,61 @@ ALTER TABLE "HmoDirectory" ADD COLUMN IF NOT EXISTS "notYetAccredited" BOOLEAN N
 ALTER TABLE "HmoDirectory" ADD COLUMN IF NOT EXISTS "address" TEXT;
 SQL
 
+# ── Gift cards (POS → Services → Vouchers), 2026-11-14 ─────────────────────────
+# Prepaid-value codes: sold at the Cashier (CR 4050), spent as a GIFT_CARD
+# payment (DR 4050). ADD VALUE runs in its own psql call so no transaction
+# block wraps it.
+docker exec -i accounting_db psql -U sapphire -d sapphire_accounting -c "ALTER TYPE \"PaymentMethod\" ADD VALUE IF NOT EXISTS 'GIFT_CARD';"
+docker exec -i accounting_db psql -U sapphire -d sapphire_accounting <<'SQL'
+CREATE TABLE IF NOT EXISTS "GiftCardBatch" (
+  "id"          TEXT NOT NULL,
+  "reason"      TEXT NOT NULL,
+  "faceValue"   DECIMAL(65,30) NOT NULL,
+  "createdById" TEXT,
+  "createdAt"   TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT "GiftCardBatch_pkey" PRIMARY KEY ("id")
+);
+CREATE TABLE IF NOT EXISTS "GiftCard" (
+  "id"          TEXT NOT NULL,
+  "code"        TEXT NOT NULL,
+  "batchId"     TEXT NOT NULL,
+  "faceValue"   DECIMAL(65,30) NOT NULL,
+  "balance"     DECIMAL(65,30) NOT NULL DEFAULT 0,
+  "status"      TEXT NOT NULL DEFAULT 'UNSOLD',
+  "soldAt"      TIMESTAMP(3),
+  "soldOrderId" TEXT,
+  "soldById"    TEXT,
+  "soldBranch"  TEXT,
+  "buyerName"   TEXT,
+  "createdAt"   TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT "GiftCard_pkey" PRIMARY KEY ("id")
+);
+CREATE UNIQUE INDEX IF NOT EXISTS "GiftCard_code_key" ON "GiftCard"("code");
+CREATE INDEX IF NOT EXISTS "GiftCard_batchId_idx" ON "GiftCard"("batchId");
+CREATE INDEX IF NOT EXISTS "GiftCard_status_idx" ON "GiftCard"("status");
+CREATE INDEX IF NOT EXISTS "GiftCard_soldOrderId_idx" ON "GiftCard"("soldOrderId");
+CREATE TABLE IF NOT EXISTS "GiftCardUse" (
+  "id"          TEXT NOT NULL,
+  "cardId"      TEXT NOT NULL,
+  "orderId"     TEXT NOT NULL,
+  "amount"      DECIMAL(65,30) NOT NULL,
+  "createdById" TEXT,
+  "createdAt"   TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT "GiftCardUse_pkey" PRIMARY KEY ("id")
+);
+CREATE INDEX IF NOT EXISTS "GiftCardUse_cardId_idx" ON "GiftCardUse"("cardId");
+CREATE INDEX IF NOT EXISTS "GiftCardUse_orderId_idx" ON "GiftCardUse"("orderId");
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'GiftCard_batchId_fkey') THEN
+    ALTER TABLE "GiftCard" ADD CONSTRAINT "GiftCard_batchId_fkey"
+      FOREIGN KEY ("batchId") REFERENCES "GiftCardBatch"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'GiftCardUse_cardId_fkey') THEN
+    ALTER TABLE "GiftCardUse" ADD CONSTRAINT "GiftCardUse_cardId_fkey"
+      FOREIGN KEY ("cardId") REFERENCES "GiftCard"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+  END IF;
+END$$;
+SQL
+
 echo "Redeploy complete."

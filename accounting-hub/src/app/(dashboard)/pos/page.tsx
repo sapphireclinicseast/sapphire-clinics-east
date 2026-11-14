@@ -30,6 +30,7 @@ import { buildSoaPdf, MONTH_OPTIONS, periodLabel, type SoaSettings, type SoaOrde
 import { EARLIEST_OBTAINED, latestObtained, obtainedDateError } from '@/lib/wallet-dates'
 import CancellationLinkModal, { type FeeLine } from './CancellationLinkModal'
 import { HR_PAGE_CLASS, HR_PAGE_STYLE, HrShimmerStyle } from '@/components/ui/hr-look'
+import { GiftCardBatchList, GiftCardCodeInput, type GiftCardBatchRow } from './GiftCards'
 
 /* ─────────────────────────── TYPES ─────────────────────────── */
 
@@ -90,6 +91,8 @@ interface OrderLineItem {
   sessionCost?: number
   variantId?: string
   variantLabel?: string
+  /** A gift card being sold (GiftCards.tsx): the line is the card at face value. */
+  giftCardId?: string
 }
 
 interface PaymentLine {
@@ -103,6 +106,8 @@ interface PaymentLine {
    *  the patient's next letter with money left (lib/gl-balance checks again). */
   glLeft?: number
   glNext?: { id: string; name: string; balance: number }
+  /** GIFT_CARD only, client-side: the card's balance when it was scanned. */
+  giftBalance?: number
 }
 
 interface Order {
@@ -1093,6 +1098,9 @@ function OrderFormModal({
     } catch { setVoucherError('Unable to validate the voucher') }
     finally { setVoucherChecking(false) }
   }
+  // Gift cards: sell one (adds the card as the order line) or pay with one.
+  const [showGiftSell, setShowGiftSell] = useState(false)
+  const [showGiftPay, setShowGiftPay] = useState(false)
   const [discountSettings, setDiscountSettings] = useState<DiscountSetting[]>([])
   const [referrers, setReferrers] = useState<Referrer[]>([])
   const [referrerId, setReferrerId] = useState('')
@@ -1360,6 +1368,7 @@ function OrderFormModal({
   }
 
   const addItem = (svc: ServiceItem) => {
+    if (items.some(it => it.giftCardId)) { setError('A gift card is sold on its own order — finish this sale first, then ring up the service.'); return }
     const lookup = (id?: string) => (id ? services.find(x => x.id === id) ?? serviceDropResults.find(x => x.id === id) : undefined)
     const others = items.map(it => { const u = svcUnitPay(lookup(it.serviceId)); return { name: it.name, unitPayId: u.id, unitPayEnabled: u.enabled } })
     if (!confirmDoublePf(svc.name, svcUnitPay(svc), others)) return
@@ -1514,6 +1523,10 @@ function OrderFormModal({
       discountAmount = ds.type === 'PERCENTAGE' ? base * (toNum(ds.value) / 100) : Math.min(toNum(ds.value), base)
     }
   }
+
+  // A gift card is sold at its full value — no discount of any kind.
+  const hasGiftCardItems = items.some(it => it.giftCardId)
+  if (hasGiftCardItems) { discountAmount = 0; discountType = 'NONE'; discountLabel = ''; pwdNote = '' }
 
   const netAmount = Math.max(0, subtotal - discountAmount)
   const netAmountDisplay = parseFloat(netAmount.toFixed(2))
@@ -1833,6 +1846,7 @@ function OrderFormModal({
 
   // Determine wallet type based on service revenue type or advance payment
   const getWalletType = (): string | null => {
+    if (hasGiftCardItems) return null   // a gift card is its own code, not a patient wallet
     if (isAdvancePayment) return 'ADVANCE'
     if (!hasUnearnedItems) return null
     // For unearned, determine type from service name patterns
@@ -1850,15 +1864,45 @@ function OrderFormModal({
     return 'PACKAGE'
   }
 
-  const effectiveRevenueType = isAdvancePayment || hasUnearnedItems ? 'UNEARNED' : 'EARNED'
+  const effectiveRevenueType = isAdvancePayment || hasUnearnedItems || hasGiftCardItems ? 'UNEARNED' : 'EARNED'
+
+  // Add a scanned gift card to the sale / to the payments.
+  const addGiftCardItem = (c: { id: string; code: string; faceValue: number }) => {
+    if (items.some(it => !it.giftCardId)) { setError('Sell gift cards on their own order — remove the services first, or finish this sale and start a new one.'); return }
+    if (items.some(it => it.giftCardId === c.id)) { setError(`Gift card ${c.code} is already on this order`); return }
+    setError('')
+    setItems(prev => [...prev, { giftCardId: c.id, name: `Gift Card ${c.code}`, quantity: 1, unitPrice: c.faceValue, lineTotal: c.faceValue }])
+    setIsAdvancePayment(false)
+    setShowGiftSell(false)
+  }
+  const addGiftCardPayment = (c: { code: string; balance: number }) => {
+    if (hasGiftCardItems) { setError('A gift card cannot be paid for with another gift card.'); return }
+    setError('')
+    setPayments(prev => {
+      const base = prev.filter(pm => !(pm.method === 'CASH' && !toNum(pm.amount) && !pm.walletId) && !(pm.method === 'GIFT_CARD' && pm.reference === c.code))
+      const others = base.reduce((sum, pm) => sum + (pm.method === 'PACKAGE' ? netAmount : toNum(pm.amount)), 0)
+      const due = Math.max(0, Math.round((netAmount - others) * 100) / 100)
+      return [...base, { method: 'GIFT_CARD', amount: Math.min(c.balance, due), reference: c.code, giftBalance: c.balance }]
+    })
+    setShowGiftPay(false)
+  }
 
   // Submit order
   const handleSubmit = async (asUnpaid = false) => {
     if (items.length === 0) { setError('Add at least one item'); return }
-    if (orderType === 'SERVICE' && !referrerId) {
+    if (orderType === 'SERVICE' && !referrerId && !hasGiftCardItems) {
       setError('Referring Doctor/School/Law Firm is required — pick one from the list, or choose "None — no referral"')
       return
     }
+    if (hasGiftCardItems) {
+      if (asUnpaid) { setError('A gift card must be paid for when it is sold — it cannot be saved as Unpaid.'); return }
+      if (isAdvancePayment) { setError('Untick "advance payment" — a gift card sale is its own kind of prepayment.'); return }
+      if (payments.some(p => toNum(p.amount) > 0 && !['CASH', 'GCASH', 'PAYMAYA', 'PAYMONGO', 'DEBIT', 'CREDIT_CARD'].includes(p.method))) {
+        setError('Pay for a gift card with cash, GCash, Maya, a card or PayMongo — not with a wallet, HMO, GL or another gift card.'); return
+      }
+    }
+    const overGift = payments.find(p => p.method === 'GIFT_CARD' && p.giftBalance != null && toNum(p.amount) > p.giftBalance + 0.005)
+    if (overGift) { setError(`Gift card ${overGift.reference} has only ${formatCurrency(overGift.giftBalance || 0)} left — put the rest on another payment`); return }
     if (!asUnpaid && servicePaymentShort) { setError('Payments do not cover the net amount'); return }
     if (!asUnpaid) {
       const hmoLines = payments.filter(p => p.method === 'HMO' && toNum(p.amount) > 0)
@@ -1875,7 +1919,7 @@ function OrderFormModal({
         return
       }
     }
-    if ((effectiveRevenueType === 'UNEARNED' || isAdvancePayment) && !patientName.trim()) {
+    if (((effectiveRevenueType === 'UNEARNED' && !hasGiftCardItems) || isAdvancePayment) && !patientName.trim()) {
       setError('Patient name is required for unearned revenue / advance payment orders')
       return
     }
@@ -1965,7 +2009,7 @@ function OrderFormModal({
         branch,
         patientName: patientName || null,
         patientId: patientId || null,
-        clinicianName: (isAdvancePayment || hasUnearnedItems) ? null : (clinicianName || null),
+        clinicianName: (isAdvancePayment || hasUnearnedItems || hasGiftCardItems) ? null : (clinicianName || null),
         queueItemId: prefill?.id || null,
         transactionDate: txDate,
         items: items.map(it => ({
@@ -1975,6 +2019,7 @@ function OrderFormModal({
           quantity: it.quantity,
           unitPrice: it.unitPrice,
           lineTotal: it.lineTotal,
+          ...(it.giftCardId ? { giftCardId: it.giftCardId } : {}),
         })),
         payments: payments.filter(p => toNum(p.amount) > 0 || p.method === 'PACKAGE').map(p => ({
           method: p.method,
@@ -2237,6 +2282,15 @@ function OrderFormModal({
                 className="w-full pl-9 pr-3 py-2.5 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }}
               />
             </div>
+            {orderType === 'SERVICE' && (
+              <div className="mt-1.5">
+                <button type="button" onClick={() => setShowGiftSell(v => !v)}
+                  className="text-xs font-semibold flex items-center gap-1" style={{ color: 'var(--teal)' }}>
+                  <Gift size={12} /> {showGiftSell ? 'Close' : 'Sell a gift card'}
+                </button>
+                {showGiftSell && <div className="mt-1.5"><GiftCardCodeInput mode="sell" onFound={addGiftCardItem} /></div>}
+              </div>
+            )}
             {showServiceDrop && serviceSearch.length > 0 && filteredServices.length > 0 && (
               <div className="absolute z-10 w-full mt-1 bg-white border rounded-xl shadow-lg max-h-48 overflow-y-auto" style={{ borderColor: 'var(--light-gray)' }}>
                 {filteredServices.map(s => (
@@ -2328,15 +2382,15 @@ function OrderFormModal({
               <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>
                 Clinician Name {branch === 'VERDANA_STORE'
                   ? <span className="text-xs font-normal">(disabled — seminar / training)</span>
-                  : (isAdvancePayment || hasUnearnedItems) && <span className="text-xs font-normal">(disabled — unearned revenue)</span>}
+                  : (isAdvancePayment || hasUnearnedItems || hasGiftCardItems) && <span className="text-xs font-normal">(disabled — unearned revenue)</span>}
               </label>
               <input
-                value={(isAdvancePayment || hasUnearnedItems || branch === 'VERDANA_STORE') ? '' : clinicianName}
+                value={(isAdvancePayment || hasUnearnedItems || hasGiftCardItems || branch === 'VERDANA_STORE') ? '' : clinicianName}
                 onChange={e => { setClinicianName(e.target.value); setClinicianSearch(e.target.value) }}
                 onFocus={() => clinicianSearch.length >= 2 && setShowClinicianDrop(true)}
                 onBlur={() => setTimeout(() => setShowClinicianDrop(false), 200)}
-                placeholder={branch === 'VERDANA_STORE' ? 'N/A — Seminar / Training' : (isAdvancePayment || hasUnearnedItems) ? 'N/A — Unearned Revenue' : 'Search clinician...'}
-                disabled={isAdvancePayment || hasUnearnedItems || branch === 'VERDANA_STORE'}
+                placeholder={branch === 'VERDANA_STORE' ? 'N/A — Seminar / Training' : (isAdvancePayment || hasUnearnedItems || hasGiftCardItems) ? 'N/A — Unearned Revenue' : 'Search clinician...'}
+                disabled={isAdvancePayment || hasUnearnedItems || hasGiftCardItems || branch === 'VERDANA_STORE'}
                 className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none disabled:bg-gray-100 disabled:text-gray-400"
                 style={{ borderColor: 'var(--light-gray)' }}
               />
@@ -2372,8 +2426,10 @@ function OrderFormModal({
                         {it.department && <span className="ml-1 text-xs font-medium" style={{ color: 'var(--mid-gray)' }}>({it.department})</span>}
                       </td>
                       <td className="px-3 py-2">
+                        {it.giftCardId ? <span className="px-2" style={{ color: 'var(--mid-gray)' }}>1</span> : (
                         <input type="number" min={1} value={it.quantity} onChange={e => updateItemQty(idx, parseInt(e.target.value) || 1)}
                           className="w-16 px-2 py-1 rounded-lg border text-sm text-center outline-none" style={{ borderColor: 'var(--light-gray)' }} />
+                        )}
                       </td>
                       <td className="px-3 py-2">
                         {it.priceType === 'ADJUSTABLE' ? (
@@ -2405,7 +2461,8 @@ function OrderFormModal({
             </div>
           )}
 
-          {/* Discount Section */}
+          {/* Discount Section — none on a gift card sale (sold at full value) */}
+          {!hasGiftCardItems && (
           <div className="rounded-xl border p-3 space-y-3" style={{ borderColor: 'var(--light-gray)' }}>
             <h4 className="text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--mid-gray)' }}>Discounts</h4>
             {/* Voucher — scan the barcode into the field (scanners type + Enter) or enter the code. */}
@@ -2506,9 +2563,10 @@ function OrderFormModal({
               </p>
             )}
           </div>
+          )}
 
-          {/* Referral */}
-          {orderType === 'SERVICE' && (
+          {/* Referral — not asked on a gift card sale */}
+          {orderType === 'SERVICE' && !hasGiftCardItems && (
             <div className="relative">
               <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Referring Doctor/School/Law Firm <span style={{ color: '#dc2626' }}>*</span></label>
               {refAutoTagged && referrerId && refSuggest ? (
@@ -2595,6 +2653,11 @@ function OrderFormModal({
             {payments.map((p, idx) => (
               <div key={idx} className="space-y-1">
                 <div className="flex items-center gap-2">
+                  {p.method === 'GIFT_CARD' ? (
+                    <span className="flex-1 min-w-0 px-3 py-2.5 rounded-xl border text-sm font-semibold flex items-center gap-1.5" style={{ borderColor: '#bbf7d0', background: '#f0fdf4', color: '#166534' }}>
+                      <Gift size={14} /> Gift card <span className="font-mono">{p.reference}</span>
+                    </span>
+                  ) : (
                   <select
                     value={p.paymentModeId || p.method}
                     onChange={e => {
@@ -2631,6 +2694,7 @@ function OrderFormModal({
                     )}
                     {p.method === 'WALLET' && <option value="WALLET">VIP/Prepaid Card</option>}
                   </select>
+                  )}
                   {p.method === 'PACKAGE' ? (
                     <span className="w-32 px-3 py-2.5 rounded-xl border text-sm text-right font-semibold" style={{ borderColor: '#93c5fd', background: '#eff6ff', color: '#1e40af' }}>
                       {p.walletId ? formatCurrency(netAmount) : '—'}
@@ -2640,15 +2704,22 @@ function OrderFormModal({
                       onChange={e => setPayments(prev => prev.map((pp, i) => i === idx ? { ...pp, amount: parseFloat(e.target.value) || 0 } : pp))}
                       className="w-32 px-3 py-2.5 rounded-xl border text-sm outline-none text-right" style={{ borderColor: 'var(--light-gray)' }} />
                   )}
-                  {p.reference && !['HMO', 'GL'].includes(p.method) && (
+                  {p.reference && !['HMO', 'GL', 'GIFT_CARD'].includes(p.method) && (
                     <span className="text-xs px-2 py-1 rounded-lg" style={{ background: 'var(--pale-teal)', color: 'var(--deep-teal)' }}>{p.reference}</span>
                   )}
-                  {payments.length > 1 && (
-                    <button onClick={() => setPayments(prev => prev.filter((_, i) => i !== idx))} className="p-1 rounded hover:bg-red-50">
+                  {(payments.length > 1 || p.method === 'GIFT_CARD') && (
+                    <button onClick={() => setPayments(prev => { const rest = prev.filter((_, i) => i !== idx); return rest.length ? rest : [{ method: 'CASH', amount: 0 }] })} className="p-1 rounded hover:bg-red-50">
                       <X size={14} className="text-red-500" />
                     </button>
                   )}
                 </div>
+                {p.method === 'GIFT_CARD' && p.giftBalance != null && (toNum(p.amount) > p.giftBalance + 0.005 ? (
+                  <p className="text-[11px]" style={{ color: '#b91c1c' }}>This card has only {formatCurrency(p.giftBalance)} left — lower the amount and put the rest on another payment.</p>
+                ) : (
+                  <p className="text-[11px]" style={{ color: '#15803d' }}>
+                    Card balance {formatCurrency(p.giftBalance)}{toNum(p.amount) > 0 ? ` → ${formatCurrency(p.giftBalance - toNum(p.amount))} left on the card after this sale` : ''}
+                  </p>
+                ))}
               {/* Deduction preview for configured payment modes */}
               {(() => {
                 const cm = configuredModes.find(m => m.id === p.paymentModeId)
@@ -2714,6 +2785,7 @@ function OrderFormModal({
                 className="px-3 py-1.5 rounded-lg text-xs font-medium border" style={{ borderColor: 'var(--light-gray)', color: 'var(--teal)' }}>
                 + Add Payment
               </button>
+              {!hasGiftCardItems && (<>
               <button onClick={() => setShowWalletPay(!showWalletPay)}
                 className="px-3 py-1.5 rounded-lg text-xs font-medium border flex items-center gap-1"
                 style={{ borderColor: 'var(--light-gray)', color: 'var(--teal)' }}>
@@ -2744,7 +2816,14 @@ function OrderFormModal({
                 style={{ color: '#7c3aed' }}>
                 Advance
               </button>
+              <button onClick={() => setShowGiftPay(v => !v)}
+                className="px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1"
+                style={{ color: '#166534' }}>
+                <Gift size={12} /> Gift card
+              </button>
+              </>)}
             </div>
+            {showGiftPay && !hasGiftCardItems && <GiftCardCodeInput mode="pay" onFound={addGiftCardPayment} />}
 
             {/* Wallet scan / search */}
             {showWalletPay && (
@@ -3079,7 +3158,7 @@ function OrderFormModal({
           </div>
 
           {/* Advance Payment Toggle */}
-          {orderType === 'SERVICE' && !hasUnearnedItems && (
+          {orderType === 'SERVICE' && !hasUnearnedItems && !hasGiftCardItems && (
             <div className="rounded-xl border p-3" style={{ borderColor: isAdvancePayment ? 'var(--teal)' : 'var(--light-gray)', background: isAdvancePayment ? 'var(--pale-teal)' : 'transparent' }}>
               <label className="flex items-center gap-2 text-sm cursor-pointer" style={{ color: 'var(--charcoal)' }}>
                 <input type="checkbox" checked={isAdvancePayment}
@@ -3095,6 +3174,18 @@ function OrderFormModal({
                   This will be classified as Unearned Revenue. A digital wallet (Advance type) will be created for the patient.
                 </p>
               )}
+            </div>
+          )}
+
+          {/* Gift card sale notice */}
+          {hasGiftCardItems && (
+            <div className="rounded-xl border p-3" style={{ borderColor: '#bbf7d0', background: '#f0fdf4' }}>
+              <div className="flex items-center gap-2 text-sm font-medium" style={{ color: '#166534' }}>
+                <Gift size={14} /> Gift card sale — Unearned Revenue
+              </div>
+              <p className="text-xs mt-1" style={{ color: '#166534' }}>
+                The card becomes usable once this sale is completed. The money is held in 4050 Unearned Revenue and becomes revenue as the card is spent. No discounts; no wallet is created.
+              </p>
             </div>
           )}
 
@@ -3178,7 +3269,7 @@ function OrderFormModal({
             ) : (
               <div className="flex justify-between text-sm"><span style={{ color: 'var(--mid-gray)' }}>Remaining Balance</span><span className="text-red-600">{formatCurrency(Math.abs(changeDue))}</span></div>
             )}
-            {(hasUnearnedItems || isAdvancePayment) && (
+            {(hasUnearnedItems || isAdvancePayment || hasGiftCardItems) && (
               <div className="flex justify-between text-sm mt-1 pt-1 border-t" style={{ borderColor: 'var(--light-gray)' }}>
                 <span className="font-medium" style={{ color: 'var(--gold)' }}>Revenue Type</span>
                 <span className="font-medium" style={{ color: 'var(--gold)' }}>Unearned Revenue</span>
@@ -3231,6 +3322,7 @@ function OrderFormModal({
             {submitting && <Loader2 className="animate-spin" size={16} />}
             Complete Order
           </button>
+          {!hasGiftCardItems && (
           <button
             onClick={() => handleSubmit(true)}
             disabled={submitting || items.length === 0}
@@ -3240,6 +3332,7 @@ function OrderFormModal({
           >
             Save as Unpaid (collect later)
           </button>
+          )}
         </div>
 
         {/* Flash-to-tablet confirmation */}
@@ -3471,6 +3564,7 @@ function OrdersPanel({ branch, canSelectBranch, focusOrderId, onFocusHandled }: 
   const [editGlSearch, setEditGlSearch] = useState('')
   const [editGlWallets, setEditGlWallets] = useState<DigitalWallet[]>([])
   const [editShowAdvancePay, setEditShowAdvancePay] = useState(false)
+  const [editShowGiftPay, setEditShowGiftPay] = useState(false)
   const [editAdvanceSearch, setEditAdvanceSearch] = useState('')
   const [editAdvanceWallets, setEditAdvanceWallets] = useState<DigitalWallet[]>([])
 
@@ -4666,7 +4760,8 @@ function OrdersPanel({ branch, canSelectBranch, focusOrderId, onFocusHandled }: 
                         {/* A payment saved without a mode must say so — otherwise the
                             browser silently displays the first configured mode while the
                             state (and the saved row) still has no paymentModeId. */}
-                        {editConfiguredModes.length > 0 && !p.paymentModeId && !p.walletId && !editConfiguredModes.some(m => m.id === p.method) && (
+                        {p.method === 'GIFT_CARD' && <option value="GIFT_CARD">Gift card {p.reference || ''}</option>}
+                        {editConfiguredModes.length > 0 && !p.paymentModeId && !p.walletId && p.method !== 'GIFT_CARD' && !editConfiguredModes.some(m => m.id === p.method) && (
                           <option value={p.method}>
                             {(PAYMENT_METHODS_SERVICE.find(m => m.value === p.method)?.label || p.method)} — no payment mode set
                           </option>
@@ -4714,7 +4809,20 @@ function OrdersPanel({ branch, canSelectBranch, focusOrderId, onFocusHandled }: 
                       className="px-3 py-1.5 rounded-lg text-xs font-semibold" style={{ color: '#15803d' }}>GL</button>
                     <button onClick={() => { setEditShowAdvancePay(!editShowAdvancePay); setEditShowHmoPay(false); setEditShowGlPay(false); if (!editShowAdvancePay) editSearchTypedWallets('ADVANCE', '', setEditAdvanceWallets) }}
                       className="px-3 py-1.5 rounded-lg text-xs font-semibold" style={{ color: '#7c3aed' }}>Advance</button>
+                    <button onClick={() => setEditShowGiftPay(v => !v)}
+                      className="px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1" style={{ color: '#166534' }}><Gift size={12} /> Gift card</button>
                   </div>
+                  {editShowGiftPay && (
+                    <GiftCardCodeInput mode="pay" compact onFound={c => {
+                      setEditPayments(prev => {
+                        const base = prev.filter(pm => !(pm.method === 'CASH' && !pm.amount && !pm.walletId && !pm.id) && !(pm.method === 'GIFT_CARD' && pm.reference === c.code))
+                        const others = base.reduce((sum, pm) => sum + (Number(pm.amount) || 0), 0)
+                        const due = Math.max(0, Math.round((editNetAmount - others) * 100) / 100)
+                        return [...base, { method: 'GIFT_CARD', amount: Math.min(c.balance, due), reference: c.code }]
+                      })
+                      setEditShowGiftPay(false)
+                    }} />
+                  )}
 
                   {/* VIP/Prepaid Card search */}
                   {editShowWalletPay && (
@@ -8199,6 +8307,7 @@ function ProductsSection({
   const [newDiscountAmtType, setNewDiscountAmtType] = useState<'PERCENTAGE' | 'FIXED'>('FIXED')
   const [newDiscountRemarks, setNewDiscountRemarks] = useState('')
   const [payments, setPayments] = useState<PaymentLine[]>([{ method: 'CASH', amount: 0 }])
+  const [showGiftPayP, setShowGiftPayP] = useState(false)
   const [platform, setPlatform] = useState('Clinic')
   const [configuredModes, setConfiguredModes] = useState<PaymentModeType[]>([])
   const [submitting, setSubmitting] = useState(false)
@@ -8442,6 +8551,8 @@ function ProductsSection({
     }
     const allFreeSamples = cart.every(c => c.isFreeSample)
     if (!allFreeSamples && !hasRewardPointsPayment && productPaymentShort) { setError('Payments do not cover the net amount'); return }
+    const overGift = payments.find(p => p.method === 'GIFT_CARD' && p.giftBalance != null && toNum(p.amount) > p.giftBalance + 0.005)
+    if (overGift) { setError(`Gift card ${overGift.reference} has only ${formatCurrency(overGift.giftBalance || 0)} left — put the rest on another payment`); return }
     if (hasReceivablePayment) {
       if (!soldTo.trim()) { setError('Enter who this is sold to (the customer or company) for the Receivable payment'); return }
       if (isBusiness && !businessName.trim()) { setError('Enter the business name — a company sale is billed to the company'); return }
@@ -8466,7 +8577,7 @@ function ProductsSection({
             paymentModeId: p.paymentModeId || null,
             amount: p.method === 'REWARD_POINTS' ? rpMonetaryValue : toNum(p.amount),
             walletId: p.method === 'REWARD_POINTS' ? rpSelectedWallet?.id : null,
-            reference: p.method === 'REWARD_POINTS' ? `${rpPointsToUse} pts from ${rpSelectedWallet?.patientName}${rpCoveragePercent < 1 ? ` (${(rpCoveragePercent * 100).toFixed(0)}% coverage)` : ''}` : null,
+            reference: p.method === 'REWARD_POINTS' ? `${rpPointsToUse} pts from ${rpSelectedWallet?.patientName}${rpCoveragePercent < 1 ? ` (${(rpCoveragePercent * 100).toFixed(0)}% coverage)` : ''}` : p.method === 'GIFT_CARD' ? (p.reference || null) : null,
           }))
       const body = {
         orderType: 'PRODUCT',
@@ -8892,7 +9003,13 @@ function ProductsSection({
           <div className="space-y-2 pt-2 border-t" style={{ borderColor: 'var(--light-gray)' }}>
             <h4 className="text-xs font-semibold" style={{ color: 'var(--mid-gray)' }}>Payment</h4>
             {payments.map((p, idx) => (
-              <div key={idx} className="flex items-center gap-1">
+              <div key={idx} className="flex items-center gap-1 flex-wrap">
+                {p.method === 'GIFT_CARD' ? (
+                  <span className="flex-1 min-w-0 px-2 py-2 rounded-xl border text-xs font-semibold flex items-center gap-1" style={{ borderColor: '#bbf7d0', background: '#f0fdf4', color: '#166534' }}
+                    title={p.giftBalance != null ? `Card balance ${formatCurrency(p.giftBalance)}` : undefined}>
+                    <Gift size={12} /> <span className="font-mono truncate">{p.reference}</span>
+                  </span>
+                ) : (
                 <select value={p.paymentModeId || p.method} onChange={e => {
                     const val = e.target.value
                     const cm = configuredModes.find(m => m.id === val)
@@ -8913,6 +9030,7 @@ function ProductsSection({
                     PAYMENT_METHODS_PRODUCT.map(m => <option key={m.value} value={m.value}>{m.label}</option>)
                   )}
                 </select>
+                )}
                 {p.method === 'REWARD_POINTS' ? (
                   <span className="w-28 px-2 py-2 rounded-xl border text-xs text-right flex items-center justify-end gap-1" style={{ borderColor: 'var(--light-gray)', color: 'var(--gold)', background: '#F9F2EB' }}>
                     <Star size={10} /> {rpPointsToUse.toLocaleString()}/{rewardPointsTotal.toLocaleString()}
@@ -8922,17 +9040,40 @@ function ProductsSection({
                     onChange={e => setPayments(prev => prev.map((pp, i) => i === idx ? { ...pp, amount: parseFloat(e.target.value) || 0 } : pp))}
                     className="w-24 px-2 py-2 rounded-xl border text-xs outline-none text-right" style={{ borderColor: 'var(--light-gray)' }} />
                 )}
-                {payments.length > 1 && (
-                  <button onClick={() => { setPayments(prev => prev.filter((_, i) => i !== idx)); if (p.method === 'REWARD_POINTS') setRpSelectedWallet(null) }} className="p-1 rounded hover:bg-red-50">
+                {(payments.length > 1 || p.method === 'GIFT_CARD') && (
+                  <button onClick={() => { setPayments(prev => { const rest = prev.filter((_, i) => i !== idx); return rest.length ? rest : [{ method: 'CASH', amount: 0 }] }); if (p.method === 'REWARD_POINTS') setRpSelectedWallet(null) }} className="p-1 rounded hover:bg-red-50">
                     <X size={12} className="text-red-500" />
                   </button>
                 )}
+                {p.method === 'GIFT_CARD' && p.giftBalance != null && (
+                  <p className="w-full text-[11px]" style={{ color: toNum(p.amount) > p.giftBalance + 0.005 ? '#b91c1c' : '#15803d' }}>
+                    {toNum(p.amount) > p.giftBalance + 0.005
+                      ? `Only ${formatCurrency(p.giftBalance)} left on this card`
+                      : `Card balance ${formatCurrency(p.giftBalance)} → ${formatCurrency(p.giftBalance - toNum(p.amount))} after this sale`}
+                  </p>
+                )}
               </div>
             ))}
-            <button onClick={() => setPayments(prev => [...prev, { method: 'CASH', amount: 0 }])}
-              className="text-xs font-medium" style={{ color: 'var(--teal)' }}>
-              + Add Payment
-            </button>
+            <div className="flex items-center gap-3">
+              <button onClick={() => setPayments(prev => [...prev, { method: 'CASH', amount: 0 }])}
+                className="text-xs font-medium" style={{ color: 'var(--teal)' }}>
+                + Add Payment
+              </button>
+              <button onClick={() => setShowGiftPayP(v => !v)} className="text-xs font-semibold flex items-center gap-1" style={{ color: '#166534' }}>
+                <Gift size={12} /> Gift card
+              </button>
+            </div>
+            {showGiftPayP && (
+              <GiftCardCodeInput mode="pay" compact onFound={c => {
+                setPayments(prev => {
+                  const base = prev.filter(pm => !(pm.method === 'CASH' && !toNum(pm.amount)) && !(pm.method === 'GIFT_CARD' && pm.reference === c.code))
+                  const others = base.reduce((sum, pm) => sum + toNum(pm.amount), 0)
+                  const due = Math.max(0, Math.round((netAmount - others) * 100) / 100)
+                  return [...base, { method: 'GIFT_CARD', amount: Math.min(c.balance, due), reference: c.code, giftBalance: c.balance }]
+                })
+                setShowGiftPayP(false)
+              }} />
+            )}
           </div>
 
           {/* Who is buying. Asked on every checkout, not only credit sales: an
@@ -11509,17 +11650,61 @@ function VouchersPanel() {
   const [gen, setGen] = useState({ count: '10', discountKind: 'PERCENTAGE', value: '', validUntil: '', reason: '', departments: [] as string[] })
   const [genBusy, setGenBusy] = useState(false)
   const [genError, setGenError] = useState('')
+  // Gift cards (prepaid value) live beside the discount vouchers — GiftCards.tsx.
+  const [view, setView] = useState<'VOUCHERS' | 'GIFT_CARDS'>('VOUCHERS')
+  const [gcBatches, setGcBatches] = useState<GiftCardBatchRow[]>([])
+  const [gcOutstanding, setGcOutstanding] = useState({ amount: 0, cards: 0 })
+  const [gcForm, setGcForm] = useState({ count: '10', faceValue: '', reason: '' })
+  const [gcEditId, setGcEditId] = useState<string | null>(null)
+  const [gcEditLocked, setGcEditLocked] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const r = await fetch('/api/pos/vouchers')
+      const [r, g] = await Promise.all([fetch('/api/pos/vouchers'), fetch('/api/pos/gift-cards')])
       if (r.ok) { const d = await r.json(); setBatches(d.batches || []); setCanWrite(!!d.canWrite) }
+      if (g.ok) { const d = await g.json(); setGcBatches(d.batches || []); setGcOutstanding({ amount: Number(d.outstanding) || 0, cards: Number(d.outstandingCards) || 0 }) }
     } catch { /* keep */ } finally { setLoading(false) }
   }, [])
   useEffect(() => { load() }, [load])
 
+  const resetGcForm = () => { setGcForm({ count: '10', faceValue: '', reason: '' }); setGcEditId(null); setGcEditLocked(false) }
+  const openGen = (kind: 'VOUCHERS' | 'GIFT_CARDS') => {
+    setView(kind); setGenError(''); setEditBatchId(null); resetGcForm()
+    setGen({ count: '10', discountKind: 'PERCENTAGE', value: '', validUntil: '', reason: '', departments: [] })
+    setShowGen(true)
+  }
+  const closeGen = () => {
+    setShowGen(false); setEditBatchId(null); resetGcForm()
+    setGen({ count: '10', discountKind: 'PERCENTAGE', value: '', validUntil: '', reason: '', departments: [] })
+  }
+  const generateGiftCards = async () => {
+    setGenError('')
+    const count = Math.round(Number(gcForm.count) || 0)
+    if (!gcEditId && !(count > 0)) { setGenError('Enter how many gift cards to generate.'); return }
+    if (!(Number(gcForm.faceValue) > 0)) { setGenError('Enter the peso value of each gift card.'); return }
+    if (!gcForm.reason.trim()) { setGenError('Enter what these gift cards are for.'); return }
+    setGenBusy(true)
+    try {
+      const body = gcEditId
+        ? { batchId: gcEditId, faceValue: Number(gcForm.faceValue), reason: gcForm.reason.trim() }
+        : { count, faceValue: Number(gcForm.faceValue), reason: gcForm.reason.trim() }
+      const r = await fetch('/api/pos/gift-cards', { method: gcEditId ? 'PUT' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+      const d = await r.json()
+      if (!r.ok) { setGenError(d.error || (gcEditId ? 'Failed to save the batch' : 'Failed to generate gift cards')); return }
+      closeGen(); setView('GIFT_CARDS')
+      load()
+    } finally { setGenBusy(false) }
+  }
+  const openEditGiftBatch = (b: GiftCardBatchRow) => {
+    setView('GIFT_CARDS'); setEditBatchId(null); setGenError('')
+    setGcEditId(b.id); setGcEditLocked(b.counts.total - b.counts.unsold - b.counts.voided > 0)
+    setGcForm({ count: String(b.counts.total), faceValue: String(b.faceValue), reason: b.reason })
+    setShowGen(true)
+  }
+
   const generate = async () => {
+    if (view === 'GIFT_CARDS') return generateGiftCards()
     setGenError('')
     const count = Math.round(Number(gen.count) || 0)
     if (!editBatchId && !(count > 0)) { setGenError('Enter how many vouchers to generate.'); return }
@@ -11539,6 +11724,7 @@ function VouchersPanel() {
     } finally { setGenBusy(false) }
   }
   const openEditBatch = (b: VoucherBatchRow) => {
+    setView('VOUCHERS'); resetGcForm()
     setEditBatchId(b.id)
     setGen({ count: String(b.counts.total), discountKind: b.discountKind, value: b.discountKind === 'FREE' ? '' : String(b.value), validUntil: String(b.validUntil).slice(0, 10), reason: b.reason, departments: b.departments || [] })
     setGenError(''); setShowGen(true)
@@ -11593,21 +11779,82 @@ function VouchersPanel() {
 
   return (
     <div className="space-y-3">
-      <div className="flex items-center justify-between">
+      {/* Discount vouchers | Gift cards */}
+      <div className="flex flex-wrap items-center gap-2">
+        {([['VOUCHERS', 'Discount vouchers', batches.length], ['GIFT_CARDS', 'Gift cards', gcBatches.length]] as const).map(([k, label, n]) => (
+          <button key={k} type="button" onClick={() => { setView(k); if (editBatchId || gcEditId) closeGen(); else setGenError('') }}
+            className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-semibold border transition-colors"
+            style={view === k ? { background: 'var(--teal)', borderColor: 'var(--teal)', color: '#fff' } : { background: '#fff', borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}>
+            {k === 'VOUCHERS' ? <Ticket size={13} /> : <Gift size={13} />} {label}
+            <span className="px-1.5 rounded-full text-[10px]" style={view === k ? { background: 'rgba(255,255,255,.22)' } : { background: '#EDF3D9', color: '#3C6A5F' }}>{n}</span>
+          </button>
+        ))}
+      </div>
+
+      <div className="flex items-center justify-between gap-3">
         <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>
-          Vouchers are redeemed at checkout — scan the barcode (or type the code) in the New Payment discount section. Each code works once.
-          {!canWrite && ' Viewing only — generating vouchers is limited to Admin, Accountant, and Bookkeeper accounts.'}
+          {view === 'VOUCHERS'
+            ? 'Vouchers are redeemed at checkout — scan the barcode (or type the code) in the New Payment discount section. Each code works once.'
+            : 'Gift cards carry a prepaid peso value. Sell one at the Cashier (New Payment → Sell a gift card); it is then spent like cash under Payments → Gift card, and whatever is left stays on the code. No expiry.'}
+          {!canWrite && ` Viewing only — generating ${view === 'VOUCHERS' ? 'vouchers' : 'gift cards'} is limited to Admin, Accountant, and Bookkeeper accounts.`}
         </p>
-        {canWrite && (
-          <button onClick={() => { setEditBatchId(null); setGen({ count: '10', discountKind: 'PERCENTAGE', value: '', validUntil: '', reason: '', departments: [] }); setShowGen(true) }} className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium text-white shrink-0" style={{ background: 'var(--teal)' }}>
+        {canWrite && (view === 'VOUCHERS' ? (
+          <button onClick={() => openGen('VOUCHERS')} className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium text-white shrink-0" style={{ background: 'var(--teal)' }}>
             <Ticket size={15} /> Generate Vouchers
           </button>
-        )}
+        ) : (
+          <button onClick={() => openGen('GIFT_CARDS')} className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium text-white shrink-0" style={{ background: 'var(--teal)' }}>
+            <Gift size={15} /> Generate Gift Cards
+          </button>
+        ))}
       </div>
+
+      {view === 'GIFT_CARDS' && gcBatches.length > 0 && (
+        <div className="rounded-lg border px-4 py-3 bg-white flex flex-wrap items-baseline gap-x-6 gap-y-1" style={{ borderColor: 'var(--light-gray)', borderLeft: `4px solid ${gcOutstanding.amount > 0 ? '#4A8073' : '#DDE6CC'}` }}>
+          <div>
+            <p className="text-[11.5px] font-semibold uppercase tracking-[.4px]" style={{ color: 'var(--mid-gray)' }}>Unspent gift card value</p>
+            <p className="text-xl font-extrabold font-mono" style={{ color: gcOutstanding.amount > 0 ? 'var(--charcoal)' : '#8A9AA0' }}>{formatCurrency(gcOutstanding.amount)}</p>
+          </div>
+          <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>
+            on {gcOutstanding.cards} active card{gcOutstanding.cards === 1 ? '' : 's'} · held in 4050 Unearned Revenue until spent
+          </p>
+        </div>
+      )}
 
       {showGen && (
         <div className="rounded-2xl border p-4 space-y-3" style={{ borderColor: '#93c5fd', background: '#eff6ff' }}>
-          <p className="text-sm font-semibold" style={{ color: 'var(--charcoal)' }}>{editBatchId ? 'Edit voucher batch — changes apply to all not-yet-redeemed codes' : 'Generate a voucher batch'}</p>
+          <p className="text-sm font-semibold" style={{ color: 'var(--charcoal)' }}>{
+            view === 'GIFT_CARDS'
+              ? (gcEditId ? 'Edit gift card batch' : 'Generate gift cards')
+              : (editBatchId ? 'Edit voucher batch — changes apply to all not-yet-redeemed codes' : 'Generate a voucher batch')}</p>
+          {!editBatchId && !gcEditId && (
+            <div className="flex flex-wrap gap-2">
+              {([['VOUCHERS', 'Discount voucher', 'Takes % / ₱ off, or makes the service free'], ['GIFT_CARDS', 'Gift card — prepaid value', 'Paid for up front; spent like cash']] as const).map(([k, label, sub]) => (
+                <button key={k} type="button" onClick={() => { setView(k); setGenError('') }}
+                  className="text-left px-3 py-2 rounded-xl border bg-white min-w-[220px]"
+                  style={view === k ? { borderColor: 'var(--teal)', boxShadow: '0 0 0 2px #a7d3cd' } : { borderColor: 'var(--light-gray)' }}>
+                  <span className="flex items-center gap-1.5 text-xs font-semibold" style={{ color: 'var(--charcoal)' }}>{k === 'VOUCHERS' ? <Ticket size={13} /> : <Gift size={13} />} {label}</span>
+                  <span className="block text-[11px]" style={{ color: 'var(--mid-gray)' }}>{sub}</span>
+                </button>
+              ))}
+            </div>
+          )}
+          {view === 'GIFT_CARDS' ? (
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div><label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>How many gift cards</label>
+              <input value={gcForm.count} onChange={e => setGcForm(p => ({ ...p, count: e.target.value }))} disabled={!!gcEditId} inputMode="numeric" className="w-full px-3 py-2 rounded-xl border text-sm font-mono disabled:opacity-60" style={{ borderColor: 'var(--light-gray)', background: gcEditId ? 'var(--off-white)' : undefined }} /></div>
+            <div><label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Value of each card (₱)</label>
+              <input value={gcForm.faceValue} onChange={e => setGcForm(p => ({ ...p, faceValue: e.target.value }))} disabled={gcEditLocked} inputMode="decimal" placeholder="e.g. 1000" className="w-full px-3 py-2 rounded-xl border text-sm font-mono disabled:opacity-60" style={{ borderColor: 'var(--light-gray)', background: gcEditLocked ? 'var(--off-white)' : undefined }} />
+              {gcEditLocked && <p className="text-[10px] mt-0.5" style={{ color: 'var(--mid-gray)' }}>Locked — cards in this batch are already sold</p>}</div>
+            <div className="col-span-2"><label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Expiry</label>
+              <p className="px-3 py-2 rounded-xl border text-sm bg-white" style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}>No expiry — the Gift Check Act (RA 10962) bars expiry dates</p></div>
+            <div className="col-span-2 sm:col-span-4"><label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>What are these gift cards for? *</label>
+              <input value={gcForm.reason} onChange={e => setGcForm(p => ({ ...p, reason: e.target.value }))} placeholder="e.g. Christmas 2026 gift cards" className="w-full px-3 py-2 rounded-xl border text-sm" style={{ borderColor: 'var(--light-gray)' }} /></div>
+            <div className="col-span-2 sm:col-span-4 rounded-xl px-3 py-2 text-[11px] bg-white border" style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>
+              Cards start <strong>Unsold</strong> and are worth nothing until rung up at the Cashier. The sale books DR cash / CR 4050 Unearned Revenue; each use books DR 4050 / CR revenue at full price. Covers services and products at East and Greenhills, in one go or in parts.
+            </div>
+          </div>
+          ) : (
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             <div><label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>How many vouchers</label>
               <input value={gen.count} onChange={e => setGen(p => ({ ...p, count: e.target.value }))} disabled={!!editBatchId} inputMode="numeric" className="w-full px-3 py-2 rounded-xl border text-sm font-mono disabled:opacity-60" style={{ borderColor: 'var(--light-gray)', background: editBatchId ? 'var(--off-white)' : undefined }} /></div>
@@ -11636,16 +11883,21 @@ function VouchersPanel() {
             <div className="col-span-2 sm:col-span-4"><label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Reason for creating these vouchers *</label>
               <input value={gen.reason} onChange={e => setGen(p => ({ ...p, reason: e.target.value }))} placeholder="e.g. September open-house raffle prizes" className="w-full px-3 py-2 rounded-xl border text-sm" style={{ borderColor: 'var(--light-gray)' }} /></div>
           </div>
+          )}
           {genError && <p className="text-xs" style={{ color: '#dc2626' }}>{genError}</p>}
           <div className="flex gap-2">
-            <button onClick={generate} disabled={genBusy} className="px-4 py-2 rounded-xl text-xs font-semibold text-white disabled:opacity-50 flex items-center gap-1.5" style={{ background: 'var(--teal)' }}>{genBusy && <Loader2 size={13} className="animate-spin" />} {editBatchId ? 'Save changes' : 'Generate'}</button>
-            <button onClick={() => { setShowGen(false); setEditBatchId(null); setGen({ count: '10', discountKind: 'PERCENTAGE', value: '', validUntil: '', reason: '', departments: [] }) }} className="px-4 py-2 rounded-xl text-xs font-medium border" style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>Cancel</button>
+            <button onClick={generate} disabled={genBusy} className="px-4 py-2 rounded-xl text-xs font-semibold text-white disabled:opacity-50 flex items-center gap-1.5" style={{ background: 'var(--teal)' }}>{genBusy && <Loader2 size={13} className="animate-spin" />} {editBatchId || gcEditId ? 'Save changes' : view === 'GIFT_CARDS' ? 'Generate gift cards' : 'Generate'}</button>
+            <button onClick={closeGen} className="px-4 py-2 rounded-xl text-xs font-medium border" style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>Cancel</button>
           </div>
         </div>
       )}
 
       {loading ? (
         <div className="flex items-center justify-center py-12"><Loader2 className="animate-spin" size={20} style={{ color: 'var(--teal)' }} /></div>
+      ) : view === 'GIFT_CARDS' ? (
+        gcBatches.length === 0
+          ? <div className="text-center py-12 text-sm rounded-2xl border bg-white" style={{ color: 'var(--mid-gray)', borderColor: 'var(--light-gray)' }}>No gift cards yet.{canWrite ? ' Generate the first batch above.' : ''}</div>
+          : <GiftCardBatchList batches={gcBatches} canWrite={canWrite} onEdit={openEditGiftBatch} onChanged={load} />
       ) : batches.length === 0 ? (
         <div className="text-center py-12 text-sm rounded-2xl border bg-white" style={{ color: 'var(--mid-gray)', borderColor: 'var(--light-gray)' }}>No vouchers yet.{canWrite ? ' Generate the first batch above.' : ''}</div>
       ) : batches.map(b => (

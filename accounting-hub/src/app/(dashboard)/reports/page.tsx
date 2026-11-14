@@ -262,6 +262,7 @@ const PAYMENT_LABELS: Record<string, string> = {
   CREDIT_CARD: 'Credit Card',
   VIP_CARD: 'VIP Card',
   PREPAID_CARD: 'Prepaid Card',
+  GIFT_CARD: 'Gift Card',
   REWARD_POINTS: 'Reward Points',
   SHOPEE: 'Shopee',
   LAZADA: 'Lazada',

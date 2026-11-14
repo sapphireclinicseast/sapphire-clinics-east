@@ -40,7 +40,7 @@ const peso = (n: number) =>
 const METHOD_LABELS: Record<string, string> = {
   CASH: 'Cash', GCASH: 'GCash', PAYMAYA: 'Maya', PAYMONGO: 'Card / e-wallet',
   DEBIT: 'Debit card', CREDIT_CARD: 'Credit card', VIP_CARD: 'VIP Card',
-  PREPAID_CARD: 'Prepaid Card', REWARD_POINTS: 'Reward points',
+  PREPAID_CARD: 'Prepaid Card', GIFT_CARD: 'Gift card', REWARD_POINTS: 'Reward points',
   DOWNPAYMENT: 'Downpayment', PACKAGE: 'Session package', ADVANCE: 'Advance',
   HMO: 'HMO', GL: 'Guarantee Letter', SHOPEE: 'Shopee', LAZADA: 'Lazada', TIKTOK: 'TikTok',
 }
