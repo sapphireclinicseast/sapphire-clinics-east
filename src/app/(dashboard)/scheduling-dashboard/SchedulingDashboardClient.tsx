@@ -359,13 +359,23 @@ function DashboardContent({ role }: { role: string }) {
   const activeBranches = branch === 'all' ? [...BRANCHES] : [branch]
   const activeDepts = allDepts ? [...DEPARTMENTS] : selectedDepts
 
+  // Every day in the range.
+  //
+  // This used to skip Saturday — "the clinic is closed Saturdays", written
+  // into the code with no setting behind it and nothing reading the roster.
+  // Saturday is in fact the BUSIEST day of the week at both branches, and
+  // Sunday, one of the quietest, was counted in full.
+  //
+  // It mattered beyond the label. Saturday's sessions were in the numerator
+  // while Saturday's days were not in the denominator, so every figure
+  // resting on this count — the daily average, the capacity behind Clinic
+  // Utilization, and the per-department table below — was overstated by
+  // roughly a sixth.
   const workingDays = useMemo(() => {
     let count = 0
     const s = new Date(startDate + 'T00:00:00')
     const e = new Date(endDate + 'T00:00:00')
-    for (let d = new Date(s); d <= e; d.setDate(d.getDate() + 1)) {
-      if (d.getDay() !== 6) count++ // exclude Saturday
-    }
+    for (let d = new Date(s); d <= e; d.setDate(d.getDate() + 1)) count++
     return count
   }, [startDate, endDate])
 
@@ -420,10 +430,9 @@ function DashboardContent({ role }: { role: string }) {
   }, [startDate, endDate, branch, allDepts, selectedDepts])
 
   const showFill = !fillDenied
-  // Avg sessions per OPERATING day — uses the same workingDays denominator as
-  // the utilization calc (Saturday excluded), so the figure represents an
-  // average over days the clinic actually operates. Reacts to the same
-  // date / branch / department filters that drive totalSessions.
+  // Avg sessions per day — the same denominator as the utilization calc, so
+  // the two tiles cannot tell different stories about the same range. Reacts
+  // to the same date / branch / department filters that drive totalSessions.
   const avgPerDay = workingDays > 0 ? totalSessions / workingDays : 0
 
   // ── Branch Comparison ──────────────────────────────────────────────────────
@@ -802,7 +811,7 @@ function DashboardContent({ role }: { role: string }) {
                 </KpiLink>
                 <KpiLink target="sessions-trend" title="Jump to sessions over time">
                   <KpiCard label="Avg per Day" icon={<Activity size={16} />} accent="#8B5CF6"
-                    value={avgPerDay.toFixed(1)} sub="per operating day (Sat excluded)" />
+                    value={avgPerDay.toFixed(1)} sub={`over ${workingDays} day${workingDays === 1 ? '' : 's'} · ${rangeLabel}`} />
                 </KpiLink>
               </>
             )}
