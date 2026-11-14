@@ -161,6 +161,11 @@ export function TiktokImportModal({ onClose, onDone }: { onClose: () => void; on
         const match = legacy.find(l => {
           if (usedLegacy.has(l.id)) return false
           const refM = !!l.referenceNumber && l.referenceNumber === id
+          // A ₱0-net TikTok order (full giveaway / fully returned) must match by
+          // exact reference only: the fuzzy net±0.50 + date±3d rules match it to ANY
+          // ₱0 non-TikTok Verdana order in the window — the 2026-11-13 batch would
+          // have voided 5 genuine Clinic FOC sales as "legacy TikTok encodes".
+          if (net <= 0.005) return refM
           const netM = Math.abs(l.netAmount - net) < 0.5
           const dateM = withinDays(l.ymd, txnDate, 3)
           const skuM = sameSet(l.itemIds, orderItemIds)
