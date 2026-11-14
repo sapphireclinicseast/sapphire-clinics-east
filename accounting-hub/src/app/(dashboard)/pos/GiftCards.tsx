@@ -41,53 +41,31 @@ export function GiftCardStatusChip({ status }: { status: string }) {
 const esc = (s: string) => s.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c] as string))
 
 /**
- * Print wallet-size cards (85.6 × 54 mm, the ID-1 size) on A4, ten to a sheet,
- * with cut lines: Aura logo, GIFT CARD, the value, and the code as a barcode.
+ * Print gift cards as the same slip as the discount vouchers (VouchersPanel →
+ * printVouchers): 270px dashed slip, same padding, same barcode size, flowed
+ * across the page the same way — so both print and cut alike (Hannah, 11/14).
  */
 export function printGiftCards(cards: { code: string; faceValue: number }[]) {
   if (!cards.length) { alert('No gift cards to print.'); return }
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const JsBarcodeLib = require('jsbarcode')
-  const logo = `${window.location.origin}/aura-logo.png`
-  const html = cards.map(c => {
+  const slips = cards.map(c => {
     const canvas = document.createElement('canvas')
     try {
-      JsBarcodeLib(canvas, c.code, { format: 'CODE128', width: 2, height: 40, displayValue: true, fontSize: 14, margin: 4, font: 'Roboto, Arial, sans-serif', textMargin: 2 })
+      JsBarcodeLib(canvas, c.code, { format: 'CODE128', width: 2, height: 48, displayValue: true, fontSize: 13, margin: 6, font: 'Roboto, Arial, sans-serif' })
     } catch { /* invalid code */ }
-    return `<div class="card">
-      <div class="top">
-        <img src="${logo}" alt="" />
-        <div class="brand"><b>AURA HEALTH REHAB</b><span>East · Greenhills</span></div>
-        <div class="tag">GIFT CARD</div>
-      </div>
-      <div class="value">${esc(formatCurrency(c.faceValue))}</div>
-      <img class="bc" src="${canvas.toDataURL('image/png')}" alt="${esc(c.code)}" />
-      <div class="foot">No expiry · any unused balance stays on the card · valid once paid for</div>
-    </div>`
+    return `<div style="border:1px dashed #999;border-radius:10px;padding:10px 14px;width:270px;text-align:center;page-break-inside:avoid">
+        <div style="font-weight:700;font-size:13px;letter-spacing:.4px">AURA HEALTH — GIFT CARD</div>
+        <div style="font-size:15px;font-weight:700;margin:4px 0">${esc(formatCurrency(c.faceValue))}</div>
+        <img src="${canvas.toDataURL('image/png')}" style="max-width:100%" />
+        <div style="font-size:11px;color:#444">No expiry · balance stays on the card</div>
+      </div>`
   }).join('')
   const win = window.open('', '_blank')
   if (!win) return
-  win.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Gift cards</title>
-    <style>
-      @page { size: A4; margin: 10mm; }
-      * { box-sizing: border-box; }
-      body { margin: 0; font-family: Roboto, Arial, sans-serif; color: #233038; }
-      .sheet { display: grid; grid-template-columns: repeat(2, 85.6mm); gap: 4mm 6mm; justify-content: center; }
-      .card { width: 85.6mm; height: 54mm; border: 1px dashed #9aa5a0; border-radius: 3.2mm; padding: 3mm 4mm 2.5mm;
-              display: flex; flex-direction: column; break-inside: avoid; page-break-inside: avoid;
-              background: linear-gradient(135deg, #EDF3D9 0%, #ffffff 55%); -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-      .top { display: flex; align-items: center; gap: 2mm; }
-      .top img { width: 9mm; height: 9mm; }
-      .brand { display: flex; flex-direction: column; line-height: 1.1; }
-      .brand b { font-size: 8.5pt; letter-spacing: .4px; color: #4A8073; }
-      .brand span { font-size: 6.5pt; color: #55616A; }
-      .tag { margin-left: auto; font-size: 7.5pt; font-weight: 700; letter-spacing: 1.2px; color: #fff; background: #4A8073; padding: .8mm 2.2mm; border-radius: 1.5mm; }
-      .value { font-size: 20pt; font-weight: 700; color: #233038; margin: 1.2mm 0 .4mm; }
-      .bc { height: 15mm; max-width: 100%; align-self: center; }
-      .foot { margin-top: auto; font-size: 6.3pt; color: #55616A; text-align: center; }
-    </style></head>
-    <body><div class="sheet">${html}</div>
-    <script>window.onload=function(){setTimeout(function(){window.print()},150)}<\/script></body></html>`)
+  win.document.write(`<html><head><title>Gift cards</title></head>
+      <body style="font-family:Arial,sans-serif;display:flex;flex-wrap:wrap;gap:10px;padding:16px">${slips}
+      <script>window.onload=function(){window.print()}<\/script></body></html>`)
   win.document.close()
 }
 
