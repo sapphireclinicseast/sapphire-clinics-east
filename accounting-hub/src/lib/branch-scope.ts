@@ -77,21 +77,21 @@ export function branchAllowed(
   return allowed.some(b => requested === b || requested === (BRANCH_ENUM_TO_SHORT[b] || b))
 }
 
-// Branches that East/Greenhills accountants & bookkeepers may VIEW (read-only)
-// in Petty Cash, in addition to their own branch: the CEO and Verdana sections.
+// Branches that branch-locked accountants & bookkeepers may VIEW (read-only)
+// in Petty Cash and Expenses, in addition to their own branch: the CEO and
+// Verdana sections.
 export const PETTY_CASH_VIEW_ONLY_BRANCHES = ['CEO', 'VERDANA_STORE']
 
 /**
- * True if the user is an Accountant or Bookkeeper locked to the East or Greenhills
- * branch — these users get read-only visibility into the CEO and Verdana petty-cash
- * sections (but cannot create, edit, delete, or audit them).
+ * True for every Accountant and Bookkeeper, whatever branch they are locked to —
+ * they get read-only visibility into the CEO petty cash and its RFPs (and
+ * Verdana's), so they can bank-recon them, but cannot create, edit, delete, or
+ * audit them. (Hannah 2026-11-14: "allow accountant users to all view CEO petty
+ * cash and RFPs so they can bank recon them" — this used to be East/Greenhills
+ * only.) Users with no branch lock already see every branch.
  */
-export function canViewPettyCashCeoVerdana(
-  role: string | null | undefined,
-  userBranch: string | null | undefined,
-): boolean {
-  return (role === 'ACCOUNTANT' || role === 'BOOKKEEPER')
-    && (userBranch === 'SANDBOX_EAST' || userBranch === 'SANDBOX_GREENHILLS')
+export function canViewPettyCashCeoVerdana(role: string | null | undefined): boolean {
+  return role === 'ACCOUNTANT' || role === 'BOOKKEEPER'
 }
 
 // Roles that may VIEW (read-only) any branch's Sales-Invoice series, even when

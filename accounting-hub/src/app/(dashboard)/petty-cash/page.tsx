@@ -253,9 +253,9 @@ function PettyCashInner() {
   const role = (session?.user as { role?: string })?.role || ''
   // Users assigned to a single branch only see that branch here.
   const scope = userBranchScope((session?.user as { branch?: string })?.branch)
-  // East/Greenhills accountants & bookkeepers additionally get read-only visibility
+  // Branch-locked accountants & bookkeepers additionally get read-only visibility
   // into the CEO and Verdana petty-cash sections.
-  const canCrossView = canViewPettyCashCeoVerdana(role, scope.enum)
+  const canCrossView = !!scope.enum && canViewPettyCashCeoVerdana(role)
 
   const [branch, setBranch] = useState(scope.enum || 'SANDBOX_EAST')
   // Read-only when a branch-locked user is viewing a section outside their own

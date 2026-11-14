@@ -77,12 +77,12 @@ export async function GET(req: Request) {
   if (!VALID_BRANCHES.includes(branch)) {
     return NextResponse.json({ error: 'Valid branch is required' }, { status: 400 })
   }
-  // Branch-scoped users may only read their own branch — except East/Greenhills
-  // accountants & bookkeepers, who get read-only visibility into CEO & Verdana.
+  // Branch-scoped users may only read their own branch — except accountants &
+  // bookkeepers, who get read-only visibility into CEO & Verdana.
   const uBranch = (session.user as { branch?: string }).branch
   const uRole = (session.user as { role?: string }).role
   const canRead = branchAllowed(uBranch, branch)
-    || (canViewPettyCashCeoVerdana(uRole, uBranch) && PETTY_CASH_VIEW_ONLY_BRANCHES.includes(branch))
+    || (canViewPettyCashCeoVerdana(uRole) && PETTY_CASH_VIEW_ONLY_BRANCHES.includes(branch))
   if (!canRead) {
     return NextResponse.json({ error: 'Access denied for this branch' }, { status: 403 })
   }

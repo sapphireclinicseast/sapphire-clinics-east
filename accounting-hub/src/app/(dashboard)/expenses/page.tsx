@@ -8,7 +8,7 @@ import { AccountPicker, type PickableAccount } from '@/components/AccountPicker'
 import { useSearchParams } from 'next/navigation'
 import { useFocusTarget } from '@/lib/use-focus-target'
 import { useSession } from 'next-auth/react'
-import { userBranchScope } from '@/lib/branch-scope'
+import { userBranchScope, canViewPettyCashCeoVerdana } from '@/lib/branch-scope'
 import { Plus, Settings, Loader2, Trash2, X, Maximize2, Minimize2, Search, ArrowUp, ArrowDown, Upload, Download, Eye, Wallet, CreditCard, CheckCircle2, Pencil, FileText, Paperclip } from 'lucide-react'
 import { SortFilterHead, applySortFilter } from '@/components/SortFilterHead'
 import { useResizableColumns, ResizableColgroup, ColResizeHandle } from '@/components/useResizableColumns'
@@ -310,11 +310,16 @@ export default function ExpensesPage() {
 function ExpensesInner() {
   const { data: session } = useSession()
   const role = (session?.user as { role?: string })?.role || ''
-  const canWrite = WRITE_ROLES.includes(role)
-  const canAudit = role === 'ADMIN' || role === 'ACCOUNTANT'
   const scope = userBranchScope((session?.user as { branch?: string })?.branch)
+  // Accountants & bookkeepers locked to one branch also get the CEO chip,
+  // read-only, so they can see the CEO petty-cash RFPs they bank-recon.
+  const canSeeCeo = canViewPettyCashCeoVerdana(role)
 
   const [branch, setBranch] = useState(scope.enum || 'SANDBOX_EAST')
+  // A branch-locked user looking at the CEO chip only views it.
+  const viewOnly = !!scope.enum && branch !== scope.enum
+  const canWrite = WRITE_ROLES.includes(role) && !viewOnly
+  const canAudit = (role === 'ADMIN' || role === 'ACCOUNTANT') && !viewOnly
   useEffect(() => { if (scope.enum && branch !== scope.enum) setBranch(scope.enum) }, [scope.enum]) // eslint-disable-line react-hooks/exhaustive-deps
   const [tab, setTab] = useState<TabKey>('recurring')
   const [entries, setEntries] = useState<Entry[]>([])
@@ -1359,15 +1364,22 @@ function ExpensesInner() {
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Branch">
-          {(scope.enum ? BRANCHES.filter(b => b.value === scope.enum) : BRANCHES).map(b => (
+          {(scope.enum ? BRANCHES.filter(b => b.value === scope.enum || (canSeeCeo && b.value === 'CEO')) : BRANCHES).map(b => (
             <button key={b.value} onClick={() => setBranch(b.value)} aria-pressed={branch === b.value}
               className="px-3.5 py-1.5 rounded-full border text-[13px] font-semibold whitespace-nowrap transition-colors"
               style={branch === b.value
                 ? { background: 'var(--teal)', borderColor: 'var(--teal)', color: '#fff', fontFamily: 'var(--font-display)' }
-                : { background: '#fff', borderColor: 'var(--light-gray)', color: 'var(--mid-gray)', fontFamily: 'var(--font-display)' }}>
+                : { background: '#fff', borderColor: 'var(--light-gray)', color: 'var(--mid-gray)', fontFamily: 'var(--font-display)' }}
+              title={scope.enum && b.value !== scope.enum ? 'View only' : undefined}>
               {b.label}
             </button>
           ))}
+          {viewOnly && (
+            <span className="inline-flex items-center gap-1 h-8 px-3 rounded-full border text-xs font-semibold"
+              style={{ background: '#fffbeb', borderColor: '#fde68a', color: '#b45309' }}>
+              <Eye size={13} /> View only
+            </span>
+          )}
           <span className="w-px h-6 mx-1" style={{ background: 'var(--light-gray)' }} />
           <button onClick={() => setShowSettings(true)} className={ghostBtn} style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>
             <Settings size={14} /> Settings
