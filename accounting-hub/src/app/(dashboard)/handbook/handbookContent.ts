@@ -397,7 +397,7 @@ export const SECTIONS: Section[] = [
       ] },
       { k: 'sub', t: 'Gift cards (prepaid value)' },
       { k: 'steps', items: [
-        `**Make them** — Services → **Vouchers** → **Gift cards** → **Generate Gift Cards**: how many, the peso value of each, and what they are for. They start **Unsold** and are worth nothing yet. **Print unsold** prints them as barcode slips the same size as the discount vouchers.`,
+        `**Make them** — Services → **Vouchers** → **Gift cards** → **Generate Gift Cards**: how many, the peso value of each, and what they are for. They start **Unsold** and are worth nothing yet. **Print unsold** prints them three to an A4 sheet (each card 210 × 99 mm) with cut lines between them.`,
         `**Sell one** — in **New Payment**, click **Sell a gift card** under Add Service and scan the card. It is sold on its own order at full value (no discount), paid with cash, GCash, Maya, a card or PayMongo. The money is held in **4050 Unearned Revenue**.`,
         `**Spend one** — in Payments, click **Gift card** and scan it. It pays like cash at the full service or product price; whatever is not spent stays on the card for next time.`,
         `**Undo** — voiding a sale returns its card to Unsold (only if the card has not been used yet); voiding a purchase paid by gift card puts the amount back on the card.`,
