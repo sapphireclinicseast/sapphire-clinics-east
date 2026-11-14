@@ -1030,7 +1030,7 @@ function ReferralCommissionPanel() {
                   {incSaving && <Loader2 size={14} className="animate-spin mb-2.5" style={muted} />}
                   <p className="text-xs flex-1 min-w-[240px] mb-1" style={muted}>
                     {medrep.staffName
-                      ? <>Pick the payroll cutoff on each patient and press <b>Record</b>: {medrep.staffName}&apos;s payslip for that cutoff adds it as a taxable allowance (&ldquo;New-referred-patient incentive&rdquo;) when it is generated. Nothing is added until it is recorded. <b>Undo</b> takes it back off.</>
+                      ? <>Automatic: generating {medrep.staffName}&apos;s payslip adds every new patient not yet paid, up to that cutoff&apos;s end, as a taxable allowance (&ldquo;New-referred-patient incentive&rdquo;). Press <b>Record</b> only to put a patient on a different cutoff, or mark one paid if it was paid outside payroll. <b>Undo</b> takes a recorded one back off.</>
                       : <>No one gets this yet. Pick the med rep, then record each new patient into a payroll cutoff.</>}
                   </p>
                 </div>

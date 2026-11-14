@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { Prisma } from '@prisma/client'
 import { commissionFloor, computeMedrepNewPatients, type MedrepNewPatient } from '@/lib/referral-commission'
 import { claimWfhDays, wfhApprovals, wfhPayFor, type WfhPay } from '@/lib/payroll/wfh-pay'
 
@@ -204,15 +205,19 @@ export interface MedrepIncentive {
   itemIds: string[]
   detail: { count: number; amount: number; total: number; patients: { patientName: string; referrerName: string; referrerType: string | null; firstDate: string; branch: string; orderNumber: number }[] }
 }
-// Only the new patients RECORDED for this cutoff in Referral → Commission go on
-// the med rep's payslip (Hannah 2026-11-11: pick the payroll it is added to,
-// like HMO PF Adjustments — nothing is swept in on its own). Regenerating
-// releases this payslip's stamps and re-stamps the same records, so a patient
-// is paid once; a LOCKED payslip is left alone.
+// The new patients recorded for this cutoff in Referral → Commission go on the
+// med rep's payslip (Hannah 2026-11-11: pick the payroll it is added to, like
+// HMO PF Adjustments). Since 2026-11-14 generating is also automatic (Hannah:
+// "make sure it is automatic when generating payslip on whoever staff is tagged
+// for that incentive"): every new patient whose first session falls on or
+// before this cutoff's end and isn't yet recorded, marked paid by hand or
+// claimed is recorded for this cutoff first. A patient recorded for another
+// cutoff stays there. Regenerating releases this payslip's stamps and
+// re-stamps, so a patient is paid once; a LOCKED payslip is left alone.
 async function medrepIncentiveFor(
   incSettings: { staffId: string | null; amount: unknown } | null,
   emp: { id: string; externalStaffId: string | null },
-  cutoffPeriod: string, qBranch: string, _cutoffEndExclusive: Date,
+  cutoffPeriod: string, qBranch: string, cutoffEndExclusive: Date,
 ): Promise<MedrepIncentive | null> {
   if (!incSettings?.staffId || !emp.externalStaffId || emp.externalStaffId !== incSettings.staffId) return null
   const prior = await prisma.employeePayslip.findUnique({
@@ -221,6 +226,19 @@ async function medrepIncentiveFor(
   })
   if (prior?.status === 'LOCKED') return null
   if (prior) await prisma.referralCommissionItem.updateMany({ where: { kind: 'MEDREP', payslipId: prior.id }, data: { payslipId: null } })
+  // cutoffEndExclusive is UTC midnight of the day after the cutoff; the cutoff
+  // ends at Manila midnight, 8 hours earlier.
+  const manilaEnd = new Date(cutoffEndExclusive.getTime() - 8 * 3600_000 - 1)
+  const unrecorded = await computeMedrepNewPatients(prisma, { from: commissionFloor(), to: manilaEnd, onlyUnclaimed: true })
+  if (unrecorded.length) {
+    await prisma.referralCommissionItem.createMany({
+      data: unrecorded.map(p => ({
+        kind: 'MEDREP' as const, patientKey: p.patientKey, referrerId: p.referrerId,
+        amount: new Prisma.Decimal(Number(incSettings.amount ?? 50)), cutoffPeriod,
+      })),
+      skipDuplicates: true,
+    })
+  }
   const items = await prisma.referralCommissionItem.findMany({
     where: { kind: 'MEDREP', cutoffPeriod, payslipId: null, patientKey: { not: null } },
     select: { id: true, patientKey: true, amount: true },
