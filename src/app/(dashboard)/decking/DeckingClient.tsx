@@ -868,6 +868,25 @@ function TherapistRow({ staff, activeBranch, sectionMode, config, slots, default
   // same slots — the difference is a flag on the rows and the colour they are
   // drawn in, so there is no second modal to keep in step with this one.
   const [datedIsMakeup, setDatedIsMakeup] = useState(false)
+  // Set when the date is being added FOR a named patient — someone on the
+  // no-fixed-schedule list who has now agreed a sitting. The slot is created
+  // with them already in it, which is what makes the hour real: a caseload
+  // entry is a note and counts for nothing, a booked hour is a session.
+  const [datedForPatient, setDatedForPatient] = useState<Patient | null>(null)
+  const closeDatedModal = () => {
+    setShowDatedModal(false)
+    setDatedIsMakeup(false)
+    setDatedForPatient(null)
+  }
+  /**
+   * The slots this date will create.
+   *
+   * For one named patient that is exactly one, spanning the hours given — the
+   * splitting logic exists to carve an open day into bookable pieces, and
+   * applying it here would leave empty hours sitting beside the booked one.
+   */
+  const piecesForDated = (f: typeof datedForm) =>
+    datedForPatient ? [{ startTime: f.startTime, endTime: f.endTime }] : datedPieces(f)
   /** Which one-off is having its patient set, if any. */
   const [fillingDated, setFillingDated] = useState<string | null>(null)
   // Which one-off day is being removed, so its button can say so and the
@@ -2150,7 +2169,7 @@ function TherapistRow({ staff, activeBranch, sectionMode, config, slots, default
       })()}
 
       {showDatedModal && (
-        <div onClick={() => setShowDatedModal(false)}
+        <div onClick={closeDatedModal}
           style={{ position: 'fixed', inset: 0, zIndex: 110, background: 'rgba(15,23,42,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
           <div onClick={e => e.stopPropagation()} className="rounded-xl"
             role="dialog" aria-modal="true" aria-labelledby={`dated-slot-${staff.id}`}
@@ -2165,23 +2184,32 @@ function TherapistRow({ staff, activeBranch, sectionMode, config, slots, default
                 </span>
                 <div className="min-w-0">
                   <h3 id={`dated-slot-${staff.id}`} className="text-[15px] font-bold leading-tight" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>
-                    {datedIsMakeup ? 'Schedule a make-up session' : 'Add a one-off date'}
+                    {datedForPatient ? 'Set a date for this patient'
+                      : datedIsMakeup ? 'Schedule a make-up session'
+                      : 'Add a one-off date'}
                   </h3>
-                  <p className="text-xs mt-0.5 truncate" style={{ color: 'var(--mid-gray)' }} title={`${staff.lastName}, ${staff.firstName}`}>
-                    {staff.lastName}, {staff.firstName}
+                  <p className="text-xs mt-0.5 truncate" style={{ color: 'var(--mid-gray)' }}
+                    title={datedForPatient ? `${personLabel(datedForPatient)} with ${staff.lastName}, ${staff.firstName}` : `${staff.lastName}, ${staff.firstName}`}>
+                    {datedForPatient
+                      ? `${personLabel(datedForPatient)} · ${staff.lastName}, ${staff.firstName}`
+                      : `${staff.lastName}, ${staff.firstName}`}
                   </p>
                 </div>
               </div>
-              <button type="button" onClick={() => setShowDatedModal(false)} aria-label="Close" className="dk-icon-btn rounded-md p-1" style={{ color: 'var(--mid-gray)' }}><X size={16} /></button>
+              <button type="button" onClick={closeDatedModal} aria-label="Close" className="dk-icon-btn rounded-md p-1" style={{ color: 'var(--mid-gray)' }}><X size={16} /></button>
             </div>
             <div className="px-5 py-4 grid grid-cols-2 gap-3">
               <p className="col-span-2 text-xs leading-relaxed rounded-lg px-3 py-2"
-                style={datedIsMakeup
-                  ? { background: MAKEUP_BG, color: MAKEUP_FG }
-                  : { background: '#FDF2F8', color: '#9D174D' }}>
-                {datedIsMakeup
-                  ? 'A session replacing one the patient missed, on a day outside this clinician\u2019s weekly schedule. It applies to the chosen date only and shows as a make-up on the board and in Clinic Schedule.'
-                  : 'This hour applies to the chosen date only. It never repeats, and it does not appear on the weekly grid.'}
+                style={datedForPatient
+                  ? { background: CASE_BG, color: CASE_FG }
+                  : datedIsMakeup
+                    ? { background: MAKEUP_BG, color: MAKEUP_FG }
+                    : { background: '#FDF2F8', color: '#9D174D' }}>
+                {datedForPatient
+                  ? `${personLabel(datedForPatient)} is booked straight into this hour. Until now they were carried with no hour at all, which holds no time on the board and counts towards nothing \u2014 this is the sitting that does.`
+                  : datedIsMakeup
+                    ? 'A session replacing one the patient missed, on a day outside this clinician\u2019s weekly schedule. It applies to the chosen date only and shows as a make-up on the board and in Clinic Schedule.'
+                    : 'This hour applies to the chosen date only. It never repeats, and it does not appear on the weekly grid.'}
               </p>
               <div>
                 <label className={LABEL} style={{ color: 'var(--mid-gray)' }} htmlFor={`ds-date-${staff.id}`}>Date</label>
@@ -2218,7 +2246,10 @@ function TherapistRow({ staff, activeBranch, sectionMode, config, slots, default
                     className={`${CONTROL} w-full`} style={{ ...CONTROL_STYLE, width: '100%' }} />
                 </div>
               </div>
-              <div className="col-span-2">
+              {/* Not asked when the date is for ONE named patient: the answer
+                  is one, and splitting the span into several slots would
+                  create empty hours nobody asked for beside the booked one. */}
+              <div className="col-span-2" style={{ display: datedForPatient ? 'none' : undefined }}>
                 <label className={LABEL} style={{ color: 'var(--mid-gray)' }} htmlFor={`ds-count-${staff.id}`}>
                   How many patients in that time?
                 </label>
@@ -2236,7 +2267,7 @@ function TherapistRow({ staff, activeBranch, sectionMode, config, slots, default
                   eight slots of seventy-five minutes laid straight across
                   lunch: correct division, nonsense day. Named here, the break
                   comes out of the span first and the patients share the rest. */}
-              <div className="col-span-2 grid grid-cols-2 gap-2">
+              <div className="col-span-2 grid grid-cols-2 gap-2" style={{ display: datedForPatient ? 'none' : undefined }}>
                 <div>
                   <label className={LABEL} style={{ color: 'var(--mid-gray)' }} htmlFor={`ds-brk-${staff.id}`}>
                     Break starts (optional)
@@ -2277,7 +2308,7 @@ function TherapistRow({ staff, activeBranch, sectionMode, config, slots, default
                 // Display only: flags a date+hour this consultant already has.
                 // Every hour in the span, so a clash anywhere in it is caught
                 // rather than only one at the start.
-                const pieces = datedPieces(datedForm)
+                const pieces = piecesForDated(datedForm)
                 const each = pieces.length
                   ? toMinutes(pieces[0].endTime) - toMinutes(pieces[0].startTime)
                   : 0
@@ -2322,7 +2353,7 @@ function TherapistRow({ staff, activeBranch, sectionMode, config, slots, default
               )}
             </div>
             <div className="flex justify-end gap-2 px-5 py-3" style={{ borderTop: '1px solid var(--light-gray)', background: SUBTLE_BG, borderRadius: '0 0 0.75rem 0.75rem' }}>
-                <button type="button" onClick={() => setShowDatedModal(false)}
+                <button type="button" onClick={closeDatedModal}
                   className={BTN_SECONDARY} style={CONTROL_STYLE}>
                   Cancel
                 </button>
@@ -2347,17 +2378,19 @@ function TherapistRow({ staff, activeBranch, sectionMode, config, slots, default
                       //
                       // Sequential, not Promise.all: each POST re-checks the
                       // cell, and firing them together would race that check.
-                      for (const piece of datedPieces(datedForm)) {
+                      for (const piece of piecesForDated(datedForm)) {
                         await onAddDated({
-                          staffId: staff.id, patientId: null,
+                          // The patient, when this date was opened from their
+                          // row on the no-fixed-schedule list. That is what
+                          // turns a note into an hour the clinic can count.
+                          staffId: staff.id, patientId: datedForPatient?.id ?? null,
                           dayOfWeek: dow, startTime: piece.startTime, endTime: piece.endTime,
                           branch: activeBranch, department: staff.department, notes: null,
                           date: datedForm.date,
                           isMakeup: datedIsMakeup,
                         })
                       }
-                      setShowDatedModal(false)
-                      setDatedIsMakeup(false)
+                      closeDatedModal()
                       setDatedForm({ date: '', startTime: '09:00', endTime: '10:00', count: 1, breakStart: '', breakMinutes: 60 })
                     } finally { setDatedSaving(false) }
                   }}
@@ -2786,6 +2819,25 @@ function TherapistRow({ staff, activeBranch, sectionMode, config, slots, default
                     <span className="truncate text-[10.5px] max-w-[45%]" style={{ color: 'var(--mid-gray)' }} title={c.reason}>
                       {c.reason}
                     </span>
+                  )}
+                  {/* The way off this list and onto the board.
+                      A name here holds no hour and counts for nothing — it is
+                      a note, which is the point of it. When the sitting is
+                      actually agreed it has to become a real hour, or the
+                      clinic works a session that no figure ever sees. */}
+                  {onAddDated && (
+                    <button type="button"
+                      onClick={() => {
+                        setDatedForPatient(c.patient)
+                        setDatedIsMakeup(false)
+                        setDatedForm(f => ({ ...f, count: 1 }))
+                        setShowDatedModal(true)
+                      }}
+                      className="dk-btn flex-shrink-0 inline-flex items-center gap-1 h-6 rounded px-1.5 text-[10.5px] font-semibold"
+                      style={{ background: '#fff', border: `1px dashed ${CASE_BORDER}`, color: CASE_FG }}
+                      title={`Give ${personLabel(c.patient)} an hour on a named date`}>
+                      <CalendarPlus size={11} aria-hidden /> Set a date
+                    </button>
                   )}
                   {onRemoveCase && (
                     <button type="button" onClick={() => void onRemoveCase(c.id)}
