@@ -30,7 +30,7 @@ import { buildSoaPdf, MONTH_OPTIONS, periodLabel, type SoaSettings, type SoaOrde
 import { EARLIEST_OBTAINED, latestObtained, obtainedDateError } from '@/lib/wallet-dates'
 import CancellationLinkModal, { type FeeLine } from './CancellationLinkModal'
 import { HR_PAGE_CLASS, HR_PAGE_STYLE, HrShimmerStyle } from '@/components/ui/hr-look'
-import { GiftCardBatchList, GiftCardCodeInput, type GiftCardBatchRow } from './GiftCards'
+import { GiftCardBatchList, GiftCardCodeInput, printGiftCards, type GiftCardBatchRow } from './GiftCards'
 
 /* ─────────────────────────── TYPES ─────────────────────────── */
 
@@ -11657,6 +11657,10 @@ function VouchersPanel() {
   const [gcForm, setGcForm] = useState({ count: '10', faceValue: '', reason: '' })
   const [gcEditId, setGcEditId] = useState<string | null>(null)
   const [gcEditLocked, setGcEditLocked] = useState(false)
+  // The batch being edited — its cards decide how far the count can go down.
+  const [gcEditRow, setGcEditRow] = useState<GiftCardBatchRow | null>(null)
+  // Cards just added to a batch by raising its count, so they can be printed on their own.
+  const [gcAdded, setGcAdded] = useState<{ reason: string; cards: { code: string; faceValue: number }[] } | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -11668,7 +11672,11 @@ function VouchersPanel() {
   }, [])
   useEffect(() => { load() }, [load])
 
-  const resetGcForm = () => { setGcForm({ count: '10', faceValue: '', reason: '' }); setGcEditId(null); setGcEditLocked(false) }
+  const resetGcForm = () => { setGcForm({ count: '10', faceValue: '', reason: '' }); setGcEditId(null); setGcEditLocked(false); setGcEditRow(null) }
+  // Unsold, never-used cards of the batch being edited, in the order a lower
+  // count removes them (last codes first) — mirrors PUT /api/pos/gift-cards.
+  const gcRemovable = gcEditRow ? gcEditRow.cards.filter(c => c.status === 'UNSOLD' && c.uses.length === 0).sort((a, b) => b.code.localeCompare(a.code)) : []
+  const gcMinCount = gcEditRow ? gcEditRow.counts.total - gcRemovable.length : 1
   const openGen = (kind: 'VOUCHERS' | 'GIFT_CARDS') => {
     setView(kind); setGenError(''); setEditBatchId(null); resetGcForm()
     setGen({ count: '10', discountKind: 'PERCENTAGE', value: '', validUntil: '', reason: '', departments: [] })
@@ -11681,24 +11689,32 @@ function VouchersPanel() {
   const generateGiftCards = async () => {
     setGenError('')
     const count = Math.round(Number(gcForm.count) || 0)
-    if (!gcEditId && !(count > 0)) { setGenError('Enter how many gift cards to generate.'); return }
+    if (!(count > 0) || count > 1000) { setGenError(gcEditId ? 'The batch must have between 1 and 1,000 gift cards.' : 'Enter how many gift cards to generate (1 to 1,000).'); return }
     if (!(Number(gcForm.faceValue) > 0)) { setGenError('Enter the peso value of each gift card.'); return }
     if (!gcForm.reason.trim()) { setGenError('Enter what these gift cards are for.'); return }
+    if (gcEditRow && count < gcEditRow.counts.total) {
+      const n = gcEditRow.counts.total - count
+      if (count < gcMinCount) { setGenError(`Only ${gcRemovable.length} card${gcRemovable.length === 1 ? ' is' : 's are'} still unsold in this batch, so it can go down to ${gcMinCount} at the least — sold and voided cards stay.`); return }
+      const codes = gcRemovable.slice(0, n).map(c => c.code)
+      if (!confirm(`Remove ${n} unsold gift card${n === 1 ? '' : 's'} from this batch?\n\n${codes.join(', ')}\n\nIf ${n === 1 ? 'it is' : 'they are'} already printed, tear ${n === 1 ? 'it' : 'them'} up — removed cards no longer work at the Cashier.`)) return
+    }
     setGenBusy(true)
     try {
       const body = gcEditId
-        ? { batchId: gcEditId, faceValue: Number(gcForm.faceValue), reason: gcForm.reason.trim() }
+        ? { batchId: gcEditId, count, faceValue: Number(gcForm.faceValue), reason: gcForm.reason.trim() }
         : { count, faceValue: Number(gcForm.faceValue), reason: gcForm.reason.trim() }
       const r = await fetch('/api/pos/gift-cards', { method: gcEditId ? 'PUT' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
       const d = await r.json()
       if (!r.ok) { setGenError(d.error || (gcEditId ? 'Failed to save the batch' : 'Failed to generate gift cards')); return }
+      const reason = gcForm.reason.trim()
       closeGen(); setView('GIFT_CARDS')
+      setGcAdded(gcEditId && Array.isArray(d.added) && d.added.length ? { reason, cards: d.added } : null)
       load()
     } finally { setGenBusy(false) }
   }
   const openEditGiftBatch = (b: GiftCardBatchRow) => {
     setView('GIFT_CARDS'); setEditBatchId(null); setGenError('')
-    setGcEditId(b.id); setGcEditLocked(b.counts.total - b.counts.unsold - b.counts.voided > 0)
+    setGcEditId(b.id); setGcEditRow(b); setGcAdded(null); setGcEditLocked(b.counts.total - b.counts.unsold - b.counts.voided > 0)
     setGcForm({ count: String(b.counts.total), faceValue: String(b.faceValue), reason: b.reason })
     setShowGen(true)
   }
@@ -11842,7 +11858,8 @@ function VouchersPanel() {
           {view === 'GIFT_CARDS' ? (
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             <div><label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>How many gift cards</label>
-              <input value={gcForm.count} onChange={e => setGcForm(p => ({ ...p, count: e.target.value }))} disabled={!!gcEditId} inputMode="numeric" className="w-full px-3 py-2 rounded-xl border text-sm font-mono disabled:opacity-60" style={{ borderColor: 'var(--light-gray)', background: gcEditId ? 'var(--off-white)' : undefined }} /></div>
+              <input value={gcForm.count} onChange={e => setGcForm(p => ({ ...p, count: e.target.value }))} inputMode="numeric" className="w-full px-3 py-2 rounded-xl border text-sm font-mono" style={{ borderColor: 'var(--light-gray)' }} />
+              {gcEditRow && <p className="text-[10px] mt-0.5" style={{ color: 'var(--mid-gray)' }}>{gcMinCount > 0 ? `At least ${gcMinCount} — sold and voided cards stay` : 'Raise to add cards; lower to remove unsold ones'}</p>}</div>
             <div><label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Value of each card (₱)</label>
               <input value={gcForm.faceValue} onChange={e => setGcForm(p => ({ ...p, faceValue: e.target.value }))} disabled={gcEditLocked} inputMode="decimal" placeholder="e.g. 1000" className="w-full px-3 py-2 rounded-xl border text-sm font-mono disabled:opacity-60" style={{ borderColor: 'var(--light-gray)', background: gcEditLocked ? 'var(--off-white)' : undefined }} />
               {gcEditLocked && <p className="text-[10px] mt-0.5" style={{ color: 'var(--mid-gray)' }}>Locked — cards in this batch are already sold</p>}</div>
@@ -11897,7 +11914,20 @@ function VouchersPanel() {
       ) : view === 'GIFT_CARDS' ? (
         gcBatches.length === 0
           ? <div className="text-center py-12 text-sm rounded-2xl border bg-white" style={{ color: 'var(--mid-gray)', borderColor: 'var(--light-gray)' }}>No gift cards yet.{canWrite ? ' Generate the first batch above.' : ''}</div>
-          : <GiftCardBatchList batches={gcBatches} canWrite={canWrite} onEdit={openEditGiftBatch} onChanged={load} />
+          : <>
+            {gcAdded && (
+              <div className="rounded-2xl border px-4 py-3 flex flex-wrap items-center gap-3 justify-between" style={{ borderColor: 'var(--teal)', background: '#F2F6EA' }}>
+                <p className="text-xs" style={{ color: 'var(--charcoal)' }}>
+                  Added <strong>{gcAdded.cards.length}</strong> new card{gcAdded.cards.length === 1 ? '' : 's'} to “{gcAdded.reason}”: {gcAdded.cards.map(c => c.code).join(', ')}
+                </p>
+                <div className="flex items-center gap-2">
+                  <button onClick={() => printGiftCards(gcAdded.cards)} className="px-3 py-1.5 rounded-xl text-xs font-semibold text-white flex items-center gap-1.5" style={{ background: 'var(--teal)' }}><Printer size={13} /> Print the {gcAdded.cards.length} new card{gcAdded.cards.length === 1 ? '' : 's'}</button>
+                  <button onClick={() => setGcAdded(null)} className="px-3 py-1.5 rounded-xl text-xs font-medium border bg-white" style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>Dismiss</button>
+                </div>
+              </div>
+            )}
+            <GiftCardBatchList batches={gcBatches} canWrite={canWrite} onEdit={openEditGiftBatch} onChanged={() => { setGcAdded(null); load() }} />
+          </>
       ) : batches.length === 0 ? (
         <div className="text-center py-12 text-sm rounded-2xl border bg-white" style={{ color: 'var(--mid-gray)', borderColor: 'var(--light-gray)' }}>No vouchers yet.{canWrite ? ' Generate the first batch above.' : ''}</div>
       ) : batches.map(b => (

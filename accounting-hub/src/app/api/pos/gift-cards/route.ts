@@ -2,8 +2,10 @@
 //   GET   → batches with their cards, uses and counts, plus the total still
 //           outstanding (the gift card share of 4050 Unearned Revenue)
 //   POST  { count, faceValue, reason } → generate `count` UNSOLD cards
-//   PUT   { batchId, reason, faceValue? } → edit a batch; the value can only
-//         change while none of its cards has been sold
+//   PUT   { batchId, reason, faceValue?, count? } → edit a batch; the value can
+//         only change while none of its cards has been sold. A higher count
+//         adds new UNSOLD cards; a lower one deletes unsold, never-used cards
+//         (last codes first) — sold and voided cards always stay.
 //   PATCH { cardId } | { batchId } → void one unsold card / every unsold card
 // Generating, editing and voiding: ADMIN / ACCOUNTANT / BOOKKEEPER. Selling and
 // spending happen at the Cashier (order creation, server-side), so front desk
@@ -19,6 +21,21 @@ const READ_ROLES = [...WRITE_ROLES, 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN',
 
 const num = (v: unknown) => Number(v || 0)
 const r2 = (n: number) => Math.round(n * 100) / 100
+const MAX_BATCH = 1000
+
+/** Edit refused inside the transaction (a card changed hands meanwhile). */
+class BatchEditError extends Error {}
+
+/** `count` fresh gift card codes that no existing card uses (null if it can't). */
+async function uniqueGiftCardCodes(count: number): Promise<string[] | null> {
+  const codes = new Set<string>()
+  for (let guard = 0; codes.size < count && guard < 20; guard++) {
+    while (codes.size < count) codes.add(randomGiftCardCode())
+    const clash = await prisma.giftCard.findMany({ where: { code: { in: [...codes] } }, select: { code: true } })
+    for (const c of clash) codes.delete(c.code)
+  }
+  return codes.size < count ? null : [...codes]
+}
 
 export async function GET() {
   const session = await auth()
@@ -83,24 +100,18 @@ export async function POST(req: Request) {
     const count = Math.round(num(b.count))
     const faceValue = r2(num(b.faceValue))
     const reason = String(b.reason || '').trim()
-    if (!(count > 0) || count > 1000) return NextResponse.json({ error: 'Number of gift cards must be between 1 and 1,000' }, { status: 400 })
+    if (!(count > 0) || count > MAX_BATCH) return NextResponse.json({ error: 'Number of gift cards must be between 1 and 1,000' }, { status: 400 })
     if (!(faceValue > 0)) return NextResponse.json({ error: 'Enter the peso value of each gift card' }, { status: 400 })
     if (faceValue > 1_000_000) return NextResponse.json({ error: 'A gift card can be worth at most ₱1,000,000' }, { status: 400 })
     if (!reason) return NextResponse.json({ error: 'Enter what these gift cards are for' }, { status: 400 })
 
-    // Unique codes, checked against both gift cards and discount vouchers so a
-    // scanned code always means one thing.
-    const codes = new Set<string>()
-    for (let guard = 0; codes.size < count && guard < 20; guard++) {
-      while (codes.size < count) codes.add(randomGiftCardCode())
-      const clash = await prisma.giftCard.findMany({ where: { code: { in: [...codes] } }, select: { code: true } })
-      for (const c of clash) codes.delete(c.code)
-    }
-    if (codes.size < count) return NextResponse.json({ error: 'Could not generate unique codes — try again' }, { status: 500 })
+    // Unique codes (GC- never clashes with a VC- discount voucher).
+    const codes = await uniqueGiftCardCodes(count)
+    if (!codes) return NextResponse.json({ error: 'Could not generate unique codes — try again' }, { status: 500 })
 
     const batch = await prisma.giftCardBatch.create({ data: {
       reason, faceValue, createdById: (session.user.id as string) || null,
-      cards: { create: [...codes].map(code => ({ code, faceValue })) },
+      cards: { create: codes.map(code => ({ code, faceValue })) },
     }, include: { cards: true } })
     await prisma.auditLog.create({ data: {
       userId: session.user.id as string, action: 'CREATE', entity: 'giftCardBatch', entityId: batch.id,
@@ -129,12 +140,46 @@ export async function PUT(req: Request) {
       const sold = await prisma.giftCard.count({ where: { batchId: batch.id, status: { not: 'UNSOLD' }, soldAt: { not: null } } })
       if (sold > 0) return NextResponse.json({ error: 'Some cards in this batch are already sold — their value can no longer change. Generate a new batch instead.' }, { status: 400 })
     }
-    await prisma.$transaction([
-      prisma.giftCardBatch.update({ where: { id: batch.id }, data: { reason, faceValue } }),
-      ...(valueChanged ? [prisma.giftCard.updateMany({ where: { batchId: batch.id, status: 'UNSOLD' }, data: { faceValue } })] : []),
-    ])
-    return NextResponse.json({ success: true })
+
+    // How many cards: up adds fresh UNSOLD cards, down deletes unsold cards
+    // that were never used (they hold no money), last codes first.
+    const current = await prisma.giftCard.count({ where: { batchId: batch.id } })
+    const count = b.count !== undefined && b.count !== null && b.count !== '' ? Math.round(num(b.count)) : current
+    if (!(count > 0) || count > MAX_BATCH) return NextResponse.json({ error: 'Number of gift cards must be between 1 and 1,000' }, { status: 400 })
+    const removeN = Math.max(0, current - count)
+    const toRemove = removeN > 0
+      ? await prisma.giftCard.findMany({ where: { batchId: batch.id, status: 'UNSOLD', uses: { none: {} } }, orderBy: { code: 'desc' }, take: removeN, select: { id: true, code: true } })
+      : []
+    if (toRemove.length < removeN) {
+      const removable = await prisma.giftCard.count({ where: { batchId: batch.id, status: 'UNSOLD', uses: { none: {} } } })
+      return NextResponse.json({ error: `Only ${removable} card${removable === 1 ? ' is' : 's are'} still unsold in this batch, so it can go down to ${current - removable} at the least — sold and voided cards stay.` }, { status: 400 })
+    }
+    const addN = Math.max(0, count - current)
+    const newCodes = addN > 0 ? await uniqueGiftCardCodes(addN) : []
+    if (!newCodes) return NextResponse.json({ error: 'Could not generate unique codes — try again' }, { status: 500 })
+
+    await prisma.$transaction(async tx => {
+      await tx.giftCardBatch.update({ where: { id: batch.id }, data: { reason, faceValue } })
+      if (valueChanged) await tx.giftCard.updateMany({ where: { batchId: batch.id, status: 'UNSOLD' }, data: { faceValue } })
+      if (toRemove.length) {
+        const r = await tx.giftCard.deleteMany({ where: { id: { in: toRemove.map(c => c.id) }, status: 'UNSOLD' } })
+        if (r.count !== toRemove.length) throw new BatchEditError('A card in this batch was just sold — open the batch again and retry')
+      }
+      if (newCodes.length) await tx.giftCard.createMany({ data: newCodes.map(code => ({ code, batchId: batch.id, faceValue })) })
+    })
+    if (toRemove.length || newCodes.length) {
+      await prisma.auditLog.create({ data: {
+        userId: session.user.id as string, action: 'UPDATE', entity: 'giftCardBatch', entityId: batch.id,
+        details: { from: current, to: count, added: newCodes, removed: toRemove.map(c => c.code) },
+      } }).catch(() => {})
+    }
+    return NextResponse.json({
+      success: true,
+      added: newCodes.sort().map(code => ({ code, faceValue })),
+      removed: toRemove.map(c => c.code),
+    })
   } catch (e) {
+    if (e instanceof BatchEditError) return NextResponse.json({ error: e.message }, { status: 400 })
     console.error('Gift card batch edit error:', e)
     return NextResponse.json({ error: e instanceof Error ? e.message : 'Failed' }, { status: 500 })
   }
