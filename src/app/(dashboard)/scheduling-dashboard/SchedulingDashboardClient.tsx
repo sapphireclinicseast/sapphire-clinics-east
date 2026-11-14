@@ -177,6 +177,16 @@ interface ScheduleRow {
 
 interface MaxSessions { [branch: string]: { [dept: string]: number } }
 
+/** A day the clinic did not open. `branch` is 'ALL', 'SBEA' or 'SBGH'. */
+interface ClinicClosure {
+  id: string
+  /** ISO date, YYYY-MM-DD. */
+  date: string
+  branch: string
+  reason: string | null
+  createdByName?: string | null
+}
+
 // ── Component ────────────────────────────────────────────────────────────────
 
 export default function SchedulingDashboardClient({ role }: { role: string }) {
@@ -244,6 +254,21 @@ function DashboardContent({ role }: { role: string }) {
   // whether the last one failed after its retry (drives the error card).
   const [hasLoaded, setHasLoaded] = useState(false)
   const [loadError, setLoadError] = useState(false)
+
+  // ── Clinic closures ──
+  // Days the clinic did not open. Loaded unfiltered: there are a handful a
+  // year, and the Settings list shows the lot so a closure can be corrected
+  // long after the dashboard has moved off that range.
+  const [closures, setClosures] = useState<ClinicClosure[]>([])
+  const reloadClosures = useCallback(() => {
+    fetch('/api/scheduling-dashboard/closures')
+      .then(r => (r.ok ? r.json() : []))
+      // An unreadable list leaves every day counted — the figure the
+      // dashboard showed before closures existed, rather than a blank tile.
+      .then(rows => setClosures(Array.isArray(rows) ? rows : []))
+      .catch(() => setClosures([]))
+  }, [])
+  useEffect(() => { reloadClosures() }, [reloadClosures])
 
   // ── Settings state ──
   const [settingsOpen, setSettingsOpen] = useState(false)
@@ -359,7 +384,7 @@ function DashboardContent({ role }: { role: string }) {
   const activeBranches = branch === 'all' ? [...BRANCHES] : [branch]
   const activeDepts = allDepts ? [...DEPARTMENTS] : selectedDepts
 
-  // Every day in the range.
+  // Every day in the range, as ISO dates.
   //
   // This used to skip Saturday — "the clinic is closed Saturdays", written
   // into the code with no setting behind it and nothing reading the roster.
@@ -371,21 +396,57 @@ function DashboardContent({ role }: { role: string }) {
   // resting on this count — the daily average, the capacity behind Clinic
   // Utilization, and the per-department table below — was overstated by
   // roughly a sixth.
-  const workingDays = useMemo(() => {
-    let count = 0
-    const s = new Date(startDate + 'T00:00:00')
+  const rangeDates = useMemo(() => {
+    const out: string[] = []
     const e = new Date(endDate + 'T00:00:00')
-    for (let d = new Date(s); d <= e; d.setDate(d.getDate() + 1)) count++
-    return count
+    for (let d = new Date(startDate + 'T00:00:00'); d <= e; d.setDate(d.getDate() + 1)) {
+      out.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`)
+    }
+    return out
   }, [startDate, endDate])
+
+  /** Days this branch was shut, by ISO date. 'ALL' closes both. */
+  const closedByBranch = useMemo(() => {
+    const m: Record<string, Set<string>> = {}
+    BRANCHES.forEach(b => { m[b] = new Set() })
+    for (const c of closures) {
+      if (c.branch === 'ALL') BRANCHES.forEach(b => m[b].add(c.date))
+      else m[c.branch]?.add(c.date)
+    }
+    return m
+  }, [closures])
+
+  /**
+   * Days this branch could actually take patients.
+   *
+   * A public holiday or a flood day leaves the denominator: capacity is
+   * "sessions a day × days", and counting a day the doors never opened marks
+   * the clinic down for hours it had no way to offer.
+   */
+  const openDaysFor = useCallback(
+    (b: string) => rangeDates.reduce((n, d) => n + (closedByBranch[b]?.has(d) ? 0 : 1), 0),
+    [rangeDates, closedByBranch],
+  )
+
+  // The headline denominator: days ANY branch being looked at was open. With
+  // both branches selected, a day East was flooded but Greenhills ran is
+  // still a day the clinic operated.
+  const workingDays = useMemo(
+    () => rangeDates.reduce((n, d) => n + (activeBranches.some(b => !closedByBranch[b]?.has(d)) ? 1 : 0), 0),
+    [rangeDates, activeBranches, closedByBranch],
+  )
+  const closedDays = rangeDates.length - workingDays
 
   const totalCapacity = useMemo(() => {
     let cap = 0
     activeBranches.forEach(b => {
-      activeDepts.forEach(d => { cap += (maxSessions[b]?.[d] || 8) * workingDays })
+      // Per branch, not the headline count: East being shut for a flood does
+      // not reduce what Greenhills could have seen that day.
+      const days = openDaysFor(b)
+      activeDepts.forEach(d => { cap += (maxSessions[b]?.[d] || 8) * days })
     })
     return cap
-  }, [activeBranches, activeDepts, maxSessions, workingDays])
+  }, [activeBranches, activeDepts, maxSessions, openDaysFor])
 
   const utilization = totalCapacity > 0 ? (totalSessions / totalCapacity) * 100 : 0
   const avgPerTherapist = uniqueStaff > 0 ? totalSessions / uniqueStaff : 0
@@ -484,11 +545,14 @@ function DashboardContent({ role }: { role: string }) {
       // consultant lands in exactly one column and the two columns add back up
       // to the headline figures above.
       const staff = new Set(rows.map(r => r.staffId)).size
-      const capacity = activeDepts.reduce((sum, d) => sum + (maxSessions[b]?.[d] || 8) * workingDays, 0)
+      // This branch's own open days, so a closure at one branch cannot drag
+      // the other's utilization up beside it in the comparison.
+      const days = openDaysFor(b)
+      const capacity = activeDepts.reduce((sum, d) => sum + (maxSessions[b]?.[d] || 8) * days, 0)
       const byDept: Record<string, { sessions: number; utilization: number }> = {}
       for (const d of activeDepts) {
         const n = rows.filter(r => r.department === d).length
-        const cap = (maxSessions[b]?.[d] || 8) * workingDays
+        const cap = (maxSessions[b]?.[d] || 8) * days
         byDept[d] = { sessions: n, utilization: cap > 0 ? (n / cap) * 100 : 0 }
       }
       return {
@@ -497,11 +561,11 @@ function DashboardContent({ role }: { role: string }) {
         staff,
         utilization: capacity > 0 ? (sessions / capacity) * 100 : 0,
         perTherapist: staff > 0 ? sessions / staff : 0,
-        perDay: workingDays > 0 ? sessions / workingDays : 0,
+        perDay: days > 0 ? sessions / days : 0,
         byDept,
       }
     })
-  }, [rowsForCompare, activeDepts, maxSessions, workingDays])
+  }, [rowsForCompare, activeDepts, maxSessions, openDaysFor])
 
   // ── Day options for daily table ──
   const dayOptions = useMemo(() => {
@@ -790,7 +854,10 @@ function DashboardContent({ role }: { role: string }) {
               <>
                 <KpiLink target="util-trend" title="Jump to the utilization trend">
                   <KpiCard label="Clinic Utilization" icon={<BarChart2 size={16} />}
-                    value={`${utilization.toFixed(1)}%`} sub="of daily caps set in Settings" />
+                    value={`${utilization.toFixed(1)}%`}
+                    sub={closedDays > 0
+                      ? `of daily caps · ${closedDays} closed day${closedDays === 1 ? '' : 's'} excluded`
+                      : 'of daily caps set in Settings'} />
                 </KpiLink>
                 {showFill && (
                   <KpiLink target="therapist-utilization" title="Jump to the clinician breakdown">
@@ -811,7 +878,8 @@ function DashboardContent({ role }: { role: string }) {
                 </KpiLink>
                 <KpiLink target="sessions-trend" title="Jump to sessions over time">
                   <KpiCard label="Avg per Day" icon={<Activity size={16} />} accent="#8B5CF6"
-                    value={avgPerDay.toFixed(1)} sub={`over ${workingDays} day${workingDays === 1 ? '' : 's'} · ${rangeLabel}`} />
+                    value={avgPerDay.toFixed(1)}
+                    sub={`over ${workingDays} open day${workingDays === 1 ? '' : 's'}${closedDays > 0 ? ` · ${closedDays} closed` : ''}`} />
                 </KpiLink>
               </>
             )}
@@ -1333,7 +1401,7 @@ function DashboardContent({ role }: { role: string }) {
             <div className="flex items-start justify-between gap-3 px-6 py-4" style={{ borderBottom: '1px solid var(--light-gray)' }}>
               <div>
                 <h3 id="sd-settings-title" className="text-base font-bold" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>Dashboard Settings</h3>
-                <p className="text-xs mt-0.5" style={{ color: 'var(--mid-gray)' }}>Set maximum daily sessions per department per branch</p>
+                <p className="text-xs mt-0.5" style={{ color: 'var(--mid-gray)' }}>Daily session caps, and the days the clinic was closed</p>
               </div>
               <button onClick={() => setSettingsOpen(false)} aria-label="Close"
                 className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-gray-100" style={{ color: 'var(--mid-gray)' }}>
@@ -1360,10 +1428,16 @@ function DashboardContent({ role }: { role: string }) {
                   </div>
                 </div>
               ))}
+
+              {/* Closed days.
+                  Saved as you go, not on the modal's Save — these are rows of
+                  their own, and a half-typed cap waiting on Save should not
+                  be able to lose a closure somebody has already recorded. */}
+              <ClosuresEditor closures={closures} onChanged={reloadClosures} />
             </div>
             <div className="flex justify-end gap-2 px-6 py-4" style={{ borderTop: '1px solid var(--light-gray)', background: SUBTLE_BG }}>
               <button onClick={() => setSettingsOpen(false)} className={BTN_SECONDARY} style={CONTROL_STYLE}>Cancel</button>
-              <button onClick={saveSettings} className={BTN_PRIMARY} style={{ background: 'var(--teal)' }}>Save</button>
+              <button onClick={saveSettings} className={BTN_PRIMARY} style={{ background: 'var(--teal)' }}>Save caps</button>
             </div>
           </div>
         </div>
@@ -1373,6 +1447,124 @@ function DashboardContent({ role }: { role: string }) {
 }
 
 // ── Sub-components ───────────────────────────────────────────────────────────
+
+/**
+ * The days the clinic did not open — holidays, typhoons, floods.
+ *
+ * Each row leaves the capacity denominator for the branch it names, so the
+ * clinic stops being marked down for hours it had no way to offer. Written
+ * down rather than inferred from an empty day: in the session table a quiet
+ * day and a closed day look identical, and only one of them is anybody's
+ * fault.
+ */
+function ClosuresEditor({ closures, onChanged }: { closures: ClinicClosure[]; onChanged: () => void }) {
+  const [date, setDate] = useState('')
+  const [branch, setBranch] = useState('ALL')
+  const [reason, setReason] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+
+  const label: Record<string, string> = { ALL: 'Both branches', ...BRANCH_LABELS }
+
+  async function add() {
+    if (!date) { setError('Pick a date first.'); return }
+    setBusy(true); setError('')
+    try {
+      const res = await fetch('/api/scheduling-dashboard/closures', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ date, branch, reason }),
+      })
+      if (!res.ok) { setError((await res.json().catch(() => null))?.error ?? 'Could not save that.'); return }
+      setDate(''); setReason('')
+      onChanged()
+    } catch {
+      setError('Could not save that — check your connection.')
+    } finally { setBusy(false) }
+  }
+
+  async function remove(id: string) {
+    setBusy(true)
+    try {
+      await fetch('/api/scheduling-dashboard/closures', {
+        method: 'DELETE', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id }),
+      })
+      onChanged()
+    } catch { /* leaving the row on screen is better than pretending */ }
+    finally { setBusy(false) }
+  }
+
+  return (
+    <div className="rounded-xl p-4" style={{ background: SUBTLE_BG, border: '1px solid var(--light-gray)' }}>
+      <h4 className="text-sm font-bold" style={{ color: 'var(--charcoal)' }}>Closed days</h4>
+      <p className="text-[11.5px] mt-0.5 mb-3 leading-relaxed" style={{ color: 'var(--mid-gray)' }}>
+        Days the clinic could not open — a holiday, a typhoon, a flood. These leave the
+        utilization denominator, so a day nobody could come in is not counted as capacity
+        the clinic failed to fill.
+      </p>
+
+      <div className="flex flex-wrap items-end gap-2">
+        <div className="flex flex-col gap-1">
+          <label htmlFor="sd-closure-date" className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: 'var(--mid-gray)' }}>Date</label>
+          <input id="sd-closure-date" type="date" value={date} onChange={e => setDate(e.target.value)}
+            className={CONTROL} style={CONTROL_STYLE} />
+        </div>
+        <div className="flex flex-col gap-1">
+          <label htmlFor="sd-closure-branch" className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: 'var(--mid-gray)' }}>Branch</label>
+          <select id="sd-closure-branch" value={branch} onChange={e => setBranch(e.target.value)}
+            className={CONTROL} style={CONTROL_STYLE}>
+            <option value="ALL">Both branches</option>
+            {BRANCHES.map(b => <option key={b} value={b}>{BRANCH_LABELS[b]}</option>)}
+          </select>
+        </div>
+        <div className="flex flex-col gap-1 flex-1 min-w-[160px]">
+          <label htmlFor="sd-closure-reason" className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: 'var(--mid-gray)' }}>Reason</label>
+          <input id="sd-closure-reason" value={reason} onChange={e => setReason(e.target.value)}
+            placeholder="Bonifacio Day · flooded" className={`${CONTROL} w-full`} style={CONTROL_STYLE} />
+        </div>
+        <button type="button" onClick={add} disabled={busy}
+          className={BTN_PRIMARY} style={{ background: 'var(--teal)', opacity: busy ? 0.6 : 1 }}>
+          Add
+        </button>
+      </div>
+      {error && (
+        <p role="alert" className="text-[11.5px] mt-2" style={{ color: '#B91C1C' }}>{error}</p>
+      )}
+
+      {closures.length === 0 ? (
+        <p className="text-[11.5px] mt-3" style={{ color: 'var(--mid-gray)' }}>
+          None recorded. Every day in a range counts as an open day until one is added here.
+        </p>
+      ) : (
+        <ul className="mt-3 flex flex-col gap-1">
+          {closures.map(c => (
+            <li key={c.id} className="flex items-center gap-2 rounded-lg px-2.5 py-1.5"
+              style={{ background: '#fff', border: '1px solid var(--light-gray)' }}>
+              <span className="text-[12px] font-semibold tabular-nums whitespace-nowrap" style={{ color: 'var(--charcoal)' }}>
+                {new Date(c.date + 'T12:00:00').toLocaleDateString('en-PH', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })}
+              </span>
+              <span className="text-[11px] px-1.5 py-0.5 rounded whitespace-nowrap"
+                style={{ background: 'var(--pale-teal)', color: 'var(--teal)' }}>
+                {label[c.branch] ?? c.branch}
+              </span>
+              {c.reason && (
+                <span className="text-[11.5px] truncate" style={{ color: 'var(--mid-gray)' }} title={c.reason}>
+                  {c.reason}
+                </span>
+              )}
+              <button type="button" onClick={() => remove(c.id)} disabled={busy}
+                className="ml-auto flex-shrink-0 w-7 h-7 rounded-md flex items-center justify-center hover:bg-red-50"
+                style={{ color: '#DC2626' }}
+                title={`Remove the closure on ${c.date}`} aria-label={`Remove the closure on ${c.date}`}>
+                <X size={13} />
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  )
+}
 
 /** Makes a KPI card a jump link to the section that breaks the figure down. */
 function KpiLink({ target, title, children }: { target: string; title: string; children: ReactNode }) {

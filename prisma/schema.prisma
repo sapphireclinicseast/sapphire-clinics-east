@@ -1031,6 +1031,35 @@ model ClinicCapSettings {
   updatedAt   DateTime @updatedAt
 }
 
+/// A day the clinic did not open — a public holiday, a typhoon, a flood.
+///
+/// Capacity is "sessions a day × days in the range", so a day nobody could
+/// come in has to leave the denominator or the clinic is marked down for
+/// hours it was never able to offer. Recorded rather than inferred from an
+/// empty day: a quiet day and a closed day look identical in the session
+/// table, and only one of them is the clinic's fault.
+model ClinicClosure {
+  id     String @id @default(cuid())
+  /// UTC midnight, so it compares cleanly against the dashboard's ISO dates.
+  date   DateTime
+  /// 'SBEA', 'SBGH', or 'ALL' when both were shut. A sentinel rather than
+  /// null so the unique index below actually holds: Postgres treats NULLs as
+  /// distinct, which would allow the same day to be recorded twice.
+  branch String @default("ALL")
+  /// "Bonifacio Day", "flooded — Marikina". Shown in Settings so a closure
+  /// nobody remembers can still be explained a year later.
+  reason String?
+
+  createdAt     DateTime @default(now())
+  /// Stored as a name, like WaitlistOutreach.sentByName — who marked it is
+  /// worth keeping, and a relation that cascades on a deleted account would
+  /// quietly rewrite the clinic's own history of closed days.
+  createdByName String?
+
+  @@unique([date, branch])
+  @@index([date])
+}
+
 // ── Survey Settings (leaderboard metric weights) ─────────────────────────────
 model SurveySettings {
   id                 String   @id @default("default")
