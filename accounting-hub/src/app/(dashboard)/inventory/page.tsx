@@ -48,6 +48,7 @@ import SkuGuidePanel from './SkuGuidePanel'
 import PriceListPanel from './PriceListPanel'
 import { priceTiers } from '@/lib/price-tiers'
 import PsychTestsPanel from './PsychTestsPanel'
+import ItemDetailsModal from './ItemDetailsModal'
 import { SKU_HIERARCHY } from '@/lib/sku-taxonomy'
 import DownloadMenu from '@/components/ui/DownloadMenu'
 import Pagination from '@/components/ui/Pagination'
@@ -839,6 +840,8 @@ function InventoryInner() {
   const [itemWebClassFilter, setItemWebClassFilter] = useState('')
   const [showDisabledItems, setShowDisabledItems] = useState(false)
   const [itemModalOpen, setItemModalOpen] = useState(false)
+  // Row click → read-only product details pop-up (Hannah 11/14).
+  const [detailItem, setDetailItem] = useState<InventoryItem | null>(null)
   const [editingItem, setEditingItem] = useState<InventoryItem | null>(null)
   const [deleteItemConfirm, setDeleteItemConfirm] = useState<string | null>(null)
   const [selectedItems, setSelectedItems] = useState<Set<string>>(new Set())
@@ -1704,6 +1707,33 @@ function InventoryInner() {
     setItemModalOpen(true)
   }
 
+  async function openMovements(itemId: string) {
+    setShowMovements(itemId)
+    setMovementData(null)
+    try {
+      const res = await fetch(`/api/inventory/${itemId}/movements`)
+      if (res.ok) setMovementData(await res.json())
+    } catch { /* ignore */ }
+  }
+
+  async function openLots(itemId: string) {
+    setShowLotDetail(itemId)
+    setLotData(null)
+    try {
+      const res = await fetch(`/api/inventory/${itemId}/lots`)
+      if (res.ok) setLotData(await res.json())
+    } catch { /* ignore */ }
+  }
+
+  // A click anywhere on a row opens the details pop-up, except on the row's
+  // own controls (checkbox, photo, quantity/cost links, action icons) or
+  // while the user is selecting text.
+  function onItemRowClick(e: React.MouseEvent, item: InventoryItem) {
+    if ((e.target as HTMLElement).closest('button, a, input, label, select, textarea')) return
+    if (window.getSelection()?.toString()) return
+    setDetailItem(item)
+  }
+
   function openItemEdit(item: InventoryItem) {
     setEditingItem(item)
     setPcfSourceEntryId(null)
@@ -2379,7 +2409,7 @@ function InventoryInner() {
      RENDER
      ═══════════════════════════════════════════════════════ */
 
-  const anyModalOpen = itemModalOpen || adjModalOpen || conModalOpen || pdfModalOpen || bulkEditOpen || formModalOpen
+  const anyModalOpen = !!detailItem || itemModalOpen || adjModalOpen || conModalOpen || pdfModalOpen || bulkEditOpen || formModalOpen
 
   // Print bulk barcodes — A6 pages, 10 barcodes per product per page
   const printBulkBarcodes = () => {
@@ -2754,7 +2784,9 @@ setTimeout(()=>window.print(),500);
                       </td>
                     </tr>
                   ) : sortedItems.slice((invPage - 1) * invPageSize, invPage * invPageSize).map((item) => (
-                    <tr key={item.id} className={`border-t hover:bg-gray-50/50 transition-colors ${selectedItems.has(item.id) ? 'bg-teal-50/40' : ''} ${item.isActive === false ? 'opacity-50 bg-gray-50' : ''}`} style={{ borderColor: 'var(--light-gray)' }} title={item.isActive === false ? 'Archived product' : undefined}>
+                    <tr key={item.id} onClick={(e) => onItemRowClick(e, item)}
+                      tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter' && e.target === e.currentTarget) setDetailItem(item) }}
+                      className={`border-t cursor-pointer hover:bg-[#f6f9f1] focus-visible:outline-2 focus-visible:outline-[var(--teal)] transition-colors ${selectedItems.has(item.id) ? 'bg-teal-50/40' : ''} ${item.isActive === false ? 'opacity-50 bg-gray-50' : ''}`} style={{ borderColor: 'var(--light-gray)' }} title={item.isActive === false ? 'Archived product · click for details' : 'Click for product details'}>
                       {canWrite && (
                         <td className="px-3 py-3 w-10">
                           <input type="checkbox"
@@ -3323,6 +3355,19 @@ setTimeout(()=>window.print(),500);
           )}
 
           {/* Add/Edit Item Modal */}
+          {detailItem && (
+            <ItemDetailsModal
+              item={detailItem}
+              stock={branchBreakdown.get(detailItem.sku)}
+              branchLabel={(b) => BRANCH_LABELS[b] || b}
+              canWrite={canWrite}
+              onClose={() => setDetailItem(null)}
+              onEdit={() => { const it = detailItem; setDetailItem(null); openItemEdit(it) }}
+              onMovements={(id) => { setDetailItem(null); openMovements(id) }}
+              onLots={(id) => { setDetailItem(null); openLots(id) }}
+            />
+          )}
+
           {itemModalOpen && (
             <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
               <div className="bg-white rounded-2xl p-6 max-w-lg w-full shadow-xl max-h-[90vh] overflow-y-auto">
