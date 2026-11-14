@@ -189,6 +189,21 @@ export async function PATCH(req: Request) {
     const { id, action } = body
     if (!id) return NextResponse.json({ error: 'id is required' }, { status: 400 })
 
+    // "For checking" flag: a note on the RFP that the accountants must look at
+    // before it is paid or closed (e.g. a salary nobody can find in any bank
+    // statement). Lives in meta.checkFlag; an empty note clears it. Works for
+    // any RFP module — it never touches the payment, entries or the ledger.
+    if (action === 'flag') {
+      const note = typeof body.note === 'string' ? body.note.trim().slice(0, 500) : ''
+      const rep = await prisma.reimbursementReport.findUnique({ where: { id }, select: { meta: true } })
+      if (!rep) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+      const meta = { ...((rep.meta && typeof rep.meta === 'object' && !Array.isArray(rep.meta)) ? rep.meta as Record<string, unknown> : {}) }
+      if (note) meta.checkFlag = { note, by: session.user.name || session.user.email || '', at: new Date().toISOString() }
+      else delete meta.checkFlag
+      await prisma.reimbursementReport.update({ where: { id }, data: { meta: meta as object } })
+      return NextResponse.json({ ok: true })
+    }
+
     if (action === 'pay') {
       const paidAt = body.datePaid ? new Date(body.datePaid) : new Date()
       const pm = body.paymentMethod || null

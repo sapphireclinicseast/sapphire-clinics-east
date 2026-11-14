@@ -9,7 +9,7 @@ import { useSearchParams } from 'next/navigation'
 import { useFocusTarget } from '@/lib/use-focus-target'
 import { useSession } from 'next-auth/react'
 import { userBranchScope, canViewPettyCashCeoVerdana } from '@/lib/branch-scope'
-import { Plus, Settings, Loader2, Trash2, X, Maximize2, Minimize2, Search, ArrowUp, ArrowDown, Upload, Download, Eye, Wallet, CreditCard, CheckCircle2, Pencil, FileText, Paperclip } from 'lucide-react'
+import { Plus, Settings, Loader2, Trash2, X, Maximize2, Minimize2, Search, ArrowUp, ArrowDown, Upload, Download, Eye, Wallet, CreditCard, CheckCircle2, Pencil, FileText, Paperclip, Flag } from 'lucide-react'
 import { SortFilterHead, applySortFilter } from '@/components/SortFilterHead'
 import { useResizableColumns, ResizableColgroup, ColResizeHandle } from '@/components/useResizableColumns'
 import { assetClassFromAccountTitle, ASSET_CLASSIFICATION_LABELS, isDepreciatingClassification, inventoryClassFromAccountTitle, INVENTORY_CLASSIFICATION_LABELS } from '@/lib/asset-classification'
@@ -177,7 +177,7 @@ interface Card { id: string; branch: string; bank: string; cardNumber: string; b
 interface Supplier { id: string | null; registeredName: string; registeredAddress: string; tin: string; branch: string; branchLabel: string; firstAppeared: string | null; validity: string }
 interface Rfp {
   id: string; refNumber: string; grossTotal: string | number; payableTotal: string | number; status: string; kind: string | null
-  module?: string; meta?: { source?: string; payableType?: string; idKind?: string; ids?: string[]; splitIds?: string[]; rowIds?: string[]; entryIds?: string[]; payslipIds?: string[]; benefitTypes?: string[]; cutoffPeriod?: string; netTotal?: number; paymentId?: string; items?: { id: string; name: string; amount: number }[] } | null
+  module?: string; meta?: { source?: string; payableType?: string; idKind?: string; ids?: string[]; splitIds?: string[]; rowIds?: string[]; entryIds?: string[]; payslipIds?: string[]; benefitTypes?: string[]; cutoffPeriod?: string; netTotal?: number; paymentId?: string; items?: { id: string; name: string; amount: number }[]; checkFlag?: { note: string; by?: string; at?: string } } | null
   paidAt: string | null; paymentMethod: string | null; checkNumber: string | null; transferRef?: string | null; debitAccount: string | null
   creditCardId: string | null; proofUrl: string | null; payableTo: string | null; createdAt: string; _count: { entries: number }
   refSeq?: number; depositAccount?: string | null; filterBranch?: string | null // PETTY_CASH rows (merged from the PCF reimbursement API)
@@ -1032,6 +1032,20 @@ function ExpensesInner() {
       if (isPayrollRfp(rfp)) await reversePayrollPayment(rfp)
       await fetch(rfpApi(rfp), { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: rfp.id, action: 'unpay' }) })
       await loadRfps(branch); await reload(branch, recordType)
+    } catch { /* ignore */ }
+  }
+
+  // "For checking" flag — a note for the accountants; blank clears it.
+  const flagRfp = async (rfp: Rfp) => {
+    const cur = rfp.meta?.checkFlag?.note || ''
+    const note = cur
+      ? (confirm(`Clear the "For checking" flag on ${rfp.refNumber}?\n\n${cur}`) ? '' : null)
+      : prompt(`Flag ${rfp.refNumber} for checking — note for the accountants:`, '')
+    if (note === null || (!cur && !note.trim())) return
+    try {
+      const res = await fetch('/api/expenses/rfp', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: rfp.id, action: 'flag', note }) })
+      if (!res.ok) { alert((await res.json().catch(() => ({}))).error || 'Could not save the flag'); return }
+      await loadRfps(branch)
     } catch { /* ignore */ }
   }
 
@@ -2087,6 +2101,12 @@ function ExpensesInner() {
                   <td className="px-4 py-2.5 font-mono font-semibold" style={{ color: 'var(--charcoal)' }}>
                     {r.refNumber}
                     {isPcfRfp(r) && <span className="ml-1.5 align-middle text-[10px] font-sans font-semibold px-1.5 py-0.5 rounded-full" style={{ background: '#eff6ff', color: '#1e40af' }}>Petty Cash</span>}
+                    {r.meta?.checkFlag?.note && (
+                      <div className="mt-1 flex items-start gap-1 text-[11px] font-sans font-semibold leading-snug max-w-[22rem] whitespace-normal" style={{ color: '#b45309' }}
+                        title={`${r.meta.checkFlag.by ? `Flagged by ${r.meta.checkFlag.by}` : 'Flagged'}${r.meta.checkFlag.at ? ` · ${new Date(r.meta.checkFlag.at).toLocaleDateString('en-PH')}` : ''}`}>
+                        <Flag size={12} className="shrink-0 mt-px" /> For checking: {r.meta.checkFlag.note}
+                      </div>
+                    )}
                   </td>
                   <td className="px-4 py-2.5 text-xs" style={{ color: 'var(--mid-gray)' }}>{new Date(r.createdAt).toLocaleDateString('en-PH')}</td>
                   <td className="px-4 py-2.5 text-xs" style={{ color: 'var(--mid-gray)' }}>{r.module === 'PAYROLL_SALARY' ? 'Salaries' : r.module === 'PAYROLL_BENEFIT' ? 'Benefits' : r.kind === 'INVALID' ? 'Invalid' : 'Valid'}</td>
@@ -2140,6 +2160,13 @@ function ExpensesInner() {
                       <button onClick={() => unpayRfp(r)} title="Unmark paid"
                         className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium border mr-1" style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>
                         Unpay
+                      </button>
+                    )}
+                    {canWrite && (
+                      <button onClick={() => flagRfp(r)} title={r.meta?.checkFlag?.note ? 'Clear the For checking flag' : 'Flag for the accountants to check'}
+                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium border mr-1"
+                        style={r.meta?.checkFlag?.note ? { borderColor: '#fde68a', color: '#b45309', background: '#fffbeb' } : { borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>
+                        <Flag size={13} /> {r.meta?.checkFlag?.note ? 'Unflag' : 'Flag'}
                       </button>
                     )}
                     {canWrite && (
