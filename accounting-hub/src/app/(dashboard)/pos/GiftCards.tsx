@@ -44,9 +44,10 @@ const esc = (s: string) => s.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt
  * Print gift cards three to an A4 sheet: each card is a full-width third of
  * the page (210 × 99 mm, the standard gift-voucher size), separated by dashed
  * cut lines (Hannah, 11/14). Brand fonts only — Intro Pro (headings), Intro
- * Script (accent), Poppins Light (text) — read from the computer's installed
- * fonts (not hosted), falling back to Poppins. Intro has no ₱ glyph, so the
- * peso sign alone falls through to Roboto. Colours from the logo: #296354
+ * Script (accent), Poppins Light (text) — loaded from the hub itself
+ * (/api/brand-fonts, signed-in only) so every computer prints the same; the
+ * installed copies are only a fallback. Intro has no ₱ glyph, so the peso
+ * sign alone falls through to Roboto. Colours from the logo: #296354
  * dark green, #8EAF74 leaf green, #6E8E8E slate teal.
  */
 export function printGiftCards(cards: { code: string; faceValue: number }[]) {
@@ -54,6 +55,7 @@ export function printGiftCards(cards: { code: string; faceValue: number }[]) {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const JsBarcodeLib = require('jsbarcode')
   const origin = window.location.origin
+  const fonts = `${origin}/api/brand-fonts`
   const logo = `${origin}/login-aura.png`
   // Watermark: the logo's own arch — three equal bands (≈ ¼ of the radius
   // each) with thin gaps — drawn to scale in a fixed 2:1 box so it can never
@@ -103,13 +105,13 @@ export function printGiftCards(cards: { code: string; faceValue: number }[]) {
   const win = window.open('', '_blank')
   if (!win) return
   win.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Gift cards</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;500&display=swap" rel="stylesheet">
     <style>
-      @font-face { font-family: 'Intro Pro'; font-weight: 400; src: local('Intro Regular Alt'), local('IntroRegularAlt'), local('Intro Regular'), local('Intro-Regular'); }
-      @font-face { font-family: 'Intro Pro'; font-weight: 700; src: local('Intro Bold Alt'), local('IntroBoldAlt'), local('Intro Bold'), local('Intro-Bold'); }
-      @font-face { font-family: 'Intro Script'; src: local('Intro Script'), local('IntroScript-Regular'), local('Intro Script Demo Medium'), local('IntroScriptDemo-Medium'); }
-      @font-face { font-family: 'Poppins Light'; font-weight: 300; src: local('Poppins Light'), local('Poppins-Light'); }
+      @font-face { font-family: 'Intro Pro'; font-weight: 400; src: url('${fonts}/intro-regular.woff2') format('woff2'), local('Intro Regular Alt'), local('IntroRegularAlt'); }
+      @font-face { font-family: 'Intro Pro'; font-weight: 700; src: url('${fonts}/intro-bold.woff2') format('woff2'), local('Intro Bold Alt'), local('IntroBoldAlt'); }
+      @font-face { font-family: 'Intro Script'; src: url('${fonts}/intro-script.woff2') format('woff2'), local('Intro Script Demo Medium'), local('IntroScriptDemo-Medium'); }
+      @font-face { font-family: 'Poppins Light'; font-weight: 300; src: url('${fonts}/poppins-light.woff2') format('woff2'), local('Poppins Light'), local('Poppins-Light'); }
+      @font-face { font-family: 'Poppins'; font-weight: 300; src: url('${fonts}/poppins-light.woff2') format('woff2'), local('Poppins Light'), local('Poppins-Light'); }
+      @font-face { font-family: 'Poppins'; font-weight: 500; src: url('${fonts}/poppins-medium.woff2') format('woff2'), local('Poppins Medium'), local('Poppins-Medium'); }
       @font-face { font-family: 'Peso'; src: url('${origin}/fonts/roboto-latin-700.woff2') format('woff2'); unicode-range: U+20B1; }
       @page { size: A4 portrait; margin: 0; }
       * { box-sizing: border-box; margin: 0; padding: 0; }
