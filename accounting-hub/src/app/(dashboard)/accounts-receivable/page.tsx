@@ -2989,8 +2989,15 @@ export default function AccountsReceivablePage() {
         const reportCoverage = isFollowUp ? `${followUpYear || 'All years'} | over 180 days`
           : isSubUnpaid ? `${subUnpaidYear || 'All years'} | left out of paid SOAs`
           : periodCoverage
+        // A collection report may not go out while any session on it has no
+        // clinician (Hannah 2026-11-15) — fill them in with the pencil on the
+        // Clinician cell first. Applies to the filtered list being downloaded.
+        const isCollectionView = isFollowUp || isSubUnpaid
+        const noClinician = isCollectionView ? perHmoOrders.filter(o => !(o.clinicianName || '').trim()) : []
+        const noClinicianMsg = `${noClinician.length} session${noClinician.length === 1 ? '' : 's'} in this list ${noClinician.length === 1 ? 'has' : 'have'} no clinician. Fill ${noClinician.length === 1 ? 'it' : 'them'} in before downloading the collection report.`
         const downloadPdf = async () => {
           setShowDownloadMenu(false)
+          if (noClinician.length) { alert(noClinicianMsg); return }
           if (!perHmoOrders.length) { alert('There are no sessions in this view to put on a report.'); return }
           try {
             const [{ jsPDF }, { default: autoTable }, logoMod, settingsRes, dirRes] = await Promise.all([
@@ -3070,6 +3077,7 @@ export default function AccountsReceivablePage() {
         }
 
         const downloadExcel = () => {
+          if (noClinician.length) { setShowDownloadMenu(false); alert(noClinicianMsg); return }
           import('xlsx').then((XLSX) => {
             const rows = perHmoOrders.map(o => {
               const wallet = wallets.find(w => w.id === o.payments[0]?.walletId)
@@ -3182,7 +3190,9 @@ export default function AccountsReceivablePage() {
                 <div className="relative">
                 <button
                   onClick={() => setShowDownloadMenu(v => !v)}
-                  className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium border"
+                  disabled={noClinician.length > 0}
+                  title={noClinician.length ? noClinicianMsg : undefined}
+                  className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium border disabled:opacity-50 disabled:cursor-not-allowed"
                   style={{ borderColor: 'var(--teal)', color: 'var(--teal)' }}>
                   <Download size={14} /> Download
                 </button>
@@ -3199,6 +3209,21 @@ export default function AccountsReceivablePage() {
                 </div>{/* /download relative */}
               </div>{/* /ml-auto flex */}
             </div>{/* /filters row */}
+
+            {noClinician.length > 0 && (
+              <div className="rounded-2xl border px-5 py-3 flex flex-wrap items-center justify-between gap-3" style={{ borderColor: '#fde68a', background: '#fffbeb' }}>
+                <p className="text-sm" style={{ color: '#92400e' }}>
+                  <span className="font-semibold">Download is locked — {noClinician.length} session{noClinician.length === 1 ? '' : 's'} without a clinician.</span>{' '}
+                  A collection report can&apos;t go out with a blank clinician. Set each one with the pencil in the Clinician column; Download unlocks once none are blank.
+                </p>
+                {perHmoColSearch.clinician !== '__blank__' && (
+                  <button onClick={() => setPerHmoColSearch(prev => ({ ...prev, clinician: '__blank__' }))}
+                    className="px-3 py-1.5 rounded-lg border text-sm font-semibold bg-white whitespace-nowrap" style={{ borderColor: '#f59e0b', color: '#b45309' }}>
+                    Show only these
+                  </button>
+                )}
+              </div>
+            )}
 
             {(isFollowUp || isMdConsults || isSubUnpaid) && (
               <div className="rounded-2xl border px-5 py-4 flex flex-wrap items-center gap-6" style={{ borderColor: 'var(--light-gray)', background: 'white' }}>
