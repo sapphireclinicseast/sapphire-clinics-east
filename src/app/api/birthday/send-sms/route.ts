@@ -1,20 +1,17 @@
+// POST /api/birthday/send-sms — one birthday SMS, sent by a person.
+//
+// Greetings normally go out on their own (see /api/birthday/cron). This stays
+// for the mornings the automatic run could not finish the job: the httpSMS
+// phone was offline, or a number was added to the record after 9am.
+//
+// The send itself lives in lib/birthday-send so this and the cron cannot end
+// up wording the message differently.
+
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { recordBirthdayGreeting } from '@/lib/birthday-greeting'
-
-const BRANCH_CONFIG: Record<string, { httpSmsKey: string; phone: string }> = {
-  SBEA: { httpSmsKey: process.env.HTTPSMS_API_KEY_SBEA ?? '', phone: '+639171189289' },
-  SBGH: { httpSmsKey: process.env.HTTPSMS_API_KEY_SBGH ?? '', phone: '+639177701686' },
-}
-
-function toE164(phone: string): string {
-  const digits = phone.replace(/\D/g, '')
-  if (digits.startsWith('63') && digits.length >= 11) return '+' + digits
-  if (digits.startsWith('0')  && digits.length === 11) return '+63' + digits.slice(1)
-  if (digits.length === 10)                             return '+63' + digits
-  return '+' + digits
-}
+import { birthdayMessage, sendBirthdaySms } from '@/lib/birthday-send'
 
 // Fail fast — don't let a slow httpSMS response hang the client UI for minutes
 export const maxDuration = 15
@@ -24,8 +21,8 @@ export async function POST(req: NextRequest) {
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const { patientId, branch, message } = await req.json()
-  if (!patientId || !branch || !message)
-    return NextResponse.json({ error: 'patientId, branch, and message are required' }, { status: 400 })
+  if (!patientId || !branch)
+    return NextResponse.json({ error: 'patientId and branch are required' }, { status: 400 })
 
   const patient = await prisma.patient.findUnique({
     where: { id: patientId },
@@ -39,36 +36,24 @@ export async function POST(req: NextRequest) {
       { status: 400 },
     )
 
-  const cfg = BRANCH_CONFIG[branch]
-  if (!cfg?.httpSmsKey)
-    return NextResponse.json({ error: 'SMS gateway not configured for this branch' }, { status: 500 })
-
-  const to = toE164(patient.phone)
-  let res: Response
   try {
-    res = await fetch('https://api.httpsms.com/v1/messages/send', {
-      method: 'POST',
-      headers: { 'x-api-key': cfg.httpSmsKey, 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        content:    message,
-        from:       cfg.phone,
-        to,
-        // Keep trying for 24 hours in case the phone is temporarily offline
-        expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
-      }),
-      signal: AbortSignal.timeout(10_000),
+    await sendBirthdaySms({
+      firstName: patient.firstName,
+      phone: patient.phone,
+      branch,
+      // The client used to build the text and post it. Its copy is still
+      // honoured so an older tab keeps working, but the default is now the
+      // shared one.
+      message: typeof message === 'string' && message.trim()
+        ? message
+        : birthdayMessage(patient.firstName, branch),
     })
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
     return NextResponse.json(
-      { error: `Could not reach httpSMS gateway (${msg}). Check that the phone running httpSMS is online.` },
+      { error: `Could not send (${msg}). Check that the phone running httpSMS is online.` },
       { status: 502 },
     )
-  }
-
-  if (!res.ok) {
-    const text = await res.text()
-    return NextResponse.json({ error: `httpSMS error ${res.status}: ${text}` }, { status: 502 })
   }
 
   console.log(`[birthday-sms] Sent to ${patient.firstName} (${branch})`)

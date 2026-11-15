@@ -4,7 +4,7 @@ import { redirect } from 'next/navigation'
 import FrontDeskWelcome from './FrontDeskWelcome'
 import { scopeFor } from '@/lib/scoped-roles'
 
-type BirthdayPatient = { id: string; firstName: string; lastName: string; birthday: string; hasPhone: boolean }
+type BirthdayPatient = { id: string; firstName: string; lastName: string; birthday: string; hasPhone: boolean; hasEmail: boolean }
 
 const BRANCH_ENUM: Record<string, string> = {
   SBEA: 'SANDBOX_EAST',
@@ -25,9 +25,9 @@ async function getBirthdayPatients(branch: string): Promise<BirthdayPatient[]> {
   // Use raw SQL for enum array filter — PrismaPg driver adapter doesn't
   // support `has` on PostgreSQL enum arrays (text vs "Branch" type mismatch).
   const patients = await prisma.$queryRawUnsafe<
-    { id: string; firstName: string; lastName: string; dob: Date | null; phone: string | null }[]
+    { id: string; firstName: string; lastName: string; dob: Date | null; phone: string | null; email: string | null }[]
   >(
-    `SELECT id, "firstName", "lastName", dob, phone FROM "Patient"
+    `SELECT id, "firstName", "lastName", dob, phone, email FROM "Patient"
      WHERE dob IS NOT NULL
        AND (branch::text = $1 OR $1 = ANY("branches"::text[]))`,
     branchEnum,
@@ -37,7 +37,7 @@ async function getBirthdayPatients(branch: string): Promise<BirthdayPatient[]> {
     .flatMap(p => {
       const dob = new Date(p.dob!)
       if (dob.getUTCMonth() + 1 !== today.month || dob.getUTCDate() !== today.day) return []
-      return [{ id: p.id, firstName: p.firstName, lastName: p.lastName, birthday: today.iso, hasPhone: !!p.phone }]
+      return [{ id: p.id, firstName: p.firstName, lastName: p.lastName, birthday: today.iso, hasPhone: !!p.phone, hasEmail: !!p.email }]
     })
     .sort((a, b) => `${a.lastName} ${a.firstName}`.localeCompare(`${b.lastName} ${b.firstName}`))
 }
