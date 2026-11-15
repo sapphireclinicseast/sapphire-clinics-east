@@ -20,6 +20,7 @@ import { cn } from '@/lib/utils'
 import { branchLabel } from '@/lib/branch-label'
 import { useBranchSwitcher } from '@/components/BranchSwitcher'
 import SessionTrends from '@/components/SessionTrends'
+import DeckingBoard from '@/components/DeckingBoard'
 import {
   Avatar, Dialog, EmptyState, Icon, KpiCard, PageHeader, PillTabs, Skeleton,
   BTN_SECONDARY, CARD_STYLE, FOCUS, PAGE, SECONDARY_STYLE, SUBTLE_BG,
@@ -134,7 +135,10 @@ export default function ClinicSchedulePage() {
   const { isMultiBranch, sharedStaffId, activeStaffId, activeBranch } = useBranchSwitcher()
   const { data: session } = useSession()
   const isAdmin = session?.user?.role === 'ADMIN'
-  const [adminTab, setAdminTab] = useState<'calendar' | 'trends'>('calendar')
+  // Decking is for everyone; Session Trends stays admin-only. The tab strip
+  // used to render only for admins, so a consultant had no way to reach a
+  // second view at all.
+  const [tab, setTab] = useState<'calendar' | 'decking' | 'trends'>('calendar')
 
   const range = useMemo(() => {
     if (view === 'day') return { start: anchor, end: anchor }
@@ -222,18 +226,27 @@ export default function ClinicSchedulePage() {
         eyebrow="Clinical"
         title="Clinic Schedule"
         description="Your sessions across all branches you work in."
-        actions={isAdmin ? (
+        actions={(
           <PillTabs
             label="Clinic Schedule view"
-            value={adminTab}
-            onChange={(id) => setAdminTab(id as 'calendar' | 'trends')}
-            tabs={[{ id: 'calendar', label: 'Calendar' }, { id: 'trends', label: 'Session Trends' }]}
+            value={tab}
+            onChange={(id) => setTab(id as 'calendar' | 'decking' | 'trends')}
+            tabs={[
+              { id: 'calendar', label: 'Calendar' },
+              { id: 'decking', label: 'Decking' },
+              ...(isAdmin ? [{ id: 'trends', label: 'Session Trends' }] : []),
+            ]}
           />
-        ) : undefined}
+        )}
       />
 
-      {isAdmin && adminTab === 'trends' ? (
+      {isAdmin && tab === 'trends' ? (
         <SessionTrends />
+      ) : tab === 'decking' ? (
+        // The board front desk keep, read only. activeStaffId scopes an
+        // interbranch consultant to the branch the switcher is on; without
+        // one the API unions every branch they work in.
+        <DeckingBoard staffId={isMultiBranch ? activeStaffId : null} />
       ) : (
       <>
 

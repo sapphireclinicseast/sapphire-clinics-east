@@ -688,3 +688,66 @@ model AvailabilitySlot {
   @@index([accountId])
   @@index([staffId])
 }
+
+// ── Decking (read-only) ──────────────────────────────────────────────────────
+//
+// The clinic's weekly board, owned by the Operations Hub. This app and the hub
+// point at the SAME database (sapphire_marketing), so these models map onto
+// the hub's own tables — nothing is copied and nothing has to be kept in sync.
+//
+// That is what makes the clinician's view live. Front desk edit the board in
+// two places — the Decking module directly, and the Google Sheet, which syncs
+// back into these same rows every five minutes — and both land here.
+//
+// READ ONLY from this app. No migration belongs to these models: the tables
+// already exist and the hub owns their shape. The deploy runs `prisma
+// generate` and never `db push`, so adding them here only widens this app's
+// client.
+
+/// One consultant's standing weekly pattern, per branch and service.
+model DeckingTherapistConfig {
+  id           String   @id @default(cuid())
+  staffId      String
+  workDays     Json
+  startTime    String
+  endTime      String
+  useDefault   Boolean  @default(true)
+  branch       String
+  department   String
+  /// "ONSITE" | "TELETHERAPY" | "HOMECARE". NULL is the general schedule,
+  /// used by any service with no days of its own.
+  deliveryMode String?
+  patientsPerDay Int?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([staffId])
+}
+
+/// One hour on the board. `date` NULL is the standing weekly pattern; a date
+/// is a one-off or a make-up on that day only.
+model DeckingSlot {
+  id           String    @id @default(cuid())
+  staffId      String
+  patientId    String?
+  dayOfWeek    String
+  date         DateTime?
+  sheetHidden  Boolean   @default(false)
+  isMakeup     Boolean   @default(false)
+  startTime    String
+  endTime      String
+  branch       String
+  department   String
+  notes        String?
+  supervisorId String?
+  paymentType  String    @default("CASH")
+  hmoProvider  String?
+  isClass      Boolean   @default(false)
+  deliveryMode String?
+  disabled     Boolean   @default(false)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@index([staffId])
+  @@index([date])
+}
