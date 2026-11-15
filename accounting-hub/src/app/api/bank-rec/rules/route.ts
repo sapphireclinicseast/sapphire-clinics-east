@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { ruleMatches } from '@/lib/bank-rec-rules'
+import { cleanPattern, ruleMatches } from '@/lib/bank-rec-rules'
 
 const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER']
 
@@ -34,7 +34,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 })
   }
   const body = await req.json()
-  const pattern = String(body.pattern || '').trim()
+  const pattern = cleanPattern(body.pattern)
   if (pattern.length < 3) return NextResponse.json({ error: 'Pattern must be at least 3 characters — shorter would catch lines it should not' }, { status: 400 })
   if (!body.categoryAccountId) return NextResponse.json({ error: 'Choose a category account' }, { status: 400 })
   const direction = ['OUT', 'IN', 'ANY'].includes(body.direction) ? body.direction : 'ANY'
@@ -58,11 +58,24 @@ export async function PATCH(req: Request) {
   }
   const body = await req.json()
   if (!body.id) return NextResponse.json({ error: 'id is required' }, { status: 400 })
+  // Every part of a rule can be changed after it is made — the payee a rule
+  // stamps (e.g. BIR on interest withheld) included, for when it changes.
+  const pattern = body.pattern !== undefined ? cleanPattern(body.pattern) : undefined
+  if (pattern !== undefined && pattern.length < 3) {
+    return NextResponse.json({ error: 'Pattern must be at least 3 characters — shorter would catch lines it should not' }, { status: 400 })
+  }
+  if (body.direction !== undefined && !['OUT', 'IN', 'ANY'].includes(body.direction)) {
+    return NextResponse.json({ error: 'Direction must be OUT, IN or ANY' }, { status: 400 })
+  }
+  if (body.categoryAccountId !== undefined && !body.categoryAccountId) {
+    return NextResponse.json({ error: 'Choose a category account' }, { status: 400 })
+  }
   const rule = await prisma.bankCategoryRule.update({
     where: { id: body.id },
     data: {
-      ...(body.pattern !== undefined ? { pattern: String(body.pattern).trim() } : {}),
+      ...(pattern !== undefined ? { pattern } : {}),
       ...(body.direction !== undefined ? { direction: body.direction } : {}),
+      ...(body.bankAccountId !== undefined ? { bankAccountId: body.bankAccountId || null } : {}),
       ...(body.active !== undefined ? { active: !!body.active } : {}),
       ...(body.categoryAccountId !== undefined ? { categoryAccountId: body.categoryAccountId } : {}),
       ...(body.fromToName !== undefined ? { fromToName: body.fromToName?.trim() || null } : {}),

@@ -94,6 +94,18 @@ export default function BankReconciliationPage() {
   const [picked, setPicked] = useState<Set<string>>(new Set())
   const [splitFor, setSplitFor] = useState<Txn | null>(null)
   const [reshaping, setReshaping] = useState(false)
+  // The From/To payee is editable on any line, posted or not — a rule stamps
+  // one automatically (BIR on interest withheld, the bank on interest), and it
+  // may need changing later. Only the label changes; the entry is untouched.
+  const [payeeEdit, setPayeeEdit] = useState<{ id: string; value: string } | null>(null)
+  const savePayee = async () => {
+    if (!payeeEdit) return
+    const { id, value } = payeeEdit
+    setPayeeEdit(null)
+    const r = await fetch('/api/bank-rec/transactions', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, action: 'update', fromToName: value.trim() }) })
+    if (!r.ok) { alert((await r.json().catch(() => ({}))).error || 'Could not save the payee'); return }
+    setTxns(prev => prev.map(t => t.id === id ? { ...t, fromToName: value.trim() || null } : t))
+  }
   useEffect(() => { setPicked(new Set()) }, [sel, tab])
 
   const account = accounts.find(a => a.id === sel) || null
@@ -501,7 +513,20 @@ export default function BankReconciliationPage() {
                     </td>
                     <td className="px-3 py-2.5 text-right text-xs font-semibold" style={{ color: t.spent > 0 ? '#b91c1c' : 'var(--light-gray)' }}>{t.spent > 0 ? money(t.spent) : ''}</td>
                     <td className="px-3 py-2.5 text-right text-xs font-semibold" style={{ color: t.received > 0 ? '#166534' : 'var(--light-gray)' }}>{t.received > 0 ? money(t.received) : ''}</td>
-                    <td className="px-3 py-2.5 text-xs" style={{ color: 'var(--mid-gray)' }}>{t.fromToName || ''}</td>
+                    <td className="px-3 py-2.5 text-xs" style={{ color: 'var(--mid-gray)' }}>
+                      {payeeEdit?.id === t.id ? (
+                        <input autoFocus value={payeeEdit.value}
+                          onChange={e => setPayeeEdit({ id: t.id, value: e.target.value })}
+                          onKeyDown={e => { if (e.key === 'Enter') savePayee(); if (e.key === 'Escape') setPayeeEdit(null) }}
+                          onBlur={savePayee}
+                          className="w-full min-w-[90px] px-1.5 py-0.5 rounded border text-xs outline-none" style={{ borderColor: 'var(--teal)' }} />
+                      ) : canWrite ? (
+                        <button type="button" onClick={() => setPayeeEdit({ id: t.id, value: t.fromToName || '' })} title="Edit payee"
+                          className="text-left hover:underline" style={{ color: t.fromToName ? 'var(--mid-gray)' : 'var(--light-gray)' }}>
+                          {t.fromToName || '+ payee'}
+                        </button>
+                      ) : (t.fromToName || '')}
+                    </td>
                     <td className="px-3 py-2.5 text-xs">
                       {t.status === 'POSTED'
                         ? (t.matchLabel ? <span style={{ color: 'var(--deep-teal)' }}>Matched · {t.matchLabel}</span> : t.categoryLabel ? <span style={{ color: 'var(--deep-teal)' }}>{t.categoryLabel}</span> : <span style={{ color: 'var(--mid-gray)' }}>Posted</span>)
@@ -702,6 +727,27 @@ function RulesModal({ coa, accounts, onClose, onDone }: { coa: Coa[]; accounts: 
     await fetch(`/api/bank-rec/rules?id=${rule.id}`, { method: 'DELETE' })
     await load()
   }
+  // Edit a rule in place — its pattern, direction, bank, category and the payee
+  // it stamps (e.g. BIR on interest withheld) can all change after it is made.
+  const [editId, setEditId] = useState<string | null>(null)
+  const [ed, setEd] = useState({ pattern: '', direction: 'OUT', bankAccountId: '', categoryAccountId: '', catQ: '', fromToName: '', effectiveFrom: '' })
+  const startEdit = (r: BankRule) => {
+    setEditId(r.id)
+    setEd({ pattern: r.pattern, direction: r.direction, bankAccountId: r.bankAccountId || '', categoryAccountId: r.categoryAccountId, catQ: '', fromToName: r.fromToName || '', effectiveFrom: r.effectiveFrom ? String(r.effectiveFrom).slice(0, 10) : '' })
+  }
+  const edCoa = coa.filter(c => ed.catQ && `${c.accountNumber} ${c.accountTitle}`.toLowerCase().includes(ed.catQ.toLowerCase())).slice(0, 8)
+  const saveEdit = async () => {
+    if (!editId) return
+    if (!ed.pattern.trim() || !ed.categoryAccountId) { alert('A rule needs a pattern and a category account.'); return }
+    setBusy(true)
+    try {
+      const r = await fetch('/api/bank-rec/rules', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: editId, pattern: ed.pattern, direction: ed.direction, bankAccountId: ed.bankAccountId || null, categoryAccountId: ed.categoryAccountId, fromToName: ed.fromToName, effectiveFrom: ed.effectiveFrom || null }) })
+      if (!r.ok) { alert((await r.json()).error || 'Failed'); return }
+      setEditId(null)
+      await load()
+    } finally { setBusy(false) }
+  }
+  const coaLabel = (id: string) => { const c = coa.find(x => x.id === id); return c ? `${c.accountNumber} ${c.accountTitle}` : '' }
   const apply = async () => {
     const reach = rules.filter(r => r.active).reduce((s, r) => s + r.pendingMatches, 0)
     if (!reach) { alert('No active rule matches any pending line.'); return }
@@ -733,7 +779,7 @@ function RulesModal({ coa, accounts, onClose, onDone }: { coa: Coa[]; accounts: 
       {/* New rule */}
       <div className="rounded-xl border p-3 mb-3 space-y-2" style={{ borderColor: 'var(--light-gray)' }}>
         <div className="flex flex-wrap gap-2">
-          <input value={pattern} onChange={e => setPattern(e.target.value)} placeholder='Pattern, e.g. "ROBINSONS LAND" or "GCASH"' className="flex-1 min-w-[220px] px-3 py-2 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
+          <input value={pattern} onChange={e => setPattern(e.target.value)} placeholder="Pattern, e.g. ROBINSONS LAND or GCASH (no quote marks)" className="flex-1 min-w-[220px] px-3 py-2 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
           <select value={direction} onChange={e => setDirection(e.target.value as 'OUT' | 'IN' | 'ANY')} className="px-2 py-2 rounded-xl border text-sm" style={{ borderColor: 'var(--light-gray)' }}>
             <option value="OUT">Money out</option><option value="IN">Money in</option><option value="ANY">Either</option>
           </select>
@@ -765,17 +811,53 @@ function RulesModal({ coa, accounts, onClose, onDone }: { coa: Coa[]; accounts: 
 
       {/* Rules list */}
       {loading ? <div className="py-6 text-center"><Loader2 className="animate-spin inline" size={18} /></div> : rules.length === 0 ? (
-        <p className="text-sm py-4 text-center" style={{ color: 'var(--mid-gray)' }}>No rules yet. Add one above — e.g. pattern &quot;ROBINSONS&quot;, money out, category 8110 Rent Expense.</p>
+        <p className="text-sm py-4 text-center" style={{ color: 'var(--mid-gray)' }}>No rules yet. Add one above — e.g. pattern ROBINSONS, money out, category 8110 Rent Expense.</p>
       ) : (
         <div className="space-y-1 mb-3 max-h-72 overflow-y-auto">
-          {rules.map(r => (
+          {rules.map(r => editId === r.id ? (
+            <div key={r.id} className="rounded-lg border px-3 py-2 text-xs space-y-2" style={{ borderColor: 'var(--teal)' }}>
+              <div className="flex flex-wrap gap-2">
+                <input value={ed.pattern} onChange={e => setEd({ ...ed, pattern: e.target.value })} placeholder="Pattern" className="flex-1 min-w-[180px] px-2 py-1.5 rounded-lg border text-xs outline-none" style={{ borderColor: 'var(--light-gray)' }} />
+                <select value={ed.direction} onChange={e => setEd({ ...ed, direction: e.target.value })} className="px-2 py-1.5 rounded-lg border text-xs" style={{ borderColor: 'var(--light-gray)' }}>
+                  <option value="OUT">Money out</option><option value="IN">Money in</option><option value="ANY">Either</option>
+                </select>
+                <select value={ed.bankAccountId} onChange={e => setEd({ ...ed, bankAccountId: e.target.value })} className="px-2 py-1.5 rounded-lg border text-xs max-w-[200px]" style={{ borderColor: 'var(--light-gray)' }}>
+                  <option value="">Any bank account</option>
+                  {accounts.map(a => <option key={a.id} value={a.id}>{a.accountTitle}</option>)}
+                </select>
+              </div>
+              <div className="flex flex-wrap gap-2 items-start">
+                <div className="relative flex-1 min-w-[200px]">
+                  <input value={ed.categoryAccountId ? coaLabel(ed.categoryAccountId) || ed.catQ : ed.catQ}
+                    onChange={e => setEd({ ...ed, catQ: e.target.value, categoryAccountId: '' })}
+                    placeholder="Category account — search the chart" className="w-full px-2 py-1.5 rounded-lg border text-xs outline-none" style={{ borderColor: 'var(--light-gray)' }} />
+                  {!ed.categoryAccountId && edCoa.length > 0 && (
+                    <div className="absolute z-20 left-0 right-0 mt-1 rounded-xl border bg-white shadow-lg max-h-44 overflow-y-auto" style={{ borderColor: 'var(--light-gray)' }}>
+                      {edCoa.map(c => (
+                        <button key={c.id} type="button" onClick={() => setEd({ ...ed, categoryAccountId: c.id, catQ: '' })} className="w-full text-left px-3 py-1.5 text-xs hover:bg-gray-50">{c.accountNumber} {c.accountTitle}</button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                <input value={ed.fromToName} onChange={e => setEd({ ...ed, fromToName: e.target.value })} placeholder="Payee to stamp (optional)" className="px-2 py-1.5 rounded-lg border text-xs outline-none min-w-[160px]" style={{ borderColor: 'var(--light-gray)' }} />
+                <label className="flex items-center gap-1" style={{ color: 'var(--mid-gray)' }}>
+                  from <input type="date" value={ed.effectiveFrom} onChange={e => setEd({ ...ed, effectiveFrom: e.target.value })} className="px-2 py-1.5 rounded-lg border text-xs outline-none" style={{ borderColor: 'var(--light-gray)' }} />
+                </label>
+                <button onClick={saveEdit} disabled={busy} className="px-3 py-1.5 rounded-lg text-xs font-semibold text-white" style={{ background: 'var(--teal)' }}>Save</button>
+                <button onClick={() => setEditId(null)} className="px-3 py-1.5 rounded-lg text-xs border" style={{ borderColor: 'var(--light-gray)' }}>Cancel</button>
+              </div>
+              <p style={{ color: 'var(--mid-gray)' }}>Changes apply to lines the rule posts from now on; lines it already posted keep their payee and category.</p>
+            </div>
+          ) : (
             <div key={r.id} className="flex items-center gap-2 rounded-lg border px-3 py-2 text-xs" style={{ borderColor: 'var(--light-gray)', opacity: r.active ? 1 : 0.5 }}>
-              <span className="font-mono font-semibold">&quot;{r.pattern}&quot;</span>
+              <span className="font-mono font-semibold">{r.pattern}</span>
               <span style={{ color: 'var(--mid-gray)' }}>{r.direction === 'OUT' ? 'out' : r.direction === 'IN' ? 'in' : 'any'}</span>
+              {r.bankAccountId && <span style={{ color: 'var(--mid-gray)' }}>{accounts.find(a => a.id === r.bankAccountId)?.accountTitle || 'one account'} only</span>}
               <span>→ {r.categoryLabel}</span>
               {r.fromToName && <span style={{ color: 'var(--mid-gray)' }}>payee: {r.fromToName}</span>}
               {r.effectiveFrom && <span style={{ color: 'var(--mid-gray)' }}>from {String(r.effectiveFrom).slice(0, 10)}</span>}
               <span className="ml-auto px-2 py-0.5 rounded-full font-bold" style={{ background: r.pendingMatches ? 'var(--teal)' : 'var(--light-gray)', color: r.pendingMatches ? '#fff' : 'var(--mid-gray)' }}>{r.pendingMatches} pending</span>
+              <button onClick={() => startEdit(r)} title="Edit rule" className="underline">edit</button>
               <button onClick={() => toggle(r)} title={r.active ? 'Pause' : 'Resume'} className="underline">{r.active ? 'pause' : 'resume'}</button>
               <button onClick={() => remove(r)} title="Delete rule"><Trash2 size={13} /></button>
             </div>

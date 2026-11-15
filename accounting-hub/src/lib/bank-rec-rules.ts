@@ -11,6 +11,21 @@ export type BankRuleShape = {
   pattern: string
 }
 
+// A pattern is plain text. Rules typed as `"INTEREST WITHHELD"` (the form's
+// example used to show its patterns in quotes) looked for the quote marks too
+// and never matched a line, so the interest-withheld rules sat idle for months
+// (fixed 2026-11-15). Wrapping quotes are dropped when a rule is saved and
+// again when it is matched, so older rows behave too.
+export function cleanPattern(p: string): string {
+  let s = String(p || '').trim()
+  for (let i = 0; i < 2; i++) {
+    const m = s.match(/^["'“”‘’]([\s\S]*)["'“”‘’]$/)
+    if (!m) break
+    s = m[1].trim()
+  }
+  return s
+}
+
 export function ruleMatches(
   r: BankRuleShape,
   t: { description: string; fromToName: string | null; spent: unknown; received: unknown; bankAccountId: string },
@@ -19,8 +34,10 @@ export function ruleMatches(
   const out = Number(t.spent) > 0
   if (r.direction === 'OUT' && !out) return false
   if (r.direction === 'IN' && out) return false
+  const pattern = cleanPattern(r.pattern).toLowerCase()
+  if (!pattern) return false
   const hay = `${t.description} ${t.fromToName || ''}`.toLowerCase()
-  return hay.includes(r.pattern.toLowerCase())
+  return hay.includes(pattern)
 }
 
 /* ── Apply active rules to PENDING lines ──────────────────────────────
