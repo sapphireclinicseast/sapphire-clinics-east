@@ -59,8 +59,8 @@ export async function POST(req: Request) {
   const body = await req.json().catch(() => ({})) as { year?: number; branch?: string; only?: string[]; orderIds?: string[]; dryRun?: boolean }
   const branch = body.branch || 'ALL'
   const orderIds = Array.isArray(body.orderIds) && body.orderIds.length ? body.orderIds : undefined
-  // 'redate-reversals', 'paymongo-sales' and 'paymongo-relink' are maintenance-only and
-  // never part of the default sweep.
+  // 'redate-reversals', 'paymongo-sales', 'paymongo-relink' and 'void-reversals' are
+  // maintenance-only and never part of the default sweep.
   const only = new Set(body.only?.length ? body.only : ['orders', 'ar', 'inventory', 'assets'])
   const dryRun = body.dryRun === true
 
@@ -80,6 +80,7 @@ export async function POST(req: Request) {
     'redate-reversals': newBucket(),
     'paymongo-sales':   newBucket(),
     'paymongo-relink':  newBucket(),
+    'void-reversals':   newBucket(),
     dryRun,
   }
 
@@ -166,6 +167,34 @@ export async function POST(req: Request) {
       } catch (e) {
         result.orders.failed++
         result.orders.failures.push({ id: o.id, reason: e instanceof Error ? e.message : String(e) })
+      }
+    }
+  }
+
+  /* ── Void reversals (opt-in; needs orderIds) ──────────────────────
+     A VOIDED order whose GL still carries its sale (net > 0) — voided through a
+     path that never reversed it, or before reversals existed (East #5174, #7071,
+     #9520: voided originals of re-entered sales, so each sale counted twice).
+     reverseOrderJournal is net-idempotent: it reverses only while the sale
+     stands, so a second run is a no-op. Only explicitly listed orders are
+     touched; `dryRun: true` only counts. */
+  if (only.has('void-reversals')) {
+    const bucket = result['void-reversals']
+    const voided = orderIds
+      ? await prisma.order.findMany({ where: { id: { in: orderIds }, status: 'VOIDED' }, select: { id: true } })
+      : []
+    bucket.scanned = voided.length
+    for (const o of voided) {
+      try {
+        if (await orderGlNetCents(prisma, o.id) <= 0) { bucket.alreadyPosted++; continue }
+        if (dryRun) { bucket.failures.push({ id: o.id, reason: 'would reverse' }); continue }
+        const r = await reverseOrderJournal(prisma, o.id, actorId, 'order voided (GL repair)')
+        if (r.posted) bucket.posted++
+        else if (r.alreadyPosted) bucket.alreadyPosted++
+        else { bucket.failed++; if (r.reason) bucket.failures.push({ id: o.id, reason: r.reason }) }
+      } catch (e) {
+        bucket.failed++
+        bucket.failures.push({ id: o.id, reason: e instanceof Error ? e.message : String(e) })
       }
     }
   }

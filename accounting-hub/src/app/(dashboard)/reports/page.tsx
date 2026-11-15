@@ -1740,6 +1740,9 @@ export default function ReportsPage() {
   const years = Array.from({ length: 6 }, (_, i) => currentYear + 1 - i)
 
   const fetchData = useCallback(async () => {
+    // Med reps / payroll officer read the ledger engine (LedgerStatements,
+    // revenue only) — the old order-based /api/reports payload isn't used.
+    if (isMedrep) { setLoading(false); return }
     setLoading(true)
     try {
       const res = await fetch(`/api/reports?year=${year}&branch=${branch}`)
@@ -1752,7 +1755,7 @@ export default function ReportsPage() {
     } finally {
       setLoading(false)
     }
-  }, [year, branch])
+  }, [year, branch, isMedrep])
 
   useEffect(() => {
     fetchData()
@@ -2514,29 +2517,13 @@ export default function ReportsPage() {
         {!loading && data?.historical && !isMedrep && (
           <LedgerStatements year={year} branch={effIsBranch} tab={effTab} view={effView} readOnly={isInvestor} />
         )}
-        {!loading && data?.historical && isMedrep && (
-          <HistoricalReport
-            hist={data.historical}
-            tab={effTab}
-            monthly={effView === 'monthly'}
-            revenueOnly={isMedrep}
-          />
-        )}
         {!loading && !data?.historical && !isMedrep && (
           <LedgerStatements year={year} branch={effIsBranch} tab={effTab} view={effView} readOnly={isInvestor} />
         )}
-        {!loading && data && !data.historical && isMedrep && (
-          <div className="py-2">
-            {effTab === 'balance-sheet' && (
-              <BalanceSheet data={data} viewMode={effView} onDrillDown={effDrill} />
-            )}
-            {effTab === 'income-statement' && (
-              <IncomeStatement data={data} viewMode={effView} onDrillDown={effDrill} revenueOnly={isMedrep} />
-            )}
-            {effTab === 'cash-flow' && (
-              <CashFlowStatement data={data} viewMode={effView} onDrillDown={effDrill} />
-            )}
-          </div>
+        {/* Med reps / payroll officer: the same ledger engine as everyone,
+            Gross Revenue only (the API strips the rest for these roles). */}
+        {!loading && isMedrep && (
+          <LedgerStatements year={year} branch={effBranch} tab="income-statement" view="monthly" readOnly revenueOnly />
         )}
 
         {/* Footer */}

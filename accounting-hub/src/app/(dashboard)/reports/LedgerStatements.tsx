@@ -353,10 +353,13 @@ function DrillDown({ year, branch, account, title, month, cumulative, onClose }:
 
 /* ── Main component ─────────────────────────────────────────────── */
 
-export default function LedgerStatements({ year, branch, tab, view, readOnly }: {
+export default function LedgerStatements({ year, branch, tab, view, readOnly, revenueOnly }: {
   year: number
   branch: string
   readOnly?: boolean
+  /** Med reps / payroll officer: the income statement's Gross Revenue section only
+   *  (the API strips everything else for those roles anyway). */
+  revenueOnly?: boolean
   tab: 'balance-sheet' | 'income-statement' | 'cash-flow'
   view: 'annual' | 'quarterly' | 'monthly'
 }) {
@@ -652,6 +655,7 @@ export default function LedgerStatements({ year, branch, tab, view, readOnly }: 
                   </Fragment>))}
                   <MultiRow label="Total Gross Revenue" values={revC} total={grossTotal} bold rule pctBases={vaBases} pctBaseTotal={vaTotal} />
                 </>)}
+                {!revenueOnly && (<>
                 {sec('DISCOUNTS') && (<>
                   <tr><td colSpan={colLabels.length + 2} className="px-3 pt-2 pb-1 font-semibold text-[0.72rem] uppercase" style={{ color: '#111827' }}><span className="inline-block" style={{ position: 'sticky', left: 12 }}>Discounts and Refunds</span></td></tr>
                   {sec('DISCOUNTS')!.rows.map(r => {
@@ -687,10 +691,11 @@ export default function LedgerStatements({ year, branch, tab, view, readOnly }: 
                   values={ebtC.map(e => e * INCOME_TAX_RATE)} total={is.taxProvision} pctBases={vaBases} pctBaseTotal={vaTotal} />
                 )}
                 <MultiRow label="NET INCOME" values={ebtC.map(e => e * (1 - INCOME_TAX_RATE))} total={is.netIncome} bold doubleRule pctBases={vaBases} pctBaseTotal={vaTotal} />
+                </>)}
               </tbody>
             </table>
           </div>
-          {pfNote}
+          {!revenueOnly && pfNote}
         </div>
       )
     } else {
@@ -709,6 +714,7 @@ export default function LedgerStatements({ year, branch, tab, view, readOnly }: 
             </div>))}
             <Row label="Total Gross Revenue" amount={sec('REVENUE')!.total} bold rule pctBase={vaBase} />
           </>)}
+          {!revenueOnly && (<>
           {sec('DISCOUNTS') && (<>
             <Row label="Discounts and Refunds" bold />
             {sec('DISCOUNTS')!.rows.map(r => (
@@ -744,6 +750,7 @@ export default function LedgerStatements({ year, branch, tab, view, readOnly }: 
           )}
           <Row label="NET INCOME" amount={is.netIncome} bold doubleRule pctBase={vaBase} />
           {pfNote}
+          </>)}
         </div>
       )
     }

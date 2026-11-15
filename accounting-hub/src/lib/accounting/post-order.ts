@@ -26,9 +26,29 @@
  * Gated by env ENABLE_GL_POSTING=true so it can be enabled per environment.
  */
 
-import type { PrismaClient } from '@prisma/client'
+import type { Prisma, PrismaClient } from '@prisma/client'
 import { postJournalEntry, UnbalancedJournalEntryError, type PostingLine } from './posting'
 import { giftCardCodeFromItem } from '../gift-cards'
+
+/** Either the app client or the interactive-transaction client the locked wrappers pass in. */
+type Db = PrismaClient | Prisma.TransactionClient
+
+/**
+ * Serialize every GL post/reverse for ONE order. The net-standing check and the
+ * insert used to run unguarded, so two requests for the same order (a double
+ * click on Reopen/Void, or a reopen racing a re-complete) both read "sale still
+ * stands" and both wrote a reversal — 8 orders in Jul–Oct 2026 carry two
+ * reversals created in the same second (#44754, #47350, #46743 …), which nets a
+ * completed sale to ZERO and a voided one to MINUS its value (fixed 2026-11-15). A transaction-scoped
+ * advisory lock keyed on the order makes the second request wait for the first
+ * to commit, then re-read the net and skip.
+ */
+async function withOrderGlLock<T>(prisma: PrismaClient, orderId: string, fn: (tx: Prisma.TransactionClient) => Promise<T>): Promise<T> {
+  return prisma.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${'pos-gl:' + orderId}))`
+    return fn(tx)
+  }, { maxWait: 15_000, timeout: 30_000 })
+}
 
 const CASH_METHODS = new Set(['CASH', 'GCASH', 'PAYMAYA', 'PAYMONGO', 'DEBIT', 'CREDIT_CARD', 'SHOPEE', 'LAZADA', 'TIKTOK'])
 const AR_METHODS   = new Set(['HMO', 'GL'])
@@ -47,7 +67,7 @@ export interface PostOrderResult {
  * sale?" — and the balance answers it where the history can't (see the
  * rationale at each call site).
  */
-export async function orderGlNetCents(prisma: PrismaClient, orderId: string): Promise<number> {
+export async function orderGlNetCents(prisma: Db, orderId: string): Promise<number> {
   const jes = await prisma.journalEntry.findMany({
     where: { referenceId: orderId, referenceType: { in: ['POS_ORDER', 'POS_ORDER_REVERSAL'] } },
     select: { referenceType: true, lines: { select: { debit: true } } },
@@ -66,6 +86,14 @@ export async function postOrderJournal(
   if (process.env.ENABLE_GL_POSTING !== 'true') {
     return { posted: false, reason: 'ENABLE_GL_POSTING flag is off' }
   }
+  return withOrderGlLock(prisma, orderId, tx => postOrderJournalLocked(tx, orderId, createdById))
+}
+
+async function postOrderJournalLocked(
+  prisma: Prisma.TransactionClient,
+  orderId: string,
+  createdById: string,
+): Promise<PostOrderResult> {
 
   // Idempotency: skip only while the order's GL net actually carries the sale.
   // Two earlier rules read the HISTORY instead of the BALANCE, and each had a
@@ -526,6 +554,15 @@ export async function reverseOrderJournal(
   if (process.env.ENABLE_GL_POSTING !== 'true') {
     return { posted: false, reason: 'ENABLE_GL_POSTING flag is off' }
   }
+  return withOrderGlLock(prisma, orderId, tx => reverseOrderJournalLocked(tx, orderId, createdById, reason))
+}
+
+async function reverseOrderJournalLocked(
+  prisma: Prisma.TransactionClient,
+  orderId: string,
+  createdById: string,
+  reason: string,
+): Promise<PostOrderResult> {
   const original = await prisma.journalEntry.findFirst({
     where: { referenceType: 'POS_ORDER', referenceId: orderId },
     include: { lines: true },
