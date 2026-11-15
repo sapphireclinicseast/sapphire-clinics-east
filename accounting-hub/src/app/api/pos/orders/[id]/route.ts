@@ -612,6 +612,21 @@ export async function PUT(
           { status: 400 }
         )
       }
+    } else if (existing.paymentStatus === 'PAID') {
+      // No payment lines sent: the order keeps the ones it has, so THOSE must
+      // still cover the (possibly re-priced) net. Without this an edit that
+      // changed items or the discount but not the payments re-completed the
+      // order while its GL re-post refused the lopsided entry and only logged it
+      // — the sale vanished from the books (East #45819, #46317, Oct 2026).
+      const kept = await prisma.orderPayment.findMany({ where: { orderId: id }, select: { amount: true } })
+      const paidTotal = kept.reduce((s, p) => s + Number(p.amount), 0)
+      const expectedNet = Number(data.netAmount ?? existing.netAmount)
+      if (Math.abs(paidTotal - expectedNet) > 0.05) {
+        return NextResponse.json(
+          { error: `Payments on this order total ₱${paidTotal.toFixed(2)} but the net amount is ₱${expectedNet.toFixed(2)}. Add or fix the payment lines so they equal the net amount before completing.` },
+          { status: 400 }
+        )
+      }
     }
 
     // A guarantee letter pays only up to what is left on it (lib/gl-balance).
