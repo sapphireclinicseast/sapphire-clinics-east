@@ -137,8 +137,13 @@ export default function WellnessCheckPage() {
   const sessionDept = (session?.user as { department?: string } | undefined)?.department ?? ''
 
   const [submitMode, setSubmitMode] = useState<'anonymous' | 'named'>('anonymous')
-  const [name, setName] = useState(sessionName)
-  const [department, setDepartment] = useState(sessionDept)
+  // null = not edited yet, so the field shows the session value. The
+  // session usually arrives after the first render; seeding useState with
+  // it (as before) left both fields blank for good.
+  const [nameEdit, setName] = useState<string | null>(null)
+  const [deptEdit, setDepartment] = useState<string | null>(null)
+  const name = nameEdit ?? sessionName
+  const department = deptEdit ?? sessionDept
 
   // ratings: q1..q12 → 0..5 (or undefined when unanswered).
   const [ratings, setRatings] = useState<Record<string, number | undefined>>({})
@@ -243,7 +248,7 @@ export default function WellnessCheckPage() {
             </div>
             <div>
               <label htmlFor="wc-dept" className={LABEL} style={LABEL_STYLE}>Department / Branch</label>
-              <input id="wc-dept" type="text" value={department} onChange={(e) => setDepartment(e.target.value)} className={`${CONTROL} w-full`} style={CONTROL_STYLE} placeholder="e.g. OT — Sandbox East" />
+              <input id="wc-dept" type="text" value={department} onChange={(e) => setDepartment(e.target.value)} className={`${CONTROL} w-full`} style={CONTROL_STYLE} placeholder="e.g. OT — Aura Health East" />
             </div>
           </div>
         )}
@@ -265,8 +270,13 @@ export default function WellnessCheckPage() {
                 <span className="text-xs font-bold w-5 shrink-0 pt-px" style={{ color: 'var(--mid-gray)', fontVariantNumeric: 'tabular-nums' }}>{i + 1}.</span>
                 <span>{s.text}</span>
               </p>
-              <div className="pl-7 md:pl-0 shrink-0">
+              <div className="pl-7 md:pl-0 shrink-0 flex items-center gap-3">
                 <Scale value={ratings[s.id]} onChange={(v) => setRating(s.id, v)} label={s.text} />
+                {/* The meaning of the picked number — tooltips don't exist on phones. */}
+                <span className="w-[92px] text-[11.5px] font-semibold" aria-hidden
+                  style={{ color: ratings[s.id] === undefined ? 'var(--mid-gray)' : 'var(--deep-teal)', fontWeight: ratings[s.id] === undefined ? 500 : 600 }}>
+                  {ratings[s.id] === undefined ? 'Not rated' : SCALE_LABELS[ratings[s.id] as number]}
+                </span>
               </div>
             </li>
           ))}
@@ -306,8 +316,12 @@ export default function WellnessCheckPage() {
       {/* Section 5 — Final Reflection */}
       <DashCard title="Final Reflection" icon={<Step n={5} />} description="Overall, how would you rate your wellness this period?">
         <Scale value={overallRating} onChange={setOverallRating} label="Overall wellness this period" size="lg" />
-        <div className="flex justify-between text-[11px] mt-1.5 mb-4" style={{ color: 'var(--mid-gray)' }}>
-          <span>Very Poor</span><span>Excellent</span>
+        <div className="flex justify-between items-baseline text-[11px] mt-1.5 mb-4" style={{ color: 'var(--mid-gray)' }}>
+          <span>Very Poor</span>
+          {overallRating !== undefined && (
+            <span className="text-[12px] font-semibold" style={{ color: 'var(--deep-teal)' }}>{overallRating} · {SCALE_LABELS[overallRating]}</span>
+          )}
+          <span>Excellent</span>
         </div>
         <label htmlFor="wc-notes" className={LABEL} style={LABEL_STYLE}>Anything else you&apos;d like HR to know? {OPTIONAL}</label>
         <textarea
@@ -382,11 +396,19 @@ export default function WellnessCheckPage() {
 
       {/* Error + submit */}
       {error && <Banner tone="error">{error}</Banner>}
-      <div className="rounded-xl px-4 sm:px-5 py-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3" style={CARD_STYLE}>
-        <p className="text-xs leading-snug max-w-md" style={{ color: 'var(--mid-gray)' }}>
+      <div className="sticky bottom-3 z-10 rounded-xl px-4 sm:px-5 py-3.5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 shadow-[0_6px_20px_rgba(23,50,58,0.10)]" style={CARD_STYLE}>
+        <div className="min-w-0 flex-1 max-w-md">
+        <div className="flex items-center gap-2.5 mb-1.5" aria-label={`${answeredCount} of 12 statements rated`}>
+          <div className="h-1.5 flex-1 rounded-full overflow-hidden" style={{ background: 'var(--light-gray)' }}>
+            <div className="h-full rounded-full transition-[width]" style={{ width: `${(answeredCount / 12) * 100}%`, background: answeredCount === 12 ? 'var(--moss)' : 'var(--teal)' }} />
+          </div>
+          <span className="text-[11px] font-semibold tabular-nums" style={{ color: 'var(--charcoal)' }}>{answeredCount}/12 rated</span>
+        </div>
+        <p className="text-xs leading-snug" style={{ color: 'var(--mid-gray)' }}>
           By submitting, you confirm the responses above reflect your honest input. Submitting as <strong style={{ color: 'var(--charcoal)' }}>{submitMode === 'anonymous' ? 'Anonymous' : 'Named'}</strong>.
           {answeredCount === 0 && <> Rate at least one statement in Section 2 to submit.</>}
         </p>
+        </div>
         <button
           onClick={handleSubmit}
           disabled={!canSubmit}
