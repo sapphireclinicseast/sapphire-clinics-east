@@ -3037,9 +3037,12 @@ export default function AccountsReceivablePage() {
         // A collection report may not go out while any session on it has no
         // clinician (Hannah 2026-11-15) — fill them in with the pencil on the
         // Clinician cell first. Applies to the filtered list being downloaded.
+        // Per HMO's report is held to the same rule (Hannah 2026-11-15, "block it in per hmo too").
         const isCollectionView = isFollowUp || isSubUnpaid
-        const noClinician = isCollectionView ? perHmoOrders.filter(o => !(o.clinicianName || '').trim()) : []
-        const noClinicianMsg = `${noClinician.length} session${noClinician.length === 1 ? '' : 's'} in this list ${noClinician.length === 1 ? 'has' : 'have'} no clinician. Fill ${noClinician.length === 1 ? 'it' : 'them'} in before downloading the collection report.`
+        const clinicianLocked = isCollectionView || hmoSubTab === 'per-hmo'
+        const reportWord = isCollectionView ? 'collection report' : 'report'
+        const noClinician = clinicianLocked ? perHmoOrders.filter(o => !(o.clinicianName || '').trim()) : []
+        const noClinicianMsg = `${noClinician.length} session${noClinician.length === 1 ? '' : 's'} in this list ${noClinician.length === 1 ? 'has' : 'have'} no clinician. Fill ${noClinician.length === 1 ? 'it' : 'them'} in before downloading the ${reportWord}.`
         const downloadPdf = async () => {
           setShowDownloadMenu(false)
           if (noClinician.length) { alert(noClinicianMsg); return }
@@ -3261,7 +3264,7 @@ export default function AccountsReceivablePage() {
               <div className="rounded-2xl border px-5 py-3 flex flex-wrap items-center justify-between gap-3" style={{ borderColor: '#fde68a', background: '#fffbeb' }}>
                 <p className="text-sm" style={{ color: '#92400e' }}>
                   <span className="font-semibold">Download is locked — {noClinician.length} session{noClinician.length === 1 ? '' : 's'} without a clinician.</span>{' '}
-                  A collection report can&apos;t go out with a blank clinician. Set each one with the pencil in the Clinician column; Download unlocks once none are blank.
+                  {isCollectionView ? 'A collection report' : 'The report'} can&apos;t go out with a blank clinician. Set each one with the pencil in the Clinician column; Download unlocks once none are blank.
                 </p>
                 {perHmoColSearch.clinician !== '__blank__' && (
                   <button onClick={() => setPerHmoColSearch(prev => ({ ...prev, clinician: '__blank__' }))}
