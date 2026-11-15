@@ -3529,7 +3529,7 @@ function OrdersPanel({ branch, canSelectBranch, focusOrderId, onFocusHandled }: 
   const [editError, setEditError] = useState('')
   const [editPatientResults, setEditPatientResults] = useState<{ id: string; name: string; email?: string }[]>([])
   const [editShowPatientDrop, setEditShowPatientDrop] = useState(false)
-  const [editClinicianResults, setEditClinicianResults] = useState<{ id: string; name: string; department?: string }[]>([])
+  const [editClinicianResults, setEditClinicianResults] = useState<{ id: string; name: string; department?: string; inactive?: boolean }[]>([])
   const [editShowClinicianDrop, setEditShowClinicianDrop] = useState(false)
   const [editClinicianSearch, setEditClinicianSearch] = useState('')
   const [editPatientSearch, setEditPatientSearch] = useState('')
@@ -3610,7 +3610,8 @@ function OrdersPanel({ branch, canSelectBranch, focusOrderId, onFocusHandled }: 
     editClinicianTimer.current = setTimeout(async () => {
       try {
         const qb = branch === 'SANDBOX_EAST' ? 'SBEA' : branch === 'SANDBOX_GREENHILLS' ? 'SBGH' : ''
-        const url = `/api/pos/staff?search=${encodeURIComponent(editClinicianSearch)}&branch=${qb}`
+        // Editing an existing order: staff who have since left can still be tagged.
+        const url = `/api/pos/staff?search=${encodeURIComponent(editClinicianSearch)}&branch=${qb}&includeInactive=1`
         const r = await fetch(url)
         const d = await r.json()
         const results = Array.isArray(d) ? d : []
@@ -4618,6 +4619,7 @@ function OrdersPanel({ branch, canSelectBranch, focusOrderId, onFocusHandled }: 
                         <button key={c.id} onClick={() => { setEditClinician(c.name); setEditClinicianSearch(''); setEditShowClinicianDrop(false) }}
                           className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50" style={{ color: 'var(--charcoal)' }}>
                           {c.name} {c.department ? <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>({c.department})</span> : null}
+                          {c.inactive && <span className="ml-1.5 px-1.5 py-0.5 rounded-full text-[10px] font-semibold" style={{ background: '#f1f5f9', color: '#64748b' }}>inactive</span>}
                         </button>
                       ))}
                     </div>

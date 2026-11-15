@@ -26,6 +26,10 @@ export async function GET(req: Request) {
   const { searchParams } = new URL(req.url)
   const search = searchParams.get('search') || ''
   const branch = searchParams.get('branch') || ''
+  // includeInactive=1: also staff who have left (tagged inactive) — used when
+  // editing an existing order, e.g. filling the clinician on an old session
+  // (Hannah 2026-11-15). New orders at the counter keep current staff only.
+  const includeInactive = searchParams.get('includeInactive') === '1'
 
   try {
     const allowed = allowedBranches((session.user as { role?: string }).role || '')
@@ -36,6 +40,7 @@ export async function GET(req: Request) {
     const params = new URLSearchParams()
     if (search.trim()) params.set('search', search)
     if (branch) params.set('branch', branch)
+    if (includeInactive) params.set('includeInactive', 'true')
 
     const res = await fetch(
       `${MARKETING_HUB_URL}/api/staff/external?${params.toString()}`,
@@ -59,7 +64,20 @@ export async function GET(req: Request) {
       department: s.department || '',
       branch: (s.branch || '') as string,
       jobTitle: s.jobTitle || '',
+      ...(s.active === false ? { inactive: true } : {}),
     }))
+    // An interbranch merge leaves the absorbed profile behind as inactive —
+    // drop an inactive entry when the same person is listed active.
+    if (includeInactive) {
+      const activeNames = new Set(staff.filter((x: { inactive?: boolean }) => !x.inactive).map((x: { name: string }) => x.name))
+      const seen = new Set<string>()
+      staff = staff.filter((x: { name: string; inactive?: boolean }) => {
+        if (x.inactive && activeNames.has(x.name)) return false
+        if (x.inactive && seen.has(x.name)) return false
+        seen.add(x.name)
+        return true
+      })
+    }
 
     // Verdana staff are NOT in Operations (they do no therapy sessions) — they
     // live in the HR Platform. Merge them in so they appear e.g. in the asset

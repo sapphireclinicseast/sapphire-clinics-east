@@ -17,12 +17,14 @@ export async function GET() {
   if (!session?.user || !WRITE_ROLES.includes(session.user.role as string)) {
     return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 })
   }
+  // Every clinician on file, inactive ones included (Hannah 2026-11-15: "allow
+  // me to tag even inactive staff") — old sessions are filled in long after the
+  // clinician has left.
   const consultants = await prisma.consultant.findMany({
-    where: { isActive: true },
     select: { name: true },
     orderBy: { name: 'asc' },
   })
-  return NextResponse.json({ names: consultants.map(c => c.name) })
+  return NextResponse.json({ names: [...new Set(consultants.map(c => c.name.trim()).filter(Boolean))] })
 }
 
 /**
