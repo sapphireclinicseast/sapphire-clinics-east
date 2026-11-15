@@ -33,6 +33,7 @@ import {
 import BreakdownDonut, { type DonutItem } from './BreakdownDonut'
 import { DIRECTORY_WRITE_ROLES } from '@/lib/hmo-directory'
 import { NOT_DUP_ROLES, notDuplicateTwins } from '@/lib/hmo-not-duplicate'
+import { CANCEL_SESSION_ROLES, AR_CANCEL_PREFIX } from '@/lib/hmo-cancel-shared'
 import ExpandablePanel from './ExpandablePanel'
 import PaymentsCard from './PaymentsCard'
 import { useResizableColumns, ResizableColgroup, ColResizeHandle } from '@/components/useResizableColumns'
@@ -1418,8 +1419,11 @@ export default function AccountsReceivablePage() {
      Session Adjustments (lib/hmo-session-void, shown as "Cancelled"), and PF
      already paid on it shows in Payroll → HMO PF Adjustments to recover; PF
      not yet paid simply drops off the clinician's next payslip. */
-  const CANCEL_SESSION_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN']
   const canCancelSession = CANCEL_SESSION_ROLES.includes(role)
+  // The last session cancelled here — offered for Undo until dismissed.
+  const [lastCancelled, setLastCancelled] = useState<AROrder | null>(null)
+  const [undoBusy, setUndoBusy] = useState(false)
+  const [undoError, setUndoError] = useState('')
   const [cancelFor, setCancelFor] = useState<AROrder | null>(null)
   const [cancelReason, setCancelReason] = useState('')
   const [cancelBusy, setCancelBusy] = useState(false)
@@ -1442,18 +1446,41 @@ export default function AccountsReceivablePage() {
       const res = await fetch(`/api/pos/orders/${cancelFor.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'void', reason: `Cancelled in AR — ${cancelReason.trim()}` }),
+        body: JSON.stringify({ action: 'void', reason: `${AR_CANCEL_PREFIX}${cancelReason.trim()}` }),
       })
       const data = await res.json().catch(() => ({}))
       if (!res.ok) { setCancelError(data.error || 'Could not cancel the session'); return }
       const goneId = cancelFor.id
       setOrders(prev => prev.filter(o => o.id !== goneId))
       setPerHmoFetched(prev => prev ? prev.filter(o => o.id !== goneId) : prev)
+      setLastCancelled(cancelFor); setUndoError('')
       setCancelFor(null)
     } catch {
       setCancelError('Could not cancel — check your connection and try again')
     } finally {
       setCancelBusy(false)
+    }
+  }
+
+  // Undo "Mark cancelled": puts the session back (api/accounts-receivable/uncancel).
+  const undoCancel = async () => {
+    if (!lastCancelled) return
+    setUndoBusy(true); setUndoError('')
+    try {
+      const res = await fetch('/api/accounts-receivable/uncancel', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ orderId: lastCancelled.id }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) { setUndoError(data.error || 'Could not undo'); return }
+      const back = lastCancelled
+      const putBack = (list: AROrder[]) => list.some(o => o.id === back.id) ? list : [...list, back]
+      setOrders(putBack)
+      setPerHmoFetched(prev => prev ? putBack(prev) : prev)
+      setLastCancelled(null)
+    } catch {
+      setUndoError('Could not undo — check your connection and try again')
+    } finally {
+      setUndoBusy(false)
     }
   }
 
@@ -4456,6 +4483,21 @@ export default function AccountsReceivablePage() {
         </div>
       )}
 
+      {/* Undo strip for the session just cancelled */}
+      {lastCancelled && (
+        <div className="fixed bottom-5 left-1/2 -translate-x-1/2 z-50 flex flex-wrap items-center gap-3 rounded-xl px-4 py-3 shadow-xl max-w-[92vw]"
+          style={{ background: '#1f2937', color: 'white' }} role="status">
+          <span className="text-sm">Session #{lastCancelled.orderNumber} · {lastCancelled.patientName} cancelled.</span>
+          {undoError && <span className="text-xs" style={{ color: '#fca5a5' }}>{undoError}</span>}
+          <button type="button" onClick={undoCancel} disabled={undoBusy}
+            className="px-3 py-1 rounded-lg text-sm font-semibold disabled:opacity-50" style={{ background: 'white', color: '#1f2937' }}>
+            {undoBusy ? 'Undoing…' : 'Undo'}
+          </button>
+          <button type="button" onClick={() => setLastCancelled(null)} disabled={undoBusy} aria-label="Dismiss"
+            className="text-sm px-1 opacity-70 hover:opacity-100">✕</button>
+        </div>
+      )}
+
       {/* Mark cancelled — reason first, then the POS void (For Follow Up / Per HMO) */}
       {cancelFor && (() => {
         const hmoAmt = cancelFor.payments.reduce((s, p) => s + toNum(p.amount), 0)
@@ -4475,7 +4517,7 @@ export default function AccountsReceivablePage() {
             <div className="px-5 py-4 space-y-3">
               <ul className="text-xs space-y-1 list-disc pl-4" style={{ color: 'var(--charcoal)' }}>
                 <li>POS order #{cancelFor.orderNumber} is voided: it leaves AR and the books (the sale and the HMO receivable reverse).</li>
-                <li>It shows in <strong>Session Adjustments</strong> as Cancelled, with your reason.</li>
+                <li>It shows in <strong>Session Adjustments</strong> as Cancelled, with your reason — and can be undone there (or right after, from the Undo bar).</li>
                 <li>PF: if the clinician hasn&apos;t been paid for it yet, it drops off their next payslip. If it was already paid, it shows in Payroll → HMO PF Adjustments as PF to recover.</li>
               </ul>
               {otherAmt > 0 && (

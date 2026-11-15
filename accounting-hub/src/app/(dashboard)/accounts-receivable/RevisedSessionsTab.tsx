@@ -9,8 +9,11 @@
 // through "Decrease due to HMO Payment" (POS → Orders, or Payment History →
 // Record Payment) or by voiding the order in POS — so the sale, the GL and the
 // payroll PF alert all move together. Payroll roles also see the PF released on
-// each session that is still to be recovered.
+// each session that is still to be recovered. The one write: sessions cancelled
+// from AR ("Mark cancelled", 2026-11-15) carry an Undo that puts them back.
 
+import { useSession } from 'next-auth/react'
+import { CANCEL_SESSION_ROLES, isArCancelNote } from '@/lib/hmo-cancel-shared'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { formatCurrency } from '@/lib/utils'
 import { branchLabel } from '@/lib/branch'
@@ -43,11 +46,14 @@ interface RevisedRow {
 const KIND_LABEL: Record<RevisedRow['kind'], string> = { REVISED: 'Amount revised', VOIDED: 'Voided' }
 // A void made with AR's "Mark cancelled" (reason "Cancelled in AR — …") reads as Cancelled.
 const kindLabel = (r: Pick<RevisedRow, 'kind' | 'note'>) =>
-  r.kind === 'VOIDED' && /^Order voided: Cancelled in AR/.test(r.note || '') ? 'Cancelled' : KIND_LABEL[r.kind]
+  r.kind === 'VOIDED' && isArCancelNote(r.note) ? 'Cancelled' : KIND_LABEL[r.kind]
 
 const fmtDate = (d: string) => new Date(d).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })
 
 export default function RevisedSessionsTab({ branch }: { branch: string }) {
+  const { data: session } = useSession()
+  const canUndoCancel = CANCEL_SESSION_ROLES.includes((session?.user as { role?: string })?.role || '')
+  const [undoing, setUndoing] = useState<string | null>(null)
   const [rows, setRows] = useState<RevisedRow[]>([])
   const [showPf, setShowPf] = useState(false)
   const [fKind, setFKind] = useState<'' | RevisedRow['kind']>('')
@@ -71,6 +77,21 @@ export default function RevisedSessionsTab({ branch }: { branch: string }) {
   }, [branch])
 
   useEffect(() => { load() }, [load])
+
+  // Undo AR's "Mark cancelled": the session goes back to AR, PF and the books.
+  const undoCancel = async (r: RevisedRow) => {
+    if (!confirm(`Undo the cancel of #${r.orderNumber} (${r.patient})? The session goes back to AR, its PF stands again, and this row is removed.`)) return
+    setUndoing(r.id)
+    try {
+      const res = await fetch('/api/accounts-receivable/uncancel', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ orderId: r.orderId }),
+      })
+      const d = await res.json().catch(() => ({}))
+      if (!res.ok) { alert(d.error || 'Could not undo'); return }
+      await load()
+    } catch { alert('Could not undo — check your connection and try again') }
+    finally { setUndoing(null) }
+  }
 
   const hmos = useMemo(() => [...new Set(rows.map(r => r.hmo).filter(Boolean))].sort(), [rows])
   const shown = useMemo(() => {
@@ -186,6 +207,14 @@ export default function RevisedSessionsTab({ branch }: { branch: string }) {
                     title={r.kind === 'VOIDED' ? (r.note || 'Order voided') : 'Decreased to what the HMO paid'}>
                     {kindLabel(r)}
                   </span>
+                  {canUndoCancel && r.kind === 'VOIDED' && isArCancelNote(r.note) && (
+                    <button type="button" onClick={() => undoCancel(r)} disabled={undoing === r.id}
+                      className="ml-1.5 px-2 py-0.5 rounded-full text-[10px] font-semibold border whitespace-nowrap hover:bg-teal-50 disabled:opacity-50"
+                      title="Cancelled by mistake? Put the session back in AR — its PF and the books follow."
+                      style={{ borderColor: 'var(--teal)', color: 'var(--teal)', background: 'white' }}>
+                      {undoing === r.id ? 'Undoing…' : 'Undo'}
+                    </button>
+                  )}
                   {(r.reenteredAs?.length || 0) > 0 && (
                     <span className="block text-[11px] mt-0.5" style={{ color: 'var(--mid-gray)' }}
                       title="Re-entered as a corrected order for the same patient, day and clinician. The PF paid on the voided order stands for it, so nothing is recovered.">
