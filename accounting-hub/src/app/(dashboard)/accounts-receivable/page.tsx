@@ -4308,7 +4308,8 @@ export default function AccountsReceivablePage() {
                   ? source.filter(o => o.payments.some(p => selectedIds.includes(p.walletId || '')))
                   : source.filter(o => o.arPaymentItems.length === 0 && o.payments.some(p => selectedIds.includes(p.walletId || '')))
                 const visibleOrders = eligibleOrders.filter(o => {
-                  if (!inTagDateRange(o.transactionDate)) return false
+                  // In range on the session date or its Change Date (declared LOA date).
+                  if (!inTagDateRange(o.transactionDate) && !(o.arCustomDate && inTagDateRange(o.arCustomDate))) return false
                   const amt = toNum(o.payments.find(p => selectedIds.includes(p.walletId || ''))?.amount)
                   return tagTextOrAmountMatches(`${o.patientName} ${o.items.map(i => i.name).join(' ')}`, [amt])
                 })
@@ -4327,6 +4328,13 @@ export default function AccountsReceivablePage() {
                             onChange={() => toggleOrderSelect(o.id)}
                             className="rounded" />
                           <span style={{ color: 'var(--mid-gray)' }}>{formatDate(o.transactionDate)}</span>
+                          {o.arCustomDate && (
+                            // Change Date = the declared LOA date (Hannah 2026-11-15) — what the HMO's payment advice lists.
+                            <span className="px-1.5 py-0.5 rounded-full text-[10px] font-semibold whitespace-nowrap" title="Change Date — the declared LOA date"
+                              style={{ background: '#eff6ff', color: '#1d4ed8' }}>
+                              LOA {formatDate(o.arCustomDate)}
+                            </span>
+                          )}
                           <span className="flex-1" style={{ color: 'var(--charcoal)' }}>{o.patientName} — {o.items.map(i => i.name).join(', ')}</span>
                           <span className="font-medium">{formatCurrency(toNum(amt?.amount))}</span>
                           {tab === 'HMO' && canSettleHmo && toNum(amt?.amount) > 0 && (

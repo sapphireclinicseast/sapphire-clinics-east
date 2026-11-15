@@ -129,11 +129,13 @@ export async function GET(req: Request) {
           items: {
             include: {
               // unitPay*: the order-edit form warns before a second line that pays the same PF.
-              service: { select: { id: true, name: true, department: true, revenueType: true, unitPayId: true, unitPayEnabled: true, unitPay: { select: { name: true } } } },
+              service: { select: { id: true, name: true, department: true, revenueType: true, unitPayId: true, unitPayEnabled: true, hmoPaysClinicianDirect: true, unitPay: { select: { name: true } } } },
             },
           },
           payments: true,
-          arPaymentItems: { select: { paymentId: true } },
+          // Which AR collection (Payment History → Record Payment) settled the
+          // session — the POS shows "HMO paid · date" from it (Hannah 2026-11-15).
+          arPaymentItems: { select: { paymentId: true, payment: { select: { paymentDate: true, notes: true, wallet: { select: { patientName: true } } } } } },
           hmoSettlements: {
             where: decreaseRowsOnly,
             select: { id: true, billedAmount: true, paidAmount: true, difference: true, reference: true, note: true, createdAt: true, createdByName: true },

@@ -132,10 +132,11 @@ interface Order {
   returnedByBuyer?: boolean
   paymentStatus?: string
   paymentDate?: string | null
-  items: { id: string; name: string; quantity: number; unitPrice: string | number; lineTotal: string | number; serviceId?: string; inventoryItemId?: string; service?: { department?: string; revenueType?: string; unitPayId?: string | null; unitPayEnabled?: boolean | null; unitPay?: { name: string } | null } | null }[]
+  items: { id: string; name: string; quantity: number; unitPrice: string | number; lineTotal: string | number; serviceId?: string; inventoryItemId?: string; service?: { department?: string; revenueType?: string; unitPayId?: string | null; unitPayEnabled?: boolean | null; hmoPaysClinicianDirect?: boolean; unitPay?: { name: string } | null } | null }[]
   payments: { id: string; method: string; amount: string | number; paymentModeId?: string | null; walletId?: string; reference?: string; loaNumber?: string | null }[]
-  arPaymentItems?: { paymentId: string }[]
+  arPaymentItems?: { paymentId: string; payment?: { paymentDate: string; notes: string | null; wallet?: { patientName: string | null } | null } | null }[]
   hmoSettlements?: HmoSettlementNote[]
+  hmoCoursedThroughClinic?: boolean
   referrer?: { id: string; name: string } | null
   createdBy?: { name: string }
   [key: string]: unknown
@@ -624,6 +625,31 @@ function normalizeFileUrl(url: string): string {
 }
 
 /* ─────────────────────────── MAIN COMPONENT ─────────────────────────── */
+
+/** HMO/GL collection status of an order, from the AR payment tagging
+ *  (Payment History → Record Payment): paid (when, by whom, AR ref), awaiting,
+ *  or an HMO consult the HMO pays the doctor for (not our receivable). */
+function arCollectionStatus(o: Order): { label: string; tone: 'paid' | 'awaiting' | 'doctor'; title: string } | null {
+  const ar = o.payments.find(p => p.method === 'HMO' || p.method === 'GL')
+  if (!ar || o.status === 'VOIDED') return null
+  const item = (o.arPaymentItems || [])[0]
+  if (item) {
+    const pay = item.payment
+    const when = pay?.paymentDate ? new Date(pay.paymentDate).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'Asia/Manila' }) : ''
+    const ref = /^[A-Z]+-AR\d{2}-\d+/.exec(pay?.notes || '')?.[0] || ''
+    const who = pay?.wallet?.patientName || ar.method
+    return { label: `${ar.method} paid${when ? ` · ${when}` : ''}`, tone: 'paid', title: `Paid to us by ${who}${when ? ` on ${when}` : ''}${ref ? ` (${ref})` : ''} — tagged in Payment History` }
+  }
+  if (ar.method === 'HMO' && !o.hmoCoursedThroughClinic && o.items.length > 0 && o.items.every(i => i.service?.hmoPaysClinicianDirect)) {
+    return { label: 'HMO pays doctor', tone: 'doctor', title: 'The HMO pays the clinician directly — not our receivable' }
+  }
+  return { label: `${ar.method} unpaid`, tone: 'awaiting', title: `Not yet tagged as paid by the ${ar.method === 'HMO' ? 'HMO' : 'GL issuer'} in Payment History` }
+}
+const AR_TONE = {
+  paid: { background: '#dcfce7', color: '#166534' },
+  awaiting: { background: '#fef3c7', color: '#92400e' },
+  doctor: { background: '#f1f5f9', color: '#64748b' },
+} as const
 
 export default function POSPage() {
   const { data: session } = useSession()
@@ -4311,6 +4337,14 @@ function OrdersPanel({ branch, canSelectBranch, focusOrderId, onFocusHandled }: 
                     </td>
                     <td className="px-4 py-3 text-xs" style={{ color: 'var(--mid-gray)' }}>
                       {o.payments.map(p => p.method).join(', ')}
+                      {(() => {
+                        const st = arCollectionStatus(o)
+                        return st ? (
+                          <span className="block mt-1 w-fit px-1.5 py-0.5 rounded-full text-[10px] font-semibold whitespace-nowrap" style={AR_TONE[st.tone]} title={st.title}>
+                            {st.label}
+                          </span>
+                        ) : null
+                      })()}
                     </td>
                     <td className="px-4 py-3">
                       <span className="px-2 py-1 rounded-full text-xs font-semibold" style={{ background: o.returnedByBuyer ? '#d1fae5' : badge.bg, color: o.returnedByBuyer ? '#065f46' : badge.color }}>
@@ -4488,6 +4522,12 @@ function OrdersPanel({ branch, canSelectBranch, focusOrderId, onFocusHandled }: 
                       <span className="font-medium" style={{ color: 'var(--charcoal)' }}>{formatCurrency(toNum(p.amount))}</span>
                     </div>
                   ))}
+                  {(() => {
+                    const st = arCollectionStatus(viewOrder)
+                    return st ? (
+                      <p className="text-xs px-3 py-1.5 rounded-lg font-medium" style={AR_TONE[st.tone]}>{st.tone === 'paid' ? st.title : st.label === 'HMO pays doctor' ? st.title : `${st.title}.`}</p>
+                    ) : null
+                  })()}
                 </div>
               </div>
 
