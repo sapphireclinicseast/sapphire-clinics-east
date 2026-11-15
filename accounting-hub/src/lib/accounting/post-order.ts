@@ -70,10 +70,18 @@ export interface PostOrderResult {
 export async function orderGlNetCents(prisma: Db, orderId: string): Promise<number> {
   const jes = await prisma.journalEntry.findMany({
     where: { referenceId: orderId, referenceType: { in: ['POS_ORDER', 'POS_ORDER_REVERSAL'] } },
-    select: { referenceType: true, lines: { select: { debit: true } } },
+    select: { referenceType: true, lines: { select: { debit: true, credit: true } } },
   })
+  // Size each entry by its LARGER side. Older forwards were stored up to a
+  // centavo out of balance (#4159: DR 2,363.13 + 11.88 = 2,375.01 vs CR
+  // 2,375.00); their reversal swaps the sides, so a debit-only sum left the
+  // cancelled pair at +1 centavo — "still posted" — and the re-complete after a
+  // reopen skipped its re-post, dropping the sale (#4159, #9023, #9328). The
+  // larger side is identical for an entry and its mirror, so a pair nets to 0.
   return jes.reduce((net, je) => {
-    const totalCents = je.lines.reduce((s, l) => s + Math.round(Number(l.debit) * 100), 0)
+    const dr = je.lines.reduce((s, l) => s + Math.round(Number(l.debit) * 100), 0)
+    const cr = je.lines.reduce((s, l) => s + Math.round(Number(l.credit) * 100), 0)
+    const totalCents = Math.max(dr, cr)
     return net + (je.referenceType === 'POS_ORDER' ? totalCents : -totalCents)
   }, 0)
 }
