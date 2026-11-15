@@ -1,7 +1,7 @@
 'use client'
 
 import { branchShort } from '@/lib/branch'
-import { GL_AGENCIES } from '@/lib/gl-stage'
+import { GlAgencySelect, useGlAgencies } from '@/components/GlAgencySelect'
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { useSession } from 'next-auth/react'
 import { redirect, useSearchParams } from 'next/navigation'
@@ -5173,6 +5173,8 @@ function OrdersPanel({ branch, canSelectBranch, focusOrderId, onFocusHandled }: 
    ══════════════════════════════════════════════════════════════ */
 
 function WalletPanel({ session }: { session: { user?: Record<string, unknown> } | null }) {
+  // GL agency list (STAR, ODESFA, LGU + any added) — shared with Detailed GL.
+  const { agencies: glAgencies, add: addGlAgency } = useGlAgencies()
   const [walletTypeFilter, setWalletTypeFilter] = useState('VIP')
   const [search, setSearch] = useState('')
   const [wallets, setWallets] = useState<DigitalWallet[]>([])
@@ -6796,12 +6798,10 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
                 <>
                   <div>
                     <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Agency *</label>
-                    {/* Hannah 11/15: STAR, ODESFA or LGU — the same list as Detailed GL's Agency column. */}
-                    <select value={createForm.agency} onChange={e => setCreateForm({ ...createForm, agency: e.target.value })}
-                      className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none bg-white" style={{ borderColor: 'var(--light-gray)' }}>
-                      <option value="">— pick the agency —</option>
-                      {GL_AGENCIES.map(a => <option key={a} value={a}>{a}</option>)}
-                    </select>
+                    {/* Hannah 11/15: STAR, ODESFA, LGU or an added agency — the same list as Detailed GL's Agency column. */}
+                    <GlAgencySelect value={createForm.agency} onChange={v => setCreateForm({ ...createForm, agency: v })}
+                      agencies={glAgencies} onAdded={addGlAgency} blankLabel="— pick the agency —"
+                      className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none bg-white" style={{ borderColor: 'var(--light-gray)' }} />
                     <p className="text-xs mt-1" style={{ color: 'var(--mid-gray)' }}>The issuing agency of this Guarantee Letter</p>
                   </div>
                   <div>
@@ -7050,11 +7050,9 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
                       </div>
                       <div>
                         <label className="font-medium mb-1 block" style={{ color: 'var(--mid-gray)' }}>Agency</label>
-                        <select value={walletEditForm.agency || ''} onChange={e => setWalletEditForm(p => ({ ...p, agency: e.target.value }))}
-                          className="w-full px-3 py-2 rounded-xl border text-sm outline-none bg-white" style={{ borderColor: 'var(--light-gray)' }}>
-                          <option value="">— not set —</option>
-                          {GL_AGENCIES.map(a => <option key={a} value={a}>{a}</option>)}
-                        </select>
+                        <GlAgencySelect value={walletEditForm.agency || ''} onChange={v => setWalletEditForm(p => ({ ...p, agency: v }))}
+                          agencies={glAgencies} onAdded={addGlAgency} blankLabel="— not set —"
+                          className="w-full px-3 py-2 rounded-xl border text-sm outline-none bg-white" style={{ borderColor: 'var(--light-gray)' }} />
                       </div>
                       <div>
                         <div className="flex items-center justify-between mb-1">

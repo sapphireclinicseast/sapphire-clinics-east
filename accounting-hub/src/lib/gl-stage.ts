@@ -10,13 +10,42 @@ export type GlStage = typeof GL_STAGES[number]
 // batches); it was typed as "OP" until 11/15, when every OP letter became STAR.
 // LGU (added the same day, "yes make it LGU") is a local government's letter,
 // e.g. the Municipality of Cainta's.
+//
+// The list is open (Hannah, 11/15: "allow this to be edited too if we wanna add
+// a different agency later on"): these three are always offered, and any other
+// agency typed on a letter or wallet joins every dropdown from then on — the
+// list is the defaults plus whatever the data already uses (/api/accounts-
+// receivable/gl-agencies), so there is nothing separate to keep in sync.
 export const GL_AGENCIES = ['STAR', 'ODESFA', 'LGU'] as const
-export type GlAgency = typeof GL_AGENCIES[number]
-export const AGENCY_ERROR = `Agency must be one of: ${GL_AGENCIES.join(', ')}`
+export type GlAgency = string
+export const AGENCY_ERROR = 'Agency must be 2–40 characters: letters, numbers, spaces and & . - / ( )'
 
-/** Blank clears; anything else must be one of GL_AGENCIES. */
+/** How an agency name is stored: trimmed, single-spaced, upper case. */
+export function normalizeAgency(v: unknown): string {
+  return String(v ?? '').trim().replace(/\s+/g, ' ').toUpperCase()
+}
+
+/** Blank clears; anything else must read as an agency name (see AGENCY_ERROR). */
 export function parseAgency(v: unknown): { ok: true; value: GlAgency | null } | { ok: false } {
-  const s = String(v ?? '').trim().toUpperCase()
+  const s = normalizeAgency(v)
   if (!s) return { ok: true, value: null }
-  return (GL_AGENCIES as readonly string[]).includes(s) ? { ok: true, value: s as GlAgency } : { ok: false }
+  return /^[A-Z0-9][A-Z0-9 &.\-/()']{1,39}$/.test(s) ? { ok: true, value: s } : { ok: false }
+}
+
+/** The dropdown list: STAR, ODESFA, LGU first, then every other agency in use, A–Z. */
+export function agencyOptions(used: Iterable<string | null | undefined>): string[] {
+  const extra = new Set<string>()
+  for (const u of used) {
+    const s = normalizeAgency(u)
+    if (s && !(GL_AGENCIES as readonly string[]).includes(s)) extra.add(s)
+  }
+  return [...GL_AGENCIES, ...[...extra].sort()]
+}
+
+/** Sort key for the Agency column: the dropdown's order, letters with no agency last. */
+export function agencySortKey(agency: string | null | undefined): string {
+  const s = normalizeAgency(agency)
+  if (!s) return '2'
+  const i = (GL_AGENCIES as readonly string[]).indexOf(s)
+  return i >= 0 ? `0${i}` : `1${s}`
 }

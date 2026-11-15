@@ -6,7 +6,8 @@ import { formatCurrency } from '@/lib/utils'
 import { branchLabel } from '@/lib/branch'
 import { downloadXlsx, downloadReportPdf } from '@/lib/export'
 import ExpandablePanel from './ExpandablePanel'
-import { GL_STAGES, GL_AGENCIES } from '@/lib/gl-stage'
+import { GL_STAGES, agencySortKey } from '@/lib/gl-stage'
+import { GlAgencySelect, useGlAgencies } from '@/components/GlAgencySelect'
 import { num, buildRows, arRunningDays, soaSubmittedOn, avgArRunningDays, posBalanceOf, drawnDown, type GlCaseWallet, type GlCaseRow, type GlLetterRow } from '@/lib/gl-letters'
 
 export type { GlCaseWallet, GlCaseRow } from '@/lib/gl-letters'
@@ -306,8 +307,8 @@ function sortValue(r: Row, k: ColKey): string | number {
   switch (k) {
     // Process order (STAR OFFICE first, PAID last), letters with no stage after them.
     case 'stage': { const i = (GL_STAGES as readonly string[]).indexOf(r.glStage || ''); return i < 0 ? GL_STAGES.length : i }
-    // STAR, ODESFA, LGU, then letters with no agency.
-    case 'agency': { const i = (GL_AGENCIES as readonly string[]).indexOf(r.agency || ''); return i < 0 ? GL_AGENCIES.length : i }
+    // STAR, ODESFA, LGU, then any added agency A–Z, then letters with no agency.
+    case 'agency': return agencySortKey(r.agency)
     case 'name': return r.patientName || ''
     case 'branch': return branchLabel(r.branch) || ''
     case 'linked': return r.wallet ? 'tagged' : (r.caseId ? 'needs GL wallet in POS' : 'POS')
@@ -374,6 +375,9 @@ export default function DetailedGl({
     }),
     [wallets, glCases, stageEdits, agencyEdits],
   )
+  // The agency list: STAR, ODESFA, LGU plus any agency already on a letter;
+  // "+ Add agency…" in a dropdown adds another (Hannah 11/15).
+  const { agencies, add: addAgency } = useGlAgencies(allRows.map(r => r.agency))
   const saveAgency = async (r: Row, value: string) => {
     const agency = value || null
     setStageError('')
@@ -622,7 +626,7 @@ export default function DetailedGl({
                   className="mt-1 w-full min-w-[70px] px-1 py-0.5 rounded border text-[10px] outline-none font-normal bg-white"
                   style={{ borderColor: 'var(--light-gray)', color: filters.agency ? 'var(--charcoal)' : 'var(--mid-gray)' }}>
                   <option value="">All</option>
-                  {GL_AGENCIES.map(a => <option key={a} value={a}>{a}</option>)}
+                  {agencies.map(a => <option key={a} value={a}>{a}</option>)}
                   <option value="—">Not set</option>
                 </select>
               ) : (
@@ -688,13 +692,10 @@ export default function DetailedGl({
                     })()
                   : c.key === 'agency'
                   ? (canWrite && (r.caseId || r.wallet)
-                      ? <select value={r.agency || ''} onChange={e => saveAgency(r, e.target.value)}
-                          aria-label={`Agency for ${r.patientName}`}
+                      ? <GlAgencySelect value={r.agency || ''} onChange={v => saveAgency(r, v)} agencies={agencies} onAdded={addAgency}
+                          ariaLabel={`Agency for ${r.patientName}`} blankLabel="— set agency —"
                           className="px-1.5 py-0.5 rounded border text-[11px] font-semibold outline-none bg-white"
-                          style={{ borderColor: r.agency ? 'var(--teal)' : 'var(--light-gray)', color: r.agency ? 'var(--deep-teal)' : 'var(--mid-gray)' }}>
-                          <option value="">— set agency —</option>
-                          {GL_AGENCIES.map(a => <option key={a} value={a}>{a}</option>)}
-                        </select>
+                          style={{ borderColor: r.agency ? 'var(--teal)' : 'var(--light-gray)', color: r.agency ? 'var(--deep-teal)' : 'var(--mid-gray)' }} />
                       : <span className="text-[11px] font-semibold">{r.agency || '—'}</span>)
                   : c.key === 'drive'
                   ? (r.files.length
@@ -979,13 +980,10 @@ export default function DetailedGl({
           </label>
           <label className="flex items-center gap-1.5 text-xs" style={{ color: 'var(--mid-gray)' }}>
             Agency
-            <select value={bulkAgency} onChange={e => setBulkAgency(e.target.value)} disabled={bulkBusy}
+            <GlAgencySelect value={bulkAgency} onChange={setBulkAgency} disabled={bulkBusy} agencies={agencies} onAdded={addAgency}
+              blankLabel="— no change —" extra={<option value={CLEAR_STAGE}>Clear the agency (Not set)</option>}
               className="px-2 py-1 rounded-lg border text-xs font-semibold outline-none bg-white"
-              style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}>
-              <option value="">— no change —</option>
-              {GL_AGENCIES.map(a => <option key={a} value={a}>{a}</option>)}
-              <option value={CLEAR_STAGE}>Clear the agency (Not set)</option>
-            </select>
+              style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }} />
           </label>
           <label className="flex items-center gap-1.5 text-xs" style={{ color: 'var(--mid-gray)' }}>
             GL released
@@ -1041,16 +1039,14 @@ export default function DetailedGl({
   )
 }
 
-/** STAR, ODESFA or LGU — the same choices as the table's Agency column. */
+/** STAR, ODESFA, LGU or any added agency — the same choices as the table's Agency column. */
 function AgencyField({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const { agencies, add } = useGlAgencies([value])
   return (
     <div>
       <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Agency</label>
-      <select value={value} onChange={e => onChange(e.target.value)}
-        className="w-full px-3 py-2 rounded-xl border text-sm outline-none bg-white" style={{ borderColor: 'var(--light-gray)' }}>
-        <option value="">— not set —</option>
-        {GL_AGENCIES.map(a => <option key={a} value={a}>{a}</option>)}
-      </select>
+      <GlAgencySelect value={value} onChange={onChange} agencies={agencies} onAdded={add} blankLabel="— not set —"
+        className="w-full px-3 py-2 rounded-xl border text-sm outline-none bg-white" style={{ borderColor: 'var(--light-gray)' }} />
       <p className="text-[10px] mt-0.5" style={{ color: 'var(--mid-gray)' }}>The office that issued the letter</p>
     </div>
   )

@@ -986,7 +986,7 @@ model DigitalWallet {
   totalGlAmount    Decimal? // GL wallets: full approved amount (for AR — different from balance which tracks remaining usable amount)
   attachmentUrl    String? // Uploaded proof — legacy single-file field (kept for backward compat)
   attachmentUrls   Json? // GL wallets: multi-file proof URLs stored as JSON array
-  agency           String? // GL wallets: issuing agency — STAR | ODESFA | LGU (lib/gl-stage GL_AGENCIES)
+  agency           String? // GL wallets: issuing agency — STAR | ODESFA | LGU or any added one (lib/gl-stage)
   diagnosis        String? // GL wallets: patient diagnosis from CRM (snapshot at creation)
   approvedServices Json? // GL wallets: approved service types (e.g. ["PT","OT","SLP"])
   soaStatus        String?      @default("With GL/No SOA") // GL wallets: "With GL/No SOA" blocks checkout; "With GL and SOA" allows it
@@ -1113,7 +1113,7 @@ model GlCase {
   payoutBatch       String?
   qbEntry           String?
   glLetterNo        String? // GL No. printed on the OP guarantee letter
-  agency            String? // STAR | ODESFA | LGU — the issuing office; a tagged case falls back to its wallet's
+  agency            String? // STAR | ODESFA | LGU or any added agency — the issuing office; a tagged case falls back to its wallet's
   /// Cheque date for an untagged case. A tagged one takes its payment from ARPayment.
   paidAt            DateTime?
   notes             String?

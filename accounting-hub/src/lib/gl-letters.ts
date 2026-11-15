@@ -39,7 +39,7 @@ export interface GlCaseWallet {
   qbEntry?: string | null
   glLetterNo?: string | null
   glStage?: string | null
-  /** Issuing office: STAR, ODESFA or LGU (lib/gl-stage GL_AGENCIES). */
+  /** Issuing office: STAR, ODESFA, LGU or any added agency (lib/gl-stage). */
   agency?: string | null
   /** True when any order has been billed against the letter. */
   hasOrders?: boolean
