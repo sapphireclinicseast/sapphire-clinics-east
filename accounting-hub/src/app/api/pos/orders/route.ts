@@ -9,6 +9,7 @@ import { consumeFifoLots, recalcWeightedUnitCost } from '@/lib/fifo'
 import { postJournalEntry, UnbalancedJournalEntryError } from '@/lib/accounting/posting'
 import { postOrderJournal } from '@/lib/accounting/post-order'
 import { noteGlFailure } from '@/lib/accounting/pos-gl-check'
+import { glWalletsPaid } from '@/lib/gl-paid'
 import { linkReferredPatientFromOrder } from '@/lib/referral-link'
 import { decreaseRowsOnly } from '@/lib/hmo-session-void'
 import {
@@ -148,7 +149,15 @@ export async function GET(req: Request) {
       prisma.order.count({ where }),
     ])
 
-    return NextResponse.json(paginatedResult(orders, total, params))
+    // GL is paid per application (the patient's GL wallet), not per session —
+    // mark each GL order with its wallet's payment for the POS "GL paid" chip.
+    const glIds = orders.flatMap(o => o.payments.filter(p => p.method === 'GL' && p.walletId).map(p => p.walletId as string))
+    const glPaid = await glWalletsPaid(prisma, glIds)
+    const withGl = orders.map(o => {
+      const w = o.payments.find(p => p.method === 'GL' && p.walletId)?.walletId
+      return w ? { ...o, glPaid: glPaid.get(w) || null } : o
+    })
+    return NextResponse.json(paginatedResult(withGl, total, params))
   } catch {
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }

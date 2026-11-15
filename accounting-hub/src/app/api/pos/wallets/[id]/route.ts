@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { obtainedDateError } from '@/lib/wallet-dates'
+import { glWalletsPaid } from '@/lib/gl-paid'
 
 const WRITE_ROLES = ['ADMIN', 'PAYROLL_OFFICER', 'ACCOUNTANT', 'BOOKKEEPER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN', 'AHEA_FRONTDESK', 'AHGH_FRONTDESK']
 
@@ -274,7 +275,9 @@ export async function GET(
         glEnriched.push({ ...entry, date: entry.date.toISOString(), balanceBefore, balanceAfter: glRunning })
       }
 
-      return NextResponse.json({ ...wallet, ledger: glEnriched, initialBalance: glInitialBalance, orders })
+      // Paid per application: the whole letter, not each session (lib/gl-paid).
+      const glPaid = (await glWalletsPaid(prisma, [wallet.id])).get(wallet.id) || null
+      return NextResponse.json({ ...wallet, ledger: glEnriched, initialBalance: glInitialBalance, orders, glPaid })
     }
 
     return NextResponse.json(wallet)

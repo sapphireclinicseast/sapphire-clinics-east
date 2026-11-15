@@ -137,6 +137,8 @@ interface Order {
   arPaymentItems?: { paymentId: string; payment?: { paymentDate: string; notes: string | null; wallet?: { patientName: string | null } | null } | null }[]
   hmoSettlements?: HmoSettlementNote[]
   hmoCoursedThroughClinic?: boolean
+  // GL: the patient's GL wallet payment (paid per application, lib/gl-paid)
+  glPaid?: { date: string; amount: number } | null
   referrer?: { id: string; name: string } | null
   createdBy?: { name: string }
   [key: string]: unknown
@@ -632,6 +634,13 @@ function normalizeFileUrl(url: string): string {
 function arCollectionStatus(o: Order): { label: string; tone: 'paid' | 'awaiting' | 'doctor'; title: string } | null {
   const ar = o.payments.find(p => p.method === 'HMO' || p.method === 'GL')
   if (!ar || o.status === 'VOIDED') return null
+  const fmt = (d: string) => new Date(d).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'Asia/Manila' })
+  // GL is paid per application: the patient's GL wallet, not each session.
+  if (ar.method === 'GL') {
+    return o.glPaid
+      ? { label: `GL paid · ${fmt(o.glPaid.date)}`, tone: 'paid', title: `The GL letter on this patient's wallet was paid${o.glPaid.amount ? ` (₱${o.glPaid.amount.toLocaleString('en-PH', { minimumFractionDigits: 2 })} recorded)` : ''} — latest payment ${fmt(o.glPaid.date)}` }
+      : { label: 'GL unpaid', tone: 'awaiting', title: "No payment recorded on this patient's GL wallet yet — record the agency's check in AR → GL → Payment History → Record Payment" }
+  }
   const item = (o.arPaymentItems || [])[0]
   if (item) {
     const pay = item.payment
@@ -7382,7 +7391,10 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
                         <tbody>
                           {((walletDetail as unknown as { orders?: { id: string; orderNumber: number; transactionDate: string; patientName: string; clinicianName: string; items: { name: string }[]; payments: { method: string; amount: string | number; walletId?: string }[]; arPaymentItems?: { paymentId: string }[] }[] }).orders || []).map(o => {
                             const pay = o.payments.find(p => p.walletId === walletDetail.id)
-                            const isPaid = (o.arPaymentItems || []).length > 0
+                            // GL wallets are paid as a whole (per application), HMO per session.
+                            const isPaid = walletDetail.walletType === 'GL'
+                              ? !!(walletDetail as unknown as { glPaid?: unknown }).glPaid
+                              : (o.arPaymentItems || []).length > 0
                             return (
                               <tr key={o.id} className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
                                 <td className="px-3 py-2" style={{ color: 'var(--mid-gray)' }}>{formatDate(o.transactionDate)}</td>
