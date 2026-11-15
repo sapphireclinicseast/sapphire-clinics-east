@@ -3,6 +3,7 @@ import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { promises as fs } from 'fs'
 import path from 'path'
+import { isSignatureBranch, readSignature } from '@/lib/bir2307-signature-store'
 
 /**
  * Payroll → Service Invoice → BIR 2307 Generator (migrated from the HR hub).
@@ -13,10 +14,11 @@ import path from 'path'
  *        → per-month gross/EWT from finalized payroll entries in the period
  *          (the generator pre-fills the income table with these; the user can
  *          override every figure before generating the PDF)
- *   GET  ?mode=asset&name=template|signature
+ *   GET  ?mode=asset&name=template|signature[&branch=]
  *        → the BIR 2307 form template / signatory e-signature. Served HERE,
  *          behind auth, instead of from public/ — the signatory's e-signature
- *          must never be fetchable without a session.
+ *          must never be fetchable without a session. The e-signature itself
+ *          (upload, preview, per branch) lives in ./signature/route.ts.
  */
 
 const WRITE_ROLES = ['ADMIN', 'PAYROLL_OFFICER', 'ACCOUNTANT', 'BOOKKEEPER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN']
@@ -44,7 +46,6 @@ const BRANCH_KEYS = Object.keys(DEFAULTS)
 
 const ASSETS: Record<string, { file: string; type: string }> = {
   template: { file: 'bir2307-template.pdf', type: 'application/pdf' },
-  signature: { file: 'bir2307-signature.png', type: 'image/png' },
 }
 
 export async function GET(req: Request) {
@@ -54,6 +55,14 @@ export async function GET(req: Request) {
   const mode = url.searchParams.get('mode') || 'settings'
 
   if (mode === 'asset') {
+    if (url.searchParams.get('name') === 'signature') {
+      // Same rules as /api/payroll/bir-2307/signature: only the roles that can generate a 2307.
+      if (!WRITE_ROLES.includes(session.user.role as string)) return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 })
+      const branch = url.searchParams.get('branch') || 'SBEA'
+      const sig = isSignatureBranch(branch) ? await readSignature(branch) : null
+      if (!sig) return NextResponse.json({ error: 'No signature on file' }, { status: 404 })
+      return new NextResponse(new Uint8Array(sig.bytes), { headers: { 'Content-Type': 'image/png', 'Cache-Control': 'private, no-store' } })
+    }
     const asset = ASSETS[url.searchParams.get('name') || '']
     if (!asset) return NextResponse.json({ error: 'Unknown asset' }, { status: 404 })
     try {

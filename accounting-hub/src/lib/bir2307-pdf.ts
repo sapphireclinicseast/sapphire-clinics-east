@@ -3,7 +3,7 @@
  * from the HR hub's generator (box positions were extracted from the template
  * with pdfminer; do not "tidy" the coordinates). Runs in the browser: the
  * template and the signatory e-signature are fetched from the auth-gated
- * /api/payroll/bir-2307?mode=asset endpoint, never from public/.
+ * /api/payroll/bir-2307 endpoints, never from public/.
  */
 import { PDFDocument, rgb, StandardFonts, type PDFFont, type PDFPage } from 'pdf-lib'
 
@@ -15,14 +15,40 @@ export interface Bir2307Input {
   toDate: string   // YYYY-MM-DD
   rows: Bir2307Row[]
   signatory: { name: string; title: string }
+  /** Branch whose e-signature is stamped (SBEA / SBGH / VERDANA). Default SBEA. */
+  signatureBranch?: string
+  /**
+   * A PNG to stamp instead of the branch's stored one (the upload preview), or
+   * null to leave the signature line for a wet signature.
+   */
+  signaturePng?: ArrayBuffer | null
+}
+
+/**
+ * Where the payor e-signature goes. The white signatory box on the template
+ * runs from 722pt to 750pt from the top (the grey "Signature over Printed Name
+ * of Payor…" band starts at 750). The image is scaled to fit SIG_BOX, centred
+ * on the page, sitting on the band's top edge so the ink runs over the printed
+ * name the way a wet signature does. Exported for the upload preview.
+ */
+export const SIG_BOX = { maxW: 150, maxH: 44, bottomTopY: 748, centerX: 306 }
+export function fitSignature(imgW: number, imgH: number) {
+  const scale = Math.min(SIG_BOX.maxW / imgW, SIG_BOX.maxH / imgH)
+  const width = imgW * scale
+  const height = imgH * scale
+  return { width, height, x: SIG_BOX.centerX - width / 2, topY: SIG_BOX.bottomTopY - height }
 }
 
 const fmtNum = (n: number) => n ? n.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : ''
 
 export async function generateBir2307Pdf(input: Bir2307Input): Promise<Uint8Array> {
-  const [templateRes, sigRes] = await Promise.all([
+  const sigBranch = encodeURIComponent(input.signatureBranch || 'SBEA')
+  const [templateRes, sigBytes] = await Promise.all([
     fetch('/api/payroll/bir-2307?mode=asset&name=template'),
-    fetch('/api/payroll/bir-2307?mode=asset&name=signature'),
+    input.signaturePng !== undefined
+      ? Promise.resolve(input.signaturePng)
+      : fetch(`/api/payroll/bir-2307/signature?branch=${sigBranch}`, { cache: 'no-store' })
+          .then(r => r.ok ? r.arrayBuffer() : null).catch(() => null),
   ])
   if (!templateRes.ok) throw new Error('Could not load the BIR 2307 template')
   const templateBytes = await templateRes.arrayBuffer()
@@ -142,26 +168,26 @@ export async function generateBir2307Pdf(input: Bir2307Input): Promise<Uint8Arra
   if (totAll) t(fmtNum(totAll), COL.total, monTotY, dSz, true)
   if (totTax) t(fmtNum(totTax), COL.tax, monTotY, dSz, true)
 
-  // ── Signatures: payor signatory (printed name + title + e-signature image),
-  //    payee printed name over the "Signature over Printed Name" line ──
+  // ── Signatures: payor signatory (e-signature image + printed name + title,
+  //    all inside the white box above the grey label band at 750), payee
+  //    printed name over the "Signature over Printed Name" line ──
   const sigName = (signatory.name || '').toUpperCase()
   const sigTitle = signatory.title || ''
-  if (sigName) {
-    const w = fontBold.widthOfTextAtSize(sigName, 9)
-    t(sigName, (612 - w) / 2, 743, 9, true)
-  }
-  if (sigTitle) {
-    const w = font.widthOfTextAtSize(sigTitle, 7)
-    t(sigTitle, (612 - w) / 2, 753, 7)
-  }
   try {
-    if (sigRes.ok) {
-      const sigImg = await pdfDoc.embedPng(await sigRes.arrayBuffer())
-      const sigW = 120
-      const sigH = sigW * (sigImg.height / sigImg.width)
-      page.drawImage(sigImg, { x: (612 - sigW) / 2, y: H - 780 + 2, width: sigW, height: sigH })
+    if (sigBytes) {
+      const sigImg = await pdfDoc.embedPng(sigBytes)
+      const fit = fitSignature(sigImg.width, sigImg.height)
+      page.drawImage(sigImg, { x: fit.x, y: H - SIG_BOX.bottomTopY, width: fit.width, height: fit.height })
     }
   } catch { /* signature image is best-effort — the printed name always renders */ }
+  if (sigName) {
+    const w = fontBold.widthOfTextAtSize(sigName, 9)
+    t(sigName, (612 - w) / 2, 739.5, 9, true)
+  }
+  if (sigTitle) {
+    const w = font.widthOfTextAtSize(sigTitle, 6.5)
+    t(sigTitle, (612 - w) / 2, 747.5, 6.5)
+  }
   if (payee.name) {
     const w = fontBold.widthOfTextAtSize(payee.name, 9)
     t(payee.name, (612 - w) / 2, 820, 9, true)

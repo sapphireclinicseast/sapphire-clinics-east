@@ -16,6 +16,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Loader2, FileText, Eye, Download, Plus, X, RotateCcw, Save } from 'lucide-react'
 import { generateBir2307Pdf, type Bir2307Row } from '@/lib/bir2307-pdf'
+import { SignaturePanel, SignatureStrip, useSignatureStatus } from './Bir2307Signature'
 
 interface Consultant { id: string; name: string; branch: string; tinNumber?: string | null; birAddress?: string | null; isActive?: boolean }
 interface BranchSettings { payorName: string; payorTin: string; payorAddress: string; payorZip: string; signatoryName: string; signatoryTitle: string }
@@ -56,6 +57,8 @@ export function Bir2307Generator({ branch, canWrite }: { branch: string; canWrit
   const [autoNote, setAutoNote] = useState('')
   const [generating, setGenerating] = useState(false)
   const [result, setResult] = useState<{ url: string; filename: string } | null>(null)
+  const [stampSignature, setStampSignature] = useState(true)
+  const sig = useSignatureStatus()
 
   useEffect(() => {
     fetch('/api/payroll/consultants').then(r => r.ok ? r.json() : [])
@@ -121,6 +124,8 @@ export function Bir2307Generator({ branch, canWrite }: { branch: string; canWrit
         payee, payor, fromDate: from, toDate: to,
         rows: rows.map(({ desc, atc, m1, m2, m3, total, tax }) => ({ desc, atc, m1, m2, m3, total, tax })),
         signatory: { name: s?.signatoryName || 'HANNAH JARA', title: s?.signatoryTitle || '(CEO AND PRESIDENT)' },
+        signatureBranch: payorBranch,
+        ...(stampSignature ? {} : { signaturePng: null }),
       })
       const blob = new Blob([new Uint8Array(bytes)], { type: 'application/pdf' })
       const safeName = payee.name.replace(/[^a-zA-Z0-9]/g, '_')
@@ -215,6 +220,10 @@ export function Bir2307Generator({ branch, canWrite }: { branch: string; canWrit
           </div>
         </div>
         <p className="text-[11px] mt-1" style={{ color: 'var(--mid-gray)' }}>Payor fields come from 2307 Settings for the chosen branch.</p>
+        <div className="mt-3">
+          <SignatureStrip branch={payorBranch} info={settings[payorBranch]} status={sig.signatures[payorBranch]}
+            canManage={sig.canManage} settings={settings} stamp={stampSignature} onStamp={setStampSignature} onChanged={sig.refresh} />
+        </div>
       </div>
 
       <div>
@@ -303,7 +312,7 @@ export function Bir2307Generator({ branch, canWrite }: { branch: string; canWrit
         )}
       </div>
       <p className="text-[11px]" style={{ color: 'var(--mid-gray)' }}>
-        The certificate prints the payor signatory (name, title and e-signature) from 2307 Settings, and the consultant&apos;s printed name on the payee line.
+        The certificate prints the payor signatory (name and title from 2307 Settings, with the branch&apos;s e-signature unless you untick it), and the consultant&apos;s printed name on the payee line.
       </p>
     </div>
   )
@@ -314,6 +323,7 @@ export function Bir2307Settings({ canWrite }: { canWrite: boolean }) {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [savedAt, setSavedAt] = useState('')
+  const sig = useSignatureStatus()
 
   useEffect(() => {
     fetch('/api/payroll/bir-2307?mode=settings').then(r => r.ok ? r.json() : { settings: {} })
@@ -388,6 +398,8 @@ export function Bir2307Settings({ canWrite }: { canWrite: boolean }) {
                 <label className={labelCls} style={labelStyle}>Signatory Title</label>
                 <input value={s.signatoryTitle} onChange={e => setField(b.value, 'signatoryTitle', e.target.value)} disabled={!canWrite} className={inputCls} style={inputStyle} placeholder="(CEO AND PRESIDENT)" />
               </div>
+              <SignaturePanel branch={b.value} info={s} status={sig.signatures[b.value]} canManage={sig.canManage}
+                settings={settings} onChanged={sig.refresh} />
             </div>
           </div>
         )
