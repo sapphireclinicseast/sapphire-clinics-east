@@ -12,7 +12,81 @@ import DeskShortcutCard from '@/components/DeskShortcutCard'
 import { branchLabel } from '@/lib/branch-label'
 import { CARD_STYLE, DashCard, Skeleton } from '../patients/dashboard/ui'
 
-type BirthdayPatient = { id: string; firstName: string; lastName: string; birthday: string; hasPhone: boolean }
+type BirthdayPatient = { id: string; firstName: string; lastName: string; birthday: string; hasPhone: boolean; hasEmail: boolean }
+
+/** Manila hour the automatic greetings go out — mirrors api/birthday/cron. */
+const GREETING_HOUR = 9
+
+/**
+ * The hour in Manila, not in the browser.
+ *
+ * Front desk sit in Manila, but the admin reading this from anywhere else
+ * would otherwise be told the morning's greetings are still to come at four
+ * in the afternoon.
+ */
+function manilaHour(now = new Date()): number {
+  return Number(new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Asia/Manila', hour: '2-digit', hour12: false,
+  }).format(now))
+}
+
+/**
+ * One channel's state for one patient.
+ *
+ * Reads as a fact rather than a button, because sending is not front desk's
+ * job any more. The only thing that still clicks is the retry, and it only
+ * appears when the automatic send had its chance and did not take it — a
+ * button offered before 9am would just be the old workflow with extra steps.
+ */
+function GreetStatus({ label, icon, has, done, sending, failed, beforeSendHour, note, onRetry }: {
+  label: string
+  icon: ReactNode
+  has: boolean
+  done: boolean
+  sending: boolean
+  failed: boolean
+  beforeSendHour: boolean
+  note?: string
+  onRetry: () => void
+}) {
+  const base = 'inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold whitespace-nowrap leading-none'
+
+  if (done) return (
+    <span className={base} title={note ?? `${label} greeting sent`}
+      style={{ background: '#DFF5E4', color: '#166534', border: '1px solid #B6E5C2' }}>
+      <Check size={11} /> {label} sent
+    </span>
+  )
+  // Nothing to send to. Said plainly rather than hidden: this is the patient
+  // who gets nothing unless somebody says it to their face.
+  if (!has) return (
+    <span className={base} title={`No ${label.toLowerCase()} on file — greet ${label === 'SMS' ? 'them' : 'them'} in person`}
+      style={{ background: '#F4F5F6', color: '#6B7280', border: '1px solid #E3E6E8' }}>
+      No {label.toLowerCase()} on file
+    </span>
+  )
+  if (sending) return (
+    <span className={base} style={{ background: '#F4F5F6', color: '#6B7280', border: '1px solid #E3E6E8' }}>
+      <Loader2 size={11} className="animate-spin" /> Sending…
+    </span>
+  )
+  if (beforeSendHour && !failed) return (
+    <span className={base} title={`Goes out automatically at ${GREETING_HOUR}:00 AM`}
+      style={{ background: '#F4F5F6', color: '#6B7280', border: '1px solid #E3E6E8' }}>
+      {icon} {label} at {GREETING_HOUR}:00
+    </span>
+  )
+  // Past the hour and still nothing — the automatic run could not do it (the
+  // httpSMS phone offline, no mailbox connected, an address added since).
+  return (
+    <button type="button" onClick={onRetry}
+      className={`${base} hover:opacity-90`}
+      title={failed ? `${label} failed — tap to try again` : `${label} has not gone out — tap to send it now`}
+      style={{ background: '#FFF4E5', color: '#9A5B00', border: '1px solid #F5D9A8', cursor: 'pointer' }}>
+      <AlertTriangle size={11} /> {label} not sent &middot; send
+    </button>
+  )
+}
 /** One patient with cancellation fees owed and not yet collected. */
 type FeeOwedRow = { id: string; name: string; count: number; oldestAt: string }
 type SmsState = 'idle' | 'sending' | 'sent' | 'error'
@@ -734,6 +808,14 @@ export default function FrontDeskWelcome({
   const waitStale = waitlist?.ok ? (waitlist.stale ?? 0) : 0
 
   const bdayGreeted = birthdayPatients.filter(p => sentEmailIds.has(p.id) || sentSmsIds.has(p.id)).length
+  // Before the automatic run, "not sent" is not a problem — it has not been
+  // asked to happen yet. Computed from the render rather than a ticking
+  // clock: the card is read, not watched, and a dashboard left open overnight
+  // re-renders on its own data refresh anyway.
+  const beforeGreetingHour = manilaHour() < GREETING_HOUR
+  // Who the card cannot greet at all. Worth saying out loud on the summary
+  // tile, because it is the only line here that needs a person.
+  const bdayNoContact = birthdayPatients.filter(p => !p.hasEmail && !p.hasPhone).length
 
   const summaryParts: string[] = []
   if (birthdayPatients.length > 0) summaryParts.push(`${plural(birthdayPatients.length, 'birthday')} today`)
@@ -875,9 +957,14 @@ export default function FrontDeskWelcome({
             label="Birthdays today"
             count={birthdayPatients.length}
             state="ready"
-            tone={birthdayPatients.length > 0 && bdayGreeted < birthdayPatients.length ? 'brand' : 'clear'}
+            // Amber only for the one case that needs a person: somebody with
+            // no email and no phone, who gets nothing unless they are wished
+            // in person. "Not greeted yet" at 8am is not a problem.
+            tone={bdayNoContact > 0 ? 'brand' : 'clear'}
             sub={birthdayPatients.length === 0 ? 'No patient birthdays today'
-              : bdayGreeted >= birthdayPatients.length ? 'Everyone has been greeted'
+              : bdayNoContact > 0 ? `${bdayNoContact} with no email or phone — greet in person`
+              : beforeGreetingHour && bdayGreeted < birthdayPatients.length ? `Greetings go out at ${GREETING_HOUR}:00 AM`
+              : bdayGreeted >= birthdayPatients.length ? 'All greeted automatically'
               : `${bdayGreeted} of ${birthdayPatients.length} greeted`}
           />
           <AttentionTile
@@ -900,16 +987,27 @@ export default function FrontDeskWelcome({
         <SectionHeading id="today-heading" title="Today" sub={todayLabel ?? undefined} />
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
 
-          {/* ── Birthday Reminder ── */}
+          {/* ── Birthday Reminder ──
+              A reminder, not a task.
+
+              These greetings used to be two buttons per patient per channel,
+              sent by whoever noticed. That worked exactly as well as somebody
+              remembering: on a busy morning the card sat there greeted by
+              nobody, and a birthday is not a thing you can send late.
+
+              The sending is automatic now (api/birthday/cron). What is left
+              here is the part a person actually needs — that it IS this
+              patient's birthday, so they can say so when they walk in. */}
           <div id="birthdays" className="min-w-0 scroll-mt-4">
             <DashCard
               title="Birthdays today"
               icon={<Cake size={16} />}
-              description={`Patients of ${branchLabel ?? 'this branch'} whose birthday is today.`}
+              description={`Patients of ${branchLabel ?? 'this branch'} whose birthday is today. Wish them when they come in.`}
               action={<CountChip n={birthdayPatients.length} tone={birthdayPatients.length > 0 ? 'brand' : 'clear'} />}
               flush
               footer={birthdayPatients.length > 0 ? (
-                <>&ldquo;Send email&rdquo; sends a birthday greeting to the patient&apos;s email (requires email on file). &ldquo;Send SMS&rdquo; sends it to their phone (requires phone number on file).</>
+                <>The greeting email and SMS go out on their own at {GREETING_HOUR}:00 AM &mdash; nothing to click.
+                  A patient with no email or phone on file cannot be sent one, so those are worth a word in person.</>
               ) : undefined}
             >
               <div className="px-5 py-3">
@@ -923,27 +1021,23 @@ export default function FrontDeskWelcome({
                       // getUTC*, which in a UTC+8 clinic resolved to the previous day
                       // — a birthday happening today was labelled "Thu, Sep 3".
                       const dayLabel = 'Today! 🎉'
-                      const clinicName =
-                        branch === 'SBEA' ? 'Aura Health East'
-                        : branch === 'SBGH' ? 'Aura Health Greenhills'
-                        : 'Aura Health Rehab Clinic'
-                      const msg = `Happy Birthday, ${p.firstName}! 🎂 Wishing you a wonderful day filled with joy and good health! From all of us at ${clinicName}. 💚`
                       const sms = smsState[p.id] ?? 'idle'
                       const email = emailState[p.id] ?? 'idle'
-                      const alreadySent = sentEmailIds.has(p.id)
-                      const alreadySentSms = sentSmsIds.has(p.id)
-                      // Name the sender on the button, so "already greeted" is a fact
-                      // someone can act on rather than a green box of unknown origin.
+                      const emailDone = sentEmailIds.has(p.id) || email === 'sent'
+                      const smsDone = sentSmsIds.has(p.id) || sms === 'sent'
+                      // Name the sender, so "already greeted" is a fact someone can
+                      // act on rather than a green box of unknown origin. The cron
+                      // records itself as "Sent automatically".
                       const greetedNote = (ch: 'email' | 'sms') => {
                         const g = greetedBy[`${ch}:${p.id}`]
                         if (!g) return undefined
                         const when = new Date(g.at).toLocaleString()
-                        return g.by ? `Already sent by ${g.by} — ${when}` : `Already sent — ${when}`
+                        return g.by ? `${g.by} — ${when}` : `Sent — ${when}`
                       }
 
                       async function sendSms() {
-                        // Mark in localStorage immediately — prevents duplicate sends if
-                        // the user refreshes while the request is still in-flight
+                        // Mark in localStorage immediately — prevents a duplicate if
+                        // the page is refreshed while the request is still in flight.
                         markSent('sms', p.id)
                         setSentSmsIds(loadSent('sms'))
                         setSmsState(s => ({ ...s, [p.id]: 'sending' }))
@@ -951,15 +1045,13 @@ export default function FrontDeskWelcome({
                           const res = await fetch('/api/birthday/send-sms', {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ patientId: p.id, branch, message: msg }),
+                            body: JSON.stringify({ patientId: p.id, branch }),
                           })
                           if (res.ok) {
                             setSmsState(s => ({ ...s, [p.id]: 'sent' }))
                           } else {
-                            // Definitive server error — SMS was NOT sent; allow retry
                             const d = await res.json().catch(() => ({}))
                             setSmsState(s => ({ ...s, [p.id]: 'error' }))
-                            // Remove the optimistic mark so the user can try again
                             try {
                               const sent = loadSent('sms')
                               sent.delete(p.id)
@@ -969,17 +1061,13 @@ export default function FrontDeskWelcome({
                             if (d.error) alert(`SMS failed: ${d.error}`)
                           }
                         } catch {
+                          // Network/timeout — the send's fate is unknown, so the
+                          // local mark stays rather than inviting a second one.
                           setSmsState(s => ({ ...s, [p.id]: 'error' }))
-                          // Network/timeout error — SMS status unknown; keep the mark
-                          // to prevent accidental duplicates (check httpSMS dashboard)
                         }
                       }
 
-                      async function sendEmail(force = false) {
-                        if (alreadySent && !force) {
-                          if (!confirm(`A birthday email was already sent to ${p.firstName} today. Send again?`)) return
-                          if (!confirm('Are you sure? This will send a second birthday email.')) return
-                        }
+                      async function sendEmail() {
                         setEmailState(s => ({ ...s, [p.id]: 'sending' }))
                         try {
                           const res = await fetch('/api/birthday/send-email', {
@@ -1001,11 +1089,6 @@ export default function FrontDeskWelcome({
                         }
                       }
 
-                      const emailDone = alreadySent || email === 'sent'
-                      const smsDone = alreadySentSms || sms === 'sent'
-                      const doneStyle: CSSProperties = { background: '#DFF5E4', color: '#166534', border: '1px solid #B6E5C2' }
-                      const failStyle: CSSProperties = { background: '#FDE4E4', color: '#991B1B', border: '1px solid #F5C2C2' }
-
                       return (
                         <li key={p.id} className="flex flex-wrap items-center gap-x-3 gap-y-2 py-2.5" style={{ borderColor: 'var(--light-gray)' }}>
                           <div className="flex-1 min-w-[140px]">
@@ -1014,51 +1097,29 @@ export default function FrontDeskWelcome({
                             </p>
                             <p className="text-xs font-medium" style={{ color: 'var(--teal)' }}>{dayLabel}</p>
                           </div>
-                          <div className="flex items-center gap-2">
-                            {/* Send Email */}
-                            <button
-                              type="button"
-                              onClick={() => sendEmail(false)}
-                              disabled={email === 'sending'}
-                              title={
-                                alreadySent || email === 'sent'
-                                  ? (greetedNote('email') ?? 'Email already sent — click to resend')
-                                  : 'Send birthday greeting email'
-                              }
-                              className={`${BTN_SM} ${emailDone || email === 'error' ? '' : 'hover:bg-gray-50'}`}
-                              style={{
-                                ...(emailDone ? doneStyle : email === 'error' ? failStyle
-                                  : { background: '#fff', color: 'var(--teal)', border: '1px solid var(--light-gray)' }),
-                                cursor: email === 'sending' ? 'wait' : 'pointer',
-                                opacity: email === 'sending' ? 0.7 : 1,
-                              }}
-                            >
-                              {email === 'sending' ? <><Loader2 size={12} className="animate-spin" /> Sending…</>
-                                : emailDone ? <><Check size={12} /> Email sent</>
-                                : email === 'error' ? <><X size={12} /> Failed</>
-                                : <><Mail size={12} /> Send email</>}
-                            </button>
-                            {/* Send SMS */}
-                            {p.hasPhone && (
-                              <button
-                                type="button"
-                                onClick={sendSms}
-                                disabled={sms === 'sending' || sms === 'sent' || alreadySentSms}
-                                title={sms === 'error' ? 'Failed — tap to retry' : alreadySentSms ? (greetedNote('sms') ?? 'SMS already sent') : 'Send SMS birthday greeting'}
-                                className={`${BTN_SM} ${smsDone || sms === 'error' ? '' : 'text-white hover:opacity-90'}`}
-                                style={{
-                                  ...(smsDone ? doneStyle : sms === 'error' ? failStyle
-                                    : { background: 'var(--teal)', border: '1px solid var(--teal)' }),
-                                  cursor: (sms === 'sending' || sms === 'sent' || alreadySentSms) ? 'default' : 'pointer',
-                                  opacity: sms === 'sending' ? 0.7 : 1,
-                                }}
-                              >
-                                {sms === 'sending' ? <><Loader2 size={12} className="animate-spin" /> Sending…</>
-                                  : smsDone ? <><Check size={12} /> SMS sent</>
-                                  : sms === 'error' ? <><X size={12} /> Failed</>
-                                  : <><Smartphone size={12} /> Send SMS</>}
-                              </button>
-                            )}
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            <GreetStatus
+                              label="Email"
+                              icon={<Mail size={11} />}
+                              has={p.hasEmail}
+                              done={emailDone}
+                              sending={email === 'sending'}
+                              failed={email === 'error'}
+                              beforeSendHour={beforeGreetingHour}
+                              note={greetedNote('email')}
+                              onRetry={sendEmail}
+                            />
+                            <GreetStatus
+                              label="SMS"
+                              icon={<Smartphone size={11} />}
+                              has={p.hasPhone}
+                              done={smsDone}
+                              sending={sms === 'sending'}
+                              failed={sms === 'error'}
+                              beforeSendHour={beforeGreetingHour}
+                              note={greetedNote('sms')}
+                              onRetry={sendSms}
+                            />
                           </div>
                         </li>
                       )
