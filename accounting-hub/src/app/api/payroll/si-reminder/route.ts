@@ -2,7 +2,8 @@ import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { sendGmail, gmailConfigured, type Mailbox } from '@/lib/gmail'
-import { CUTOFF_RX, siFigures, type CutoffPay } from '@/lib/payroll/si-coverage'
+import { carriedInto, CUTOFF_RX, describeAdjustment, expectedInvoice, siFigures, type CutoffPay } from '@/lib/payroll/si-coverage'
+import { toAdjustment } from '@/lib/payroll/si-amounts-server'
 
 const WRITE_ROLES = ['ADMIN', 'PAYROLL_OFFICER', 'ACCOUNTANT', 'BOOKKEEPER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN', 'AHEA_FRONTDESK', 'AHGH_FRONTDESK']
 
@@ -63,6 +64,11 @@ export async function POST(req: Request) {
     }
     const fig = siFigures(consultant.department, cutoffs, pay)
     const { periodLabels, description, ewtRate } = fig
+    // Differences from earlier invoices that were carried into these cutoffs
+    // change what this invoice should say.
+    const open = (await prisma.consultantSiAdjustment.findMany({ where: { consultantId, status: 'OPEN' } })).map(toAdjustment)
+    const carried = carriedInto(fig.paidCutoffs, open)
+    const toInvoice = expectedInvoice(fig.gross, carried)
     const breakdown = {
       consultant: consultant.name,
       periods: fig.paidCutoffs, periodLabels,
@@ -71,6 +77,8 @@ export async function POST(req: Request) {
       ewtRate,
       net: fig.net,
       description,
+      carried: carried.map(a => ({ id: a.id, amount: a.amount, label: describeAdjustment(a) })),
+      toInvoice,
       coveredEntries: entries.length,
       email: consultant.email || null,
       phone: consultant.phone || null,
@@ -85,6 +93,9 @@ export async function POST(req: Request) {
       const message =
         `Hi ${firstName}! Friendly reminder from Aura Health Rehab to issue your BIR Service Invoice for your professional fees — ${periodLabels}. ` +
         `Gross: P${peso(breakdown.gross)} | Less EWT (${ewtRate}%): P${peso(breakdown.ewt)} | Net: P${peso(breakdown.net)}. ` +
+        (carried.length
+          ? `Adjustment from an earlier invoice: ${carried.map(a => `${a.amount > 0 ? 'less' : 'add'} P${peso(Math.abs(a.amount))}`).join(', ')} — amount to put on your invoice: P${peso(toInvoice)}. `
+          : '') +
         `Description: ${description}. Please submit the invoice to the clinic admin. Thank you!`
       const smsBranch = consultant.branch === 'SBGH' ? 'SBGH' : 'SBEA'
       const res = await fetch(`${MARKETING_HUB_URL}/api/sms/external`, {
@@ -119,6 +130,11 @@ export async function POST(req: Request) {
         ${row(`Less: Expanded Withholding Tax (${ewtRate}%)`, `₱${peso(breakdown.ewt)}`)}
         ${row('Net amount received', `₱${peso(breakdown.net)}`, true)}
       </table>
+      ${carried.length ? `<p style="color:#333;line-height:1.7;font-size:14px;margin:0 0 8px;">An earlier invoice of yours did not match what was paid, so the difference is settled on this one:</p>
+      <table style="border-collapse:collapse;width:100%;margin:0 0 16px;">
+        ${carried.map(a => row(`${a.amount > 0 ? 'Less' : 'Add'}: ${describeAdjustment(a)}`, `₱${peso(Math.abs(a.amount))}`)).join('')}
+        ${row('Amount to put on your Service Invoice (gross)', `₱${peso(toInvoice)}`, true)}
+      </table>` : ''}
       <p style="color:#333;line-height:1.7;font-size:14px;margin:0 0 16px;">
         <strong>Suggested description of services:</strong><br>${description}
       </p>

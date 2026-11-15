@@ -2029,6 +2029,7 @@ model Consultant {
   mentorMeetingCharges MentorshipMeetingCharge[] @relation("MentorMeetingCharges")
   menteeMeetingCharges MentorshipMeetingCharge[] @relation("MenteeMeetingCharges")
   siSubmissions     ConsultantSiSubmission[]
+  siAdjustments     ConsultantSiAdjustment[]
 }
 
 // BIR 2307 payor settings per payroll branch (SBEA / SBGH / VERDANA) — payor
@@ -2050,16 +2051,49 @@ model Bir2307Settings {
 // that month. A single invoice spanning several months creates one row per
 // covered month (same siUrl), so the compliance matrix reads row-presence.
 model ConsultantSiSubmission {
-  id           String     @id @default(cuid())
-  consultantId String
-  consultant   Consultant @relation(fields: [consultantId], references: [id], onDelete: Cascade)
-  month        String     // "YYYY-MM" covered by the invoice
-  siUrl        String?    // uploaded copy of the service invoice
-  uploadedAt   DateTime   @default(now())
-  createdById  String?
+  id            String     @id @default(cuid())
+  consultantId  String
+  consultant    Consultant @relation(fields: [consultantId], references: [id], onDelete: Cascade)
+  month         String     // "YYYY-MM" covered by the invoice
+  siUrl         String?    // uploaded copy of the service invoice
+  uploadedAt    DateTime   @default(now())
+  createdById   String?
+  // The invoice as written — the same on every row of one invoice. Null on
+  // invoices recorded before amounts were asked for.
+  siNumber      String?
+  invoiceAmount Decimal?   // gross on the invoice (Total Sales)
+  expectedAmount Decimal?  // finalized payroll for the cutoffs, less any differences carried into them, when recorded
 
   @@unique([consultantId, month])
   @@index([month])
+}
+
+// A Service Invoice whose amount differs from what payroll says it should be.
+// `amount` = invoice − expected (+ invoiced more than paid, − invoiced less).
+// The user picks the cutoff whose invoice should absorb it (targetCutoff); the
+// next invoice covering that cutoff is then expected to be payroll − amount.
+// No target = flagged only, nothing carried.
+model ConsultantSiAdjustment {
+  id             String     @id @default(cuid())
+  consultantId   String
+  consultant     Consultant @relation(fields: [consultantId], references: [id], onDelete: Cascade)
+  sourceKeys     String[]   // coverage keys of the invoice that differed
+  sourceSiUrl    String?
+  sourceSiNumber String?
+  invoiceAmount  Decimal
+  expectedAmount Decimal
+  amount         Decimal
+  targetCutoff   String?    // "YYYY-MM-1" / "YYYY-MM-2"
+  status         String     @default("OPEN") // OPEN (waiting for the target's invoice) | APPLIED | FLAGGED (no carry) | WAIVED
+  appliedKeys    String[]   @default([])
+  appliedSiUrl   String?
+  appliedAt      DateTime?
+  note           String?
+  createdById    String?
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+
+  @@index([consultantId])
 }
 
 model UnitPay {

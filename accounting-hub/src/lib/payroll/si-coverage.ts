@@ -161,3 +161,68 @@ export function siFigures(department: string, cutoffs: string[], pay: Record<str
     description: `Professional fees — ${service} rendered to Aura Health Rehab, ${periodLabels}`,
   }
 }
+
+// ── Amount check: invoice vs payroll, and differences carried to a later cutoff ──
+
+export type SiAdjustmentStatus = 'OPEN' | 'APPLIED' | 'FLAGGED' | 'WAIVED'
+
+/** A difference between an invoice and payroll (see ConsultantSiAdjustment). */
+export interface SiAdjustment {
+  id: string
+  consultantId: string
+  sourceKeys: string[]
+  sourceSiUrl: string | null
+  sourceSiNumber: string | null
+  invoiceAmount: number
+  expectedAmount: number
+  /** invoice − expected: + invoiced more than payroll, − invoiced less */
+  amount: number
+  targetCutoff: string | null
+  status: SiAdjustmentStatus
+  appliedKeys: string[]
+  note: string | null
+  createdAt: string
+}
+
+/** Differences waiting to be absorbed by the invoice that covers any of `cutoffs`. */
+export function carriedInto(cutoffs: string[], adjustments: SiAdjustment[]): SiAdjustment[] {
+  const set = new Set(cutoffs)
+  return adjustments.filter(a => a.status === 'OPEN' && !!a.targetCutoff && set.has(a.targetCutoff))
+}
+
+/**
+ * What the invoice should say: payroll for the cutoffs, less every difference
+ * carried into them. An earlier invoice that ran ₱750 over leaves ₱750 less
+ * to invoice now; one that ran ₱500 short adds ₱500.
+ */
+export function expectedInvoice(payrollGross: number, carried: { amount: number }[]): number {
+  return r2(payrollGross - carried.reduce((s, a) => s + a.amount, 0))
+}
+
+/** Invoice vs expected, to the centavo. */
+export function amountCheck(invoice: number, expected: number): { diff: number; result: 'match' | 'over' | 'under' } {
+  const diff = r2(invoice - expected)
+  return { diff, result: Math.abs(diff) < 0.005 ? 'match' : diff > 0 ? 'over' : 'under' }
+}
+
+/**
+ * Cutoffs a difference can be carried to: the next `n` cutoffs after `after`
+ * that no recorded invoice covers yet, oldest first.
+ */
+export function carryChoices(after: string, covered: Set<string>, n = 12): string[] {
+  const out: string[] = []
+  let cp = nextCutoff(after)
+  for (let i = 0; i < 48 && out.length < n; i++, cp = nextCutoff(cp)) {
+    if (!isCovered(cp, covered)) out.push(cp)
+  }
+  return out
+}
+
+const pesoText = (n: number) => `₱${Math.abs(n).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+
+/** "₱750.00 over on SI 0204 (April 2026)" */
+export function describeAdjustment(a: Pick<SiAdjustment, 'amount' | 'sourceSiNumber' | 'sourceKeys'>): string {
+  const cps = a.sourceKeys.flatMap(cutoffsOfKey)
+  const si = a.sourceSiNumber ? `SI ${a.sourceSiNumber}` : 'an invoice'
+  return `${pesoText(a.amount)} ${a.amount > 0 ? 'over' : 'short'} on ${si}${cps.length ? ` (${describeCutoffs(cps)})` : ''}`
+}

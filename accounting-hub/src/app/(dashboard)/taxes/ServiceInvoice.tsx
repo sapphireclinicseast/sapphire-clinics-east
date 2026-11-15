@@ -13,13 +13,15 @@
  */
 
 import { useState, useEffect, useCallback, useMemo, Fragment } from 'react'
-import { Loader2, Mail, MessageSquare, CheckCircle2, Upload, X, Eye, ChevronDown, Trash2 } from 'lucide-react'
+import { Loader2, Mail, MessageSquare, CheckCircle2, Upload, X, Eye, ChevronDown, Trash2, Flag, Pencil } from 'lucide-react'
 import { ScanUpload } from '@/components/ScanUpload'
 import { Bir2307Generator, Bir2307Settings } from './Bir2307'
 import { SiInvoiceDialog } from './SiInvoiceDialog'
+import { SiAmountDialog } from './SiAmountDialog'
 import { isHrCorUrl } from '@/lib/payroll/hr-cor'
 import {
-  cutoffOf, cutoffsOfKey, describeCutoffs, isCovered, monthCoverage, recentCutoffs, type CutoffPay,
+  carryChoices, cutoffOf, cutoffShort, cutoffsOfKey, describeAdjustment, describeCutoffs, isCovered, monthCoverage, recentCutoffs,
+  type CutoffPay, type SiAdjustment,
 } from '@/lib/payroll/si-coverage'
 
 // Payroll stores the legacy Sandbox branch codes (SBEA/SBGH); everything the
@@ -42,10 +44,23 @@ interface Consultant {
   isActive?: boolean
   taxDeduction?: string
 }
-interface Submission { consultantId: string; month: string; siUrl: string | null; uploadedAt: string }
-interface Tracking { from: string; payroll: Record<string, Record<string, CutoffPay>>; submissions: Submission[] }
-/** One received invoice: the rows saved together (same copy, same time). */
-interface Invoice { keys: string[]; cutoffs: string[]; siUrl: string | null; uploadedAt: string }
+interface Submission {
+  consultantId: string; month: string; siUrl: string | null; uploadedAt: string
+  siNumber?: string | null; invoiceAmount?: number | null; expectedAmount?: number | null
+}
+interface Tracking {
+  from: string
+  payroll: Record<string, Record<string, CutoffPay>>
+  submissions: Submission[]
+  adjustments?: SiAdjustment[]
+  /** consultantId → start date from HR Hub Staff Profiles ("YYYY-MM-DD" or "YYYY-MM") */
+  startDates?: Record<string, string>
+}
+/** One received invoice: the rows saved together (same copy and SI number). */
+interface Invoice {
+  keys: string[]; cutoffs: string[]; siUrl: string | null; uploadedAt: string
+  siNumber: string | null; invoiceAmount: number | null; expectedAmount: number | null
+}
 
 const MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 const peso = (n: number) => n.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
@@ -75,6 +90,8 @@ export default function ServiceInvoiceTab({ branch: branchProp, canWrite }: { br
   const [dialog, setDialog] = useState<{ c: Consultant; mode: 'upload' | 'EMAIL' | 'SMS' } | null>(null)
   const [openRows, setOpenRows] = useState<Set<string>>(new Set())
   const [sentNote, setSentNote] = useState<Record<string, string>>({})
+  const [amountFor, setAmountFor] = useState<{ c: Consultant; inv: Invoice } | null>(null)
+  const [adjTarget, setAdjTarget] = useState<Record<string, string>>({})
 
   // Compliance-matrix period (defaults: January of this year → this month).
   const [mFrom, setMFrom] = useState(`${now.getFullYear()}-01`)
@@ -128,10 +145,14 @@ export default function ServiceInvoiceTab({ branch: branchProp, canWrite }: { br
     const m = new Map<string, Invoice[]>()
     const groups = new Map<string, Invoice & { cid: string }>()
     for (const s of tracking?.submissions || []) {
-      // One uploaded copy is one invoice. Rows kept without a copy share the
-      // time they were saved (older saves stamped each month separately).
-      const g = s.siUrl ? `${s.consultantId}|${s.siUrl}` : `${s.consultantId}||${s.uploadedAt}`
-      if (!groups.has(g)) groups.set(g, { cid: s.consultantId, keys: [], cutoffs: [], siUrl: s.siUrl, uploadedAt: s.uploadedAt })
+      // One uploaded copy (and SI number) is one invoice — two invoices photographed
+      // together share a copy but not a number. Rows kept without a copy share
+      // the time they were saved (older saves stamped each month separately).
+      const g = s.siUrl ? `${s.consultantId}|${s.siUrl}|${s.siNumber || ''}` : `${s.consultantId}||${s.uploadedAt}`
+      if (!groups.has(g)) groups.set(g, {
+        cid: s.consultantId, keys: [], cutoffs: [], siUrl: s.siUrl, uploadedAt: s.uploadedAt,
+        siNumber: s.siNumber ?? null, invoiceAmount: s.invoiceAmount ?? null, expectedAmount: s.expectedAmount ?? null,
+      })
       const inv = groups.get(g)!
       inv.keys.push(s.month)
       inv.cutoffs.push(...cutoffsOfKey(s.month))
@@ -146,6 +167,25 @@ export default function ServiceInvoiceTab({ branch: branchProp, canWrite }: { br
     for (const list of m.values()) list.sort((a, b) => (b.cutoffs[b.cutoffs.length - 1] || '').localeCompare(a.cutoffs[a.cutoffs.length - 1] || ''))
     return m
   }, [tracking])
+  const adjBy = useMemo(() => {
+    const m = new Map<string, SiAdjustment[]>()
+    for (const a of tracking?.adjustments || []) {
+      if (!m.has(a.consultantId)) m.set(a.consultantId, [])
+      m.get(a.consultantId)!.push(a)
+    }
+    return m
+  }, [tracking])
+  /** The difference an invoice raised, if any. */
+  const adjOf = (cid: string, inv: Invoice) => (adjBy.get(cid) || []).find(a => a.sourceKeys.some(k => inv.keys.includes(k)))
+  const updateAdjustment = async (id: string, action: 'carry' | 'flag' | 'waive', targetCutoff?: string) => {
+    if (action === 'waive' && !confirm('Drop this difference? It will no longer be carried or flagged.')) return
+    const r = await fetch('/api/payroll/si-adjustments', {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id, action, targetCutoff }),
+    })
+    if (!r.ok) { alert((await r.json().catch(() => ({}))).error || 'Failed to update'); return }
+    loadTracking(tracking?.from)
+  }
   const windowStart = useMemo(() => recentCutoffs(nowCutoff, OUTSTANDING_WINDOW).pop() || nowCutoff, [nowCutoff])
   /** Cutoffs with finalized pay in the last 12 months that no invoice covers, oldest first. */
   const outstandingOf = (cid: string) => {
@@ -214,8 +254,16 @@ export default function ServiceInvoiceTab({ branch: branchProp, canWrite }: { br
   }, [mFrom, mTo])
   const matrixRows = withCor.map(c => {
     const keys = keysBy.get(c.id) || new Set<string>()
-    const done = matrixMonths.reduce((s, m) => { const v = monthCoverage(m, keys); return s + (v === 'full' ? 1 : v === 'none' ? 0 : 0.5) }, 0)
-    return { c, keys, done, pct: matrixMonths.length ? Math.round((done / matrixMonths.length) * 100) : 0 }
+    // Months before they started (HR Hub "Date Hired") are N/A, not missing —
+    // unless that month has an invoice or finalized pay anyway (a renewal can
+    // overwrite Date Hired), which proves they were already with us.
+    const start = tracking?.startDates?.[c.id] || null
+    const startMonth = start ? start.slice(0, 7) : null
+    const pay = tracking?.payroll[c.id] || {}
+    const na = new Set(matrixMonths.filter(m => !!startMonth && m < startMonth && monthCoverage(m, keys) === 'none' && !pay[`${m}-1`] && !pay[`${m}-2`]))
+    const due = matrixMonths.filter(m => !na.has(m))
+    const done = due.reduce((s, m) => { const v = monthCoverage(m, keys); return s + (v === 'full' ? 1 : v === 'none' ? 0 : 0.5) }, 0)
+    return { c, keys, done, due: due.length, start, na, pct: due.length ? Math.round((done / due.length) * 100) : 100 }
   })
   const fullyCompliant = matrixRows.filter(r => r.pct === 100).length
   /** The copy covering a month, if one was uploaded. */
@@ -237,6 +285,11 @@ export default function ServiceInvoiceTab({ branch: branchProp, canWrite }: { br
     const pay = tracking?.payroll[c.id] || {}
     const owed = outstanding.reduce((s, cp) => s + (pay[cp]?.gross || 0), 0)
     const open = openRows.has(c.id)
+    const adjs = adjBy.get(c.id) || []
+    const pending = adjs.filter(a => a.status === 'OPEN' || a.status === 'FLAGGED')
+    const covered = keysBy.get(c.id) || new Set<string>()
+    // Differences carried into cutoffs still to be invoiced change what they owe.
+    const carriedOut = adjs.filter(a => a.status === 'OPEN' && a.targetCutoff && outstanding.includes(a.targetCutoff)).reduce((s, a) => s + a.amount, 0)
     return (
       <Fragment key={c.id}>
         <tr className="border-t align-top hover:bg-[var(--off-white)]" style={{ borderColor: 'var(--light-gray)' }}>
@@ -260,6 +313,12 @@ export default function ServiceInvoiceTab({ branch: branchProp, canWrite }: { br
                 </span>
               </>
             ) : <span style={{ color: 'var(--mid-gray)' }}>None recorded</span>}
+            {pending.length > 0 && (
+              <button onClick={() => toggleRow(c.id)} className="mt-1 inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold"
+                style={{ background: '#fee2e2', color: '#991b1b' }} title="An invoice amount differs from payroll — open to see where it goes">
+                <Flag size={11} /> {pending.length} amount{pending.length === 1 ? '' : 's'} to settle
+              </button>
+            )}
           </td>
           <td className="px-4 py-3 text-xs">
             {!tracking ? <span style={{ color: 'var(--mid-gray)' }}>—</span>
@@ -269,6 +328,11 @@ export default function ServiceInvoiceTab({ branch: branchProp, canWrite }: { br
                   <span className="block" style={{ color: 'var(--mid-gray)' }} title={outstanding.length > 2 ? describeCutoffs(outstanding) : undefined}>
                     {outstanding.length > 2 ? `${outstanding.length} cutoffs` : describeCutoffs(outstanding)}
                   </span>
+                  {Math.abs(carriedOut) >= 0.005 && (
+                    <span className="block" style={{ color: '#1e3a8a' }} title="Carried from an earlier invoice that didn't match payroll">
+                      {carriedOut > 0 ? 'less' : 'plus'} ₱{peso(Math.abs(carriedOut))} carried
+                    </span>
+                  )}
                 </>
               ) : (
                 <span className="inline-flex items-center gap-1 font-semibold" style={{ color: '#15803d' }}><CheckCircle2 size={13} /> Up to date</span>
@@ -304,18 +368,64 @@ export default function ServiceInvoiceTab({ branch: branchProp, canWrite }: { br
                 <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>No service invoice recorded yet.</p>
               ) : (
                 <table className="text-xs">
+                  <thead>
+                    <tr className="text-[10px] uppercase tracking-wide" style={{ color: 'var(--mid-gray)' }}>
+                      <th className="pr-6 pb-1 text-left font-semibold">Covers</th>
+                      <th className="pr-6 pb-1 text-left font-semibold">SI No.</th>
+                      <th className="pr-6 pb-1 text-right font-semibold">Invoice</th>
+                      <th className="pr-6 pb-1 text-right font-semibold">Payroll</th>
+                      <th className="pr-6 pb-1 text-left font-semibold">Check</th>
+                      <th colSpan={4} />
+                    </tr>
+                  </thead>
                   <tbody>
-                    {invoices.map(inv => (
-                      <tr key={`${inv.siUrl}|${inv.uploadedAt}`}>
+                    {invoices.map(inv => {
+                      const payroll = inv.cutoffs.reduce((s, cp) => s + (pay[cp]?.gross || 0), 0)
+                      const adj = adjOf(c.id, inv)
+                      const expected = inv.expectedAmount
+                      const diff = inv.invoiceAmount !== null && expected !== null ? Math.round((inv.invoiceAmount - expected) * 100) / 100 : null
+                      return (
+                      <tr key={`${inv.siUrl}|${inv.siNumber}|${inv.uploadedAt}`}>
                         <td className="pr-6 py-1 font-medium" style={{ color: 'var(--charcoal)' }}>{describeCutoffs(inv.cutoffs)}</td>
+                        <td className="pr-6 py-1 font-mono" style={{ color: 'var(--charcoal)' }}>{inv.siNumber || <span style={{ color: 'var(--mid-gray)' }}>—</span>}</td>
                         <td className="pr-6 py-1 font-mono text-right" style={{ color: 'var(--charcoal)' }}>
-                          ₱{peso(inv.cutoffs.reduce((s, cp) => s + (pay[cp]?.gross || 0), 0))}
+                          {inv.invoiceAmount !== null ? `₱${peso(inv.invoiceAmount)}` : <span style={{ color: 'var(--mid-gray)' }}>—</span>}
+                        </td>
+                        <td className="pr-6 py-1 font-mono text-right" style={{ color: 'var(--charcoal)' }}>
+                          ₱{peso(payroll)}
+                          {expected !== null && Math.abs(expected - payroll) >= 0.005 && (
+                            <span className="block text-[10px]" style={{ color: '#1e3a8a' }} title="Payroll adjusted by a difference carried from an earlier invoice">should be ₱{peso(expected)}</span>
+                          )}
+                        </td>
+                        <td className="pr-6 py-1">
+                          {inv.invoiceAmount === null ? (
+                            <span style={{ color: 'var(--mid-gray)' }}>amount not entered</span>
+                          ) : expected === null ? (
+                            <span style={{ color: 'var(--mid-gray)' }} title="No finalized payroll for these cutoffs">no payroll to compare</span>
+                          ) : diff !== null && Math.abs(diff) >= 0.005 ? (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full font-semibold"
+                              style={adj?.status === 'APPLIED' || adj?.status === 'WAIVED' ? { background: '#f3f4f6', color: '#4b5563' } : { background: '#fee2e2', color: '#991b1b' }}>
+                              <Flag size={11} /> ₱{peso(Math.abs(diff))} {diff > 0 ? 'over' : 'short'}
+                              {adj && (adj.status === 'OPEN' && adj.targetCutoff ? ` → ${cutoffShort(adj.targetCutoff)}`
+                                : adj.status === 'APPLIED' ? ' · settled' : adj.status === 'WAIVED' ? ' · dropped' : ' · flagged')}
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 font-semibold" style={{ color: '#15803d' }}><CheckCircle2 size={12} /> matches</span>
+                          )}
                         </td>
                         <td className="pr-6 py-1" style={{ color: 'var(--mid-gray)' }}>received {shortDate(inv.uploadedAt)}</td>
                         <td className="pr-4 py-1">
                           {inv.siUrl
                             ? <a href={inv.siUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 underline" style={{ color: 'var(--teal)' }}><Eye size={12} /> View copy</a>
                             : <span style={{ color: 'var(--mid-gray)' }}>no copy kept</span>}
+                        </td>
+                        <td className="pr-4 py-1">
+                          {canWrite && (
+                            <button onClick={() => setAmountFor({ c, inv })} className="inline-flex items-center gap-1" style={{ color: 'var(--teal)' }}
+                              title={inv.invoiceAmount === null ? 'Enter the SI number and amount' : 'Correct the SI number or amount'}>
+                              <Pencil size={12} /> {inv.invoiceAmount === null ? 'Enter amount' : 'Edit'}
+                            </button>
+                          )}
                         </td>
                         <td className="py-1">
                           {canWrite && (
@@ -325,9 +435,50 @@ export default function ServiceInvoiceTab({ branch: branchProp, canWrite }: { br
                           )}
                         </td>
                       </tr>
-                    ))}
+                      )
+                    })}
                   </tbody>
                 </table>
+              )}
+              {pending.length > 0 && (
+                <div className="mt-3 space-y-1.5">
+                  <p className="text-[11px] font-bold uppercase tracking-wide" style={{ color: '#991b1b' }}>Amounts to settle</p>
+                  {pending.map(a => {
+                    const last = a.sourceKeys.flatMap(cutoffsOfKey).sort().pop() || nowCutoff
+                    const choices = carryChoices(last, covered)
+                    const picked = adjTarget[a.id] || a.targetCutoff || choices[0] || ''
+                    return (
+                      <div key={a.id} className="flex items-center gap-2 flex-wrap text-xs rounded-lg px-3 py-2 bg-white border" style={{ borderColor: '#fecaca' }}>
+                        <Flag size={12} style={{ color: '#991b1b' }} />
+                        <span style={{ color: 'var(--charcoal)' }}>
+                          {describeAdjustment(a)} —{' '}
+                          {a.status === 'OPEN' && a.targetCutoff
+                            ? <>to be settled on the invoice for <span className="font-semibold">{cutoffShort(a.targetCutoff)}</span> ({a.amount > 0 ? 'less' : 'add'} ₱{peso(Math.abs(a.amount))})</>
+                            : <span className="font-semibold">flagged, not carried</span>}
+                          {a.note && <span style={{ color: 'var(--mid-gray)' }}> · {a.note}</span>}
+                        </span>
+                        {canWrite && (
+                          <span className="inline-flex items-center gap-1.5 ml-auto">
+                            <select value={picked} onChange={e => setAdjTarget(prev => ({ ...prev, [a.id]: e.target.value }))}
+                              className="px-2 py-1 rounded-lg border text-xs bg-white" style={{ borderColor: 'var(--light-gray)' }}>
+                              {choices.map(cp => <option key={cp} value={cp}>{cutoffShort(cp)}</option>)}
+                            </select>
+                            <button onClick={() => updateAdjustment(a.id, 'carry', picked)} disabled={!picked || (a.status === 'OPEN' && picked === a.targetCutoff)}
+                              className="px-2 py-1 rounded-lg border font-semibold disabled:opacity-40" style={{ borderColor: 'var(--light-gray)', color: 'var(--teal)' }}>
+                              {a.status === 'OPEN' ? 'Move' : 'Carry'}
+                            </button>
+                            {a.status === 'OPEN' && (
+                              <button onClick={() => updateAdjustment(a.id, 'flag')} className="px-2 py-1 rounded-lg border font-semibold"
+                                style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>Just flag</button>
+                            )}
+                            <button onClick={() => updateAdjustment(a.id, 'waive')} className="px-2 py-1 rounded-lg border font-semibold"
+                              style={{ borderColor: 'var(--light-gray)', color: '#b91c1c' }}>Drop</button>
+                          </span>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
               )}
             </td>
           </tr>
@@ -525,11 +676,20 @@ export default function ServiceInvoiceTab({ branch: branchProp, canWrite }: { br
                   </tr>
                 </thead>
                 <tbody>
-                  {matrixRows.map(({ c, keys, done, pct }) => (
+                  {matrixRows.map(({ c, keys, done, due, start, na, pct }) => (
                     <tr key={c.id} className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
-                      <td className="px-4 py-2 font-semibold sticky left-0 bg-white" style={{ color: 'var(--charcoal)' }}>{c.name}</td>
+                      <td className="px-4 py-2 font-semibold sticky left-0 bg-white" style={{ color: 'var(--charcoal)' }}>
+                        {c.name}
+                        {start && <span className="block text-[10px] font-normal" style={{ color: 'var(--mid-gray)' }}>started {start}</span>}
+                      </td>
                       <td className="px-3 py-2" style={{ color: 'var(--mid-gray)' }}>{c.department}</td>
                       {matrixMonths.map(m => {
+                        if (na.has(m)) {
+                          return (
+                            <td key={m} className="px-2 py-2 text-center text-[10px] font-semibold" style={{ background: '#f3f4f6', color: '#9ca3af' }}
+                              title={`Not with us yet — started ${start} (HR Hub)`}>N/A</td>
+                          )
+                        }
                         const cov = monthCoverage(m, keys)
                         const copy = cov === 'none' ? null : copyFor(c.id, m)
                         const mark = cov === 'full' ? '✓' : cov === 'none' ? '✗' : '½'
@@ -544,7 +704,7 @@ export default function ServiceInvoiceTab({ branch: branchProp, canWrite }: { br
                         )
                       })}
                       <td className="px-3 py-2 text-right font-mono" style={{ color: pct === 100 ? '#16a34a' : pct > 0 ? '#b45309' : '#dc2626' }}>
-                        {pct}% <span style={{ color: 'var(--mid-gray)' }}>({done}/{matrixMonths.length})</span>
+                        {due ? <>{pct}% <span style={{ color: 'var(--mid-gray)' }}>({done}/{due})</span></> : <span style={{ color: 'var(--mid-gray)' }}>N/A</span>}
                       </td>
                     </tr>
                   ))}
@@ -558,7 +718,7 @@ export default function ServiceInvoiceTab({ branch: branchProp, canWrite }: { br
             </div>
           )}
           <p className="text-[11px]" style={{ color: 'var(--mid-gray)' }}>
-            Only consultants with a COR on file are tracked. ✓ invoiced · ½ one cutoff of the month invoiced · ✗ none. Record invoices with “Upload SI” in Tracking &amp; Reminders.
+            Only consultants with a COR on file are tracked. ✓ invoiced · ½ one cutoff of the month invoiced · ✗ none · N/A before their start date in HR Hub Staff Profiles (Date Hired) — not counted in % Done. Record invoices with “Upload SI” in Tracking &amp; Reminders.
           </p>
         </>
       ) : (
@@ -668,9 +828,21 @@ export default function ServiceInvoiceTab({ branch: branchProp, canWrite }: { br
           covered={keysBy.get(dialog.c.id) || new Set<string>()}
           outstanding={outstandingOf(dialog.c.id)}
           nowCutoff={nowCutoff}
+          adjustments={adjBy.get(dialog.c.id) || []}
           onClose={() => setDialog(null)}
           onRecorded={() => { setDialog(null); loadTracking(tracking.from) }}
           onSent={note => { setSentNote(prev => ({ ...prev, [dialog.c.id]: note })); setDialog(null) }}
+        />
+      )}
+      {amountFor && tracking && (
+        <SiAmountDialog
+          consultant={amountFor.c}
+          invoice={amountFor.inv}
+          pay={tracking.payroll[amountFor.c.id] || {}}
+          covered={keysBy.get(amountFor.c.id) || new Set<string>()}
+          adjustments={adjBy.get(amountFor.c.id) || []}
+          onClose={() => setAmountFor(null)}
+          onSaved={() => { setAmountFor(null); loadTracking(tracking.from) }}
         />
       )}
     </div>

@@ -1221,4 +1221,39 @@ BEGIN
 END$$;
 SQL
 
+# ── Service Invoice amounts + carried differences (Taxes → Service Invoice), 2026-11-15 ──
+docker exec -i accounting_db psql -U sapphire -d sapphire_accounting <<'SQL'
+ALTER TABLE "ConsultantSiSubmission" ADD COLUMN IF NOT EXISTS "siNumber" TEXT;
+ALTER TABLE "ConsultantSiSubmission" ADD COLUMN IF NOT EXISTS "invoiceAmount" DECIMAL(65,30);
+ALTER TABLE "ConsultantSiSubmission" ADD COLUMN IF NOT EXISTS "expectedAmount" DECIMAL(65,30);
+CREATE TABLE IF NOT EXISTS "ConsultantSiAdjustment" (
+  "id"             TEXT NOT NULL,
+  "consultantId"   TEXT NOT NULL,
+  "sourceKeys"     TEXT[],
+  "sourceSiUrl"    TEXT,
+  "sourceSiNumber" TEXT,
+  "invoiceAmount"  DECIMAL(65,30) NOT NULL,
+  "expectedAmount" DECIMAL(65,30) NOT NULL,
+  "amount"         DECIMAL(65,30) NOT NULL,
+  "targetCutoff"   TEXT,
+  "status"         TEXT NOT NULL DEFAULT 'OPEN',
+  "appliedKeys"    TEXT[] DEFAULT ARRAY[]::TEXT[],
+  "appliedSiUrl"   TEXT,
+  "appliedAt"      TIMESTAMP(3),
+  "note"           TEXT,
+  "createdById"    TEXT,
+  "createdAt"      TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "updatedAt"      TIMESTAMP(3) NOT NULL,
+  CONSTRAINT "ConsultantSiAdjustment_pkey" PRIMARY KEY ("id")
+);
+CREATE INDEX IF NOT EXISTS "ConsultantSiAdjustment_consultantId_idx" ON "ConsultantSiAdjustment"("consultantId");
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'ConsultantSiAdjustment_consultantId_fkey') THEN
+    ALTER TABLE "ConsultantSiAdjustment" ADD CONSTRAINT "ConsultantSiAdjustment_consultantId_fkey"
+      FOREIGN KEY ("consultantId") REFERENCES "Consultant"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+  END IF;
+END$$;
+SQL
+
 echo "Redeploy complete."

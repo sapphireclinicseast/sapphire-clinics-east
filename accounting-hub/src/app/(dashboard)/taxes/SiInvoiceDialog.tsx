@@ -11,9 +11,10 @@ import { useMemo, useState } from 'react'
 import { Loader2, X, AlertTriangle, CheckCircle2 } from 'lucide-react'
 import { ScanUpload } from '@/components/ScanUpload'
 import {
-  coverageKeys, cutoffShort, cutoffsBetween, describeCutoffs, isCovered, recentCutoffs, siFigures,
-  type CutoffPay,
+  carriedInto, coverageKeys, cutoffShort, cutoffsBetween, describeCutoffs, expectedInvoice, isCovered, recentCutoffs, siFigures,
+  type CutoffPay, type SiAdjustment,
 } from '@/lib/payroll/si-coverage'
+import { SiAmountCheck, amountPayload, emptyAmount, evaluateAmount, type AmountState } from './SiAmountCheck'
 
 export interface SiDialogConsultant {
   id: string
@@ -36,7 +37,7 @@ function defaultRange(pay: Record<string, CutoffPay>, outstanding: string[], now
 }
 
 export function SiInvoiceDialog({
-  consultant, mode, pay, covered, outstanding, nowCutoff, onClose, onRecorded, onSent,
+  consultant, mode, pay, covered, outstanding, nowCutoff, adjustments = [], onClose, onRecorded, onSent,
 }: {
   consultant: SiDialogConsultant
   mode: 'upload' | 'EMAIL' | 'SMS'
@@ -45,6 +46,8 @@ export function SiInvoiceDialog({
   /** cutoffs with finalized pay and no invoice yet, oldest first */
   outstanding: string[]
   nowCutoff: string
+  /** this consultant's invoice-vs-payroll differences */
+  adjustments?: SiAdjustment[]
   onClose: () => void
   onRecorded: () => void
   onSent: (note: string) => void
@@ -54,12 +57,16 @@ export function SiInvoiceDialog({
   const [to, setTo] = useState(init[1])
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+  const [amt, setAmt] = useState<AmountState>(emptyAmount)
 
   // 18 months of cutoffs, newest first.
   const choices = useMemo(() => recentCutoffs(nowCutoff.endsWith('-1') ? `${nowCutoff.slice(0, 7)}-2` : nowCutoff, 36), [nowCutoff])
   const range = useMemo(() => cutoffsBetween(from, to), [from, to])
   const fig = useMemo(() => siFigures(consultant.department, range, pay), [consultant.department, range, pay])
   const already = range.filter(cp => isCovered(cp, covered))
+  const carriedIn = useMemo(() => carriedInto(range, adjustments), [range, adjustments])
+  const ev = useMemo(() => evaluateAmount(amt, range, pay, adjustments, covered), [amt, range, pay, adjustments, covered])
+  const remindTotal = expectedInvoice(fig.gross, carriedInto(fig.paidCutoffs, adjustments))
   const recentMonths = useMemo(() => {
     const months = [...new Set(Object.keys(pay).map(cp => cp.slice(0, 7)))].sort().reverse()
     return months.slice(0, 4)
@@ -74,7 +81,7 @@ export function SiInvoiceDialog({
     try {
       const r = await fetch('/api/payroll/si-submissions', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ consultantId: consultant.id, keys: coverageKeys(range), siUrl }),
+        body: JSON.stringify({ consultantId: consultant.id, keys: coverageKeys(range), siUrl, ...amountPayload(amt, ev) }),
       })
       if (!r.ok) { setError((await r.json().catch(() => ({}))).error || 'Failed to record the invoice'); setBusy(false); return }
       onRecorded()
@@ -202,13 +209,29 @@ export function SiInvoiceDialog({
               <AlertTriangle size={13} /> Already covered by another invoice: {describeCutoffs(already)}.
             </p>
           )}
+          {mode !== 'upload' && carriedInto(fig.paidCutoffs, adjustments).length > 0 && (
+            <p className="text-xs rounded-xl px-3 py-2" style={{ background: '#eff6ff', color: '#1e3a8a' }}>
+              A difference from an earlier invoice is carried into this period — the reminder asks for
+              <span className="font-semibold"> ₱<span className="font-mono">{remindTotal.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span></span> instead of the payroll gross.
+            </p>
+          )}
+
+          {/* 3. The amount on the invoice, checked against payroll */}
+          {mode === 'upload' && range.length > 0 && (
+            <SiAmountCheck st={amt} setSt={setAmt} ev={ev} allCarriedIn={carriedIn} />
+          )}
+
           {error && <p className="text-sm" style={{ color: '#b91c1c' }}>{error}</p>}
 
-          {/* 3. Act */}
+          {/* 4. Act */}
           {mode === 'upload' ? (
             <div className="space-y-2">
               {busy ? (
                 <div className="py-4 text-center"><Loader2 size={18} className="animate-spin mx-auto" style={{ color: 'var(--teal)' }} /></div>
+              ) : !ev.ready ? (
+                <p className="text-xs text-center py-3 rounded-xl border border-dashed" style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>
+                  Enter the amount on the invoice first.
+                </p>
               ) : (
                 <>
                   <ScanUpload section="consultant-si" prefix={`SI-${consultant.name.replace(/[^a-zA-Z0-9]/g, '-')}-${from}`}
