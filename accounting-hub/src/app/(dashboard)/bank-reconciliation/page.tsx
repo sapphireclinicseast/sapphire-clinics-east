@@ -7,6 +7,7 @@ import { branchForBankAccount, branchLabel } from '@/lib/branch'
 import { isForMatching, forMatchingText } from '@/lib/bank-rec-flag'
 import { ArrowLeftRight, Upload, Plus, Loader2, X, Search, Check, Link2, Ban, RotateCcw, Trash2, Download, Lock, Unlock, Wallet, Wand2, Save, HandCoins, Scissors, Merge, Flag } from 'lucide-react'
 import { HR_PAGE_CLASS, HR_PAGE_STYLE, HrShimmerStyle, hrBtn } from '@/components/ui/hr-look'
+import BankHistory from './BankHistory'
 
 const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER']
 const peso = (n: number) => n.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
@@ -64,6 +65,9 @@ export default function BankReconciliationPage() {
   const [ftFor, setFtFor] = useState<Txn | null>(null)
   const [sel, setSel] = useState('')
   const [tab, setTab] = useState<'PENDING' | 'POSTED' | 'EXCLUDED' | 'ARCHIVED'>('PENDING')
+  // Reconcile = the matching work; Bank history = the account as the bank's
+  // own app shows it (money in, money out, running balance), read-only.
+  const [view, setView] = useState<'reconcile' | 'history'>('reconcile')
   const [txns, setTxns] = useState<Txn[]>([])
   const [loading, setLoading] = useState(false)
   const [search, setSearch] = useState('')
@@ -216,7 +220,7 @@ export default function BankReconciliationPage() {
             Each bank account&apos;s statement lines, matched or categorised against the Hub&apos;s records.
           </p>
         </div>
-        {canWrite && sel && (
+        {canWrite && sel && view === 'reconcile' && (
           <div className="flex flex-wrap items-center gap-2">
 
             <button onClick={async () => {
@@ -243,6 +247,16 @@ export default function BankReconciliationPage() {
           </div>
         )}
       </div>
+
+      {accounts.length > 0 && (
+        <div className="flex rounded-full p-1 w-fit border" style={{ borderColor: 'var(--light-gray)', background: '#fff' }} role="tablist" aria-label="Bank Rec view">
+          {([['reconcile', 'Reconcile'], ['history', 'Bank history']] as const).map(([k, lbl]) => (
+            <button key={k} role="tab" aria-selected={view === k} onClick={() => setView(k)}
+              className="px-4 py-1.5 rounded-full text-xs font-semibold transition-colors"
+              style={view === k ? { background: 'var(--teal)', color: '#fff' } : { color: 'var(--mid-gray)' }}>{lbl}</button>
+          ))}
+        </div>
+      )}
 
       {accounts.length === 0 ? (
         <div className="rounded-lg border p-6 text-sm" style={{ borderColor: '#fde68a', background: '#fffbeb', color: '#92400e', borderLeft: '4px solid #d97706' }}>
@@ -285,6 +299,7 @@ export default function BankReconciliationPage() {
             ))}
           </div>
 
+          {view === 'history' ? (account ? <BankHistory accountId={account.id} /> : null) : (<>
           {account && !account.startDate && (
             <div className="rounded-xl border px-4 py-2 text-xs" style={{ borderColor: '#fde68a', background: '#fffbeb', color: '#92400e' }}>
               No reconciliation start date set for this account. Set one under <strong>Opening balance</strong> below so matching only considers Hub entries from that date onward.
@@ -561,6 +576,7 @@ export default function BankReconciliationPage() {
               </tbody>
             </table>
           </div>
+          </>)}
         </>
       )}
 

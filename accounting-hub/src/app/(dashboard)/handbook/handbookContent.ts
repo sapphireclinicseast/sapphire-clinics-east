@@ -178,6 +178,13 @@ export const SECTIONS: Section[] = [
         `Status tabs: **Pending (N) · Posted (N) · Excluded (N) · Archived (N)**.`,
         `Collapsible panels below: **Untagged transactions · Opening balance · exchange rates** (foreign accounts) · **Uploaded data**.`,
       ] },
+      { k: 'sub', t: 'Bank history' },
+      { k: 'p', t: `Switch **Reconcile → Bank history** at the top to see one account the way the bank's own app shows it: newest first, grouped by day, with **money in**, **money out** and the **balance after every line**. Pick a period (**This month · Last month · Last 3 months · This year · All**, or your own dates); the cards show the **opening balance**, money in, money out and **closing balance** for it, and **CSV** downloads the lines. Nothing here posts or changes anything.` },
+      { k: 'ul', items: [
+        `Balances are the ones **printed on the bank statement**. A balance marked **≈** was worked out from the line before, because the statement printed none for that line.`,
+        `Lines split or combined in Bank Rec show as the **single line the bank listed**. Lines you **excluded** (a doubled upload, a line not on the statement) are left out of the balance; tick **Show excluded** to see them greyed out.`,
+        `A day marked **Off by ₱X** doesn't add up: the bank's end-of-day balance differs from the day's opening plus its lines. The Hub is missing a line the bank has, or holds one twice. Check that day's statement page.`,
+      ] },
       { k: 'sub', t: 'Reconcile a statement' },
       { k: 'steps', items: [
         `Click the **account card** for the bank you're working on.`,
