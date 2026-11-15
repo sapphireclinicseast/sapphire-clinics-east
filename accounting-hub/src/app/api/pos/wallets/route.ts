@@ -145,7 +145,7 @@ export async function POST(req: Request) {
       )
     }
 
-    // GL agency is STAR or ODESFA (lib/gl-stage); blank leaves it unset.
+    // GL agency is STAR, ODESFA or LGU (lib/gl-stage); blank leaves it unset.
     const parsedAgency = parseAgency(walletType === 'GL' ? agency : '')
     if (!parsedAgency.ok) return NextResponse.json({ error: AGENCY_ERROR }, { status: 400 })
     const glAgency = parsedAgency.value

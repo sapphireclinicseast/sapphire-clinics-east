@@ -6796,7 +6796,7 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
                 <>
                   <div>
                     <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Agency *</label>
-                    {/* Hannah 11/15: STAR or ODESFA only — the same list as Detailed GL's Agency column. */}
+                    {/* Hannah 11/15: STAR, ODESFA or LGU — the same list as Detailed GL's Agency column. */}
                     <select value={createForm.agency} onChange={e => setCreateForm({ ...createForm, agency: e.target.value })}
                       className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none bg-white" style={{ borderColor: 'var(--light-gray)' }}>
                       <option value="">— pick the agency —</option>

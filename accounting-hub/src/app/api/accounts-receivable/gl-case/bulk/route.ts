@@ -9,13 +9,13 @@ import { GL_STAGES, parseAgency, AGENCY_ERROR } from '@/lib/gl-stage'
  *     glReleasedAt?:   { value: 'YYYY-MM-DD',    caseIds: [], walletIds: [] },
  *     soaSubmittedAt?: { value: 'YYYY-MM-DD',    caseIds: [], walletIds: [] },
  *     soaResubmittedAt?: { value: 'YYYY-MM-DD',  caseIds: [], walletIds: [] },
- *     agency?:         { value: 'STAR' | 'ODESFA' | '', caseIds: [], walletIds: [] } }
+ *     agency?:         { value: 'STAR' | 'ODESFA' | 'LGU' | '', caseIds: [], walletIds: [] } }
  *
  * Detailed GL bulk edit for the ticked letters (Hannah 2026-11-11: "allow me to
  * tick all and set the stage in bulk", then "also allow bulk setting the SOA
  * submission date", "also allow bulk setting the SOA resubmission date",
  * 2026-11-12 "also allow bulk setting the GL release date", 2026-11-15 the Agency
- * column, STAR or ODESFA). The same writes as
+ * column, STAR, ODESFA or LGU). The same writes as
  * editing one row: a row backed by a Detailed GL entry stores them on the entry,
  * a wallet-only row on the GL wallet. Only these fields are touched. A blank
  * stage clears it; neither SOA date can be in the future (the single-row rule in

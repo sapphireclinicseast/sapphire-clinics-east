@@ -232,7 +232,7 @@ interface Col { key: ColKey; label: string; numeric?: boolean }
 const COLS: Col[] = [
   // Hannah, 2026-11-03: which OP office the letter is at, so each stage can be chased.
   { key: 'stage', label: 'Stage' },
-  // Hannah 11/15: which office issued the letter — STAR or ODESFA.
+  // Hannah 11/15: which office issued the letter — STAR, ODESFA or LGU.
   { key: 'agency', label: 'Agency' },
   { key: 'name', label: 'Name' },
   // Hannah 11/11: the number printed on the OP letter — OP payment lists name letters by it.
@@ -306,7 +306,7 @@ function sortValue(r: Row, k: ColKey): string | number {
   switch (k) {
     // Process order (STAR OFFICE first, PAID last), letters with no stage after them.
     case 'stage': { const i = (GL_STAGES as readonly string[]).indexOf(r.glStage || ''); return i < 0 ? GL_STAGES.length : i }
-    // STAR, then ODESFA, then letters with no agency.
+    // STAR, ODESFA, LGU, then letters with no agency.
     case 'agency': { const i = (GL_AGENCIES as readonly string[]).indexOf(r.agency || ''); return i < 0 ? GL_AGENCIES.length : i }
     case 'name': return r.patientName || ''
     case 'branch': return branchLabel(r.branch) || ''
@@ -1041,7 +1041,7 @@ export default function DetailedGl({
   )
 }
 
-/** STAR or ODESFA — the same two choices as the table's Agency column. */
+/** STAR, ODESFA or LGU — the same choices as the table's Agency column. */
 function AgencyField({ value, onChange }: { value: string; onChange: (v: string) => void }) {
   return (
     <div>

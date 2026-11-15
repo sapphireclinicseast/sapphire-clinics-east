@@ -329,7 +329,7 @@ export async function PUT(
     if (dateObtained !== undefined) data.dateObtained = dateObtained ? new Date(dateObtained) : null
     if (paymentModeId !== undefined) data.paymentModeId = paymentModeId || null
     if (agency !== undefined) {
-      // GL agency is STAR or ODESFA (lib/gl-stage); blank clears it.
+      // GL agency is STAR, ODESFA or LGU (lib/gl-stage); blank clears it.
       const ag = parseAgency(agency)
       if (!ag.ok) return NextResponse.json({ error: AGENCY_ERROR }, { status: 400 })
       data.agency = ag.value

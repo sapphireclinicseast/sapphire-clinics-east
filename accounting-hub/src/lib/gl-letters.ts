@@ -39,7 +39,7 @@ export interface GlCaseWallet {
   qbEntry?: string | null
   glLetterNo?: string | null
   glStage?: string | null
-  /** Issuing office: STAR or ODESFA (lib/gl-stage GL_AGENCIES). */
+  /** Issuing office: STAR, ODESFA or LGU (lib/gl-stage GL_AGENCIES). */
   agency?: string | null
   /** True when any order has been billed against the letter. */
   hasOrders?: boolean
@@ -114,7 +114,7 @@ export interface GlLetterRow {
   glLetterNo?: string | null
   /** Where the letter is in the OP's payment process (STAR OFFICE → PAID). */
   glStage?: string | null
-  /** Issuing office, STAR or ODESFA; an entry's own value wins over its wallet's. */
+  /** Issuing office (STAR, ODESFA or LGU); an entry's own value wins over its wallet's. */
   agency?: string | null
   /** Remaining on the tagged wallet in POS; null when nothing is tagged. */
   posBalance: number | null

@@ -8,7 +8,9 @@ export type GlStage = typeof GL_STAGES[number]
 // 2026-11-15: "dropdown options are STAR and ODESFA"). STAR is the Office of the
 // President's medical assistance (GL Nos. PHD-/SJC-…, paid in DTS …-STAR-nnn
 // batches); it was typed as "OP" until 11/15, when every OP letter became STAR.
-export const GL_AGENCIES = ['STAR', 'ODESFA'] as const
+// LGU (added the same day, "yes make it LGU") is a local government's letter,
+// e.g. the Municipality of Cainta's.
+export const GL_AGENCIES = ['STAR', 'ODESFA', 'LGU'] as const
 export type GlAgency = typeof GL_AGENCIES[number]
 export const AGENCY_ERROR = `Agency must be one of: ${GL_AGENCIES.join(', ')}`
 
