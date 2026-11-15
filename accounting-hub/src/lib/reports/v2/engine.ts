@@ -20,6 +20,7 @@
  * Synthesis is deduplicated per reference id, so turning ENABLE_GL_POSTING on
  * later will not double-count: a source with a real JE is never synthesized.
  */
+import { closingLine, statementDay } from '@/lib/bank-statement-order'
 import { branchShort } from '@/lib/branch'
 import { prisma } from '@/lib/prisma'
 import { INCOME_TAX_RATE } from '@/lib/reports/income-statement-totals'
@@ -280,6 +281,38 @@ function inflightShares<L extends InflightLine>(lines: L[]): Map<L, Record<strin
  * disappear from the reports.
  */
 const LIVE_STMT = { status: { in: ['PENDING', 'POSTED'] } }
+
+/**
+ * Each bank account's statement balance before `before`: the line that closed
+ * its last statement day (lib/bank-statement-order), not merely the row stored
+ * last. Postgres narrows the rows to that one day per account — the years
+ * before 2026 hold tens of thousands of statement lines — and the live-status
+ * rule above applies.
+ */
+async function statementClosings(before: Date): Promise<Map<string, { balance: number; date: Date }>> {
+  const rows = await prisma.$queryRaw<{ bankAccountId: string; statementBalance: unknown; spent: unknown; received: unknown; date: Date }[]>`
+    SELECT t."bankAccountId", t."statementBalance", t.spent, t.received, t.date
+    FROM "BankTransaction" t
+    JOIN (
+      SELECT "bankAccountId", date_trunc('day', max(date)) AS day
+      FROM "BankTransaction"
+      WHERE date < ${before} AND "statementBalance" IS NOT NULL AND status IN ('PENDING','POSTED')
+      GROUP BY "bankAccountId"
+    ) last ON last."bankAccountId" = t."bankAccountId" AND t.date >= last.day
+    WHERE t.date < ${before} AND t."statementBalance" IS NOT NULL AND t.status IN ('PENDING','POSTED')
+    ORDER BY t."bankAccountId", t.date, t.id`
+  const byAcct = new Map<string, typeof rows>()
+  for (const r of rows) {
+    if (!byAcct.has(r.bankAccountId)) byAcct.set(r.bankAccountId, [])
+    byAcct.get(r.bankAccountId)!.push(r)
+  }
+  const out = new Map<string, { balance: number; date: Date }>()
+  for (const [acctId, lines] of byAcct) {
+    const close = closingLine(lines)
+    if (close) out.set(acctId, { balance: Number(close.statementBalance), date: close.date })
+  }
+  return out
+}
 
 /* ── Engine ────────────────────────────────────────────────────── */
 
@@ -1367,16 +1400,29 @@ export async function computeLedgerStatements(
       const stmtLines = await prisma.bankTransaction.findMany({
         where: { date: { gte: start, lt: end }, statementBalance: { not: null }, ...LIVE_STMT },
         orderBy: [{ date: 'asc' }, { id: 'asc' }],
-        select: { bankAccountId: true, date: true, statementBalance: true },
+        select: { bankAccountId: true, date: true, statementBalance: true, spent: true, received: true },
       })
-      // last statement balance seen in each month, per account
+      // The statement balance each month closed on, per account: the line that
+      // closed the month's last statement day. Not simply the last row stored —
+      // a newest-first upload (BDO's Current Day export) stores the day's first
+      // payment last, which put cash ₱1.36M too high on 2026-11-15.
       const byAcctMonth = new Map<string, Map<number, number>>()
       const firstMonth = new Map<string, number>()
+      const monthLastDay = new Map<string, typeof stmtLines>() // `${acct}|${month}` → lines of the latest day seen
       for (const t of stmtLines) {
         const m = t.date.getUTCMonth() + 1
-        if (!byAcctMonth.has(t.bankAccountId)) byAcctMonth.set(t.bankAccountId, new Map())
-        byAcctMonth.get(t.bankAccountId)!.set(m, toPhp(t.bankAccountId, Number(t.statementBalance), t.date))
         if (!firstMonth.has(t.bankAccountId)) firstMonth.set(t.bankAccountId, m)
+        const key = `${t.bankAccountId}|${m}`
+        const day = monthLastDay.get(key)
+        if (day && statementDay(day[0].date) === statementDay(t.date)) day.push(t)
+        else monthLastDay.set(key, [t])
+      }
+      for (const [key, lines] of monthLastDay) {
+        const close = closingLine(lines)
+        if (!close) continue
+        const [acctId, m] = key.split('|')
+        if (!byAcctMonth.has(acctId)) byAcctMonth.set(acctId, new Map())
+        byAcctMonth.get(acctId)!.set(Number(m), toPhp(acctId, Number(close.statementBalance), close.date))
       }
       const pendReconcile = virt('3990', 'Cash Pending Reconciliation (uncategorized bank items)', 'EQUITY', 'OWNERS_EQUITY', 'CREDIT')
       /* Branch views: interbranch and corporate flows cannot reconcile inside
@@ -1403,16 +1449,10 @@ export async function computeLedgerStatements(
          is exactly what stopped the cash flow tying to the bank. The offset
          goes to the same visible 3990 line, so assets = liabilities + equity
          still holds at the opening. */
-      // Only the LAST line before the period matters, so let Postgres pick it
-      // rather than shipping every historical statement line to the app just to
-      // overwrite it: the years before 2026 hold tens of thousands of rows.
-      const priorLines = await prisma.$queryRaw<{ bankAccountId: string; statementBalance: unknown; date: Date }[]>`
-        SELECT DISTINCT ON ("bankAccountId") "bankAccountId", "statementBalance", date
-        FROM "BankTransaction"
-        WHERE date < ${start} AND "statementBalance" IS NOT NULL AND status IN ('PENDING','POSTED')
-        ORDER BY "bankAccountId", date DESC, id DESC`
+      // Only the line that closed the last statement day before the period
+      // matters (statementClosings narrows it in Postgres).
       const bankOpening = new Map<string, number>()
-      for (const t of priorLines) bankOpening.set(t.bankAccountId, toPhp(t.bankAccountId, Number(t.statementBalance), t.date))
+      for (const [acctId, t] of await statementClosings(start)) bankOpening.set(acctId, toPhp(acctId, t.balance, t.date))
       let openingTrued = 0
       for (const n of bankFlagged) {
         const acct = byNumber.get(n)
@@ -1697,12 +1737,9 @@ export async function computeLedgerStatements(
     const pendingOut = round2(bankTx.reduce((s, t) => s + Number(t._sum.spent || 0), 0))
     const pendingIn = round2(bankTx.reduce((s, t) => s + Number(t._sum.received || 0), 0))
     const pendingCount = bankTx.reduce((s, t) => s + t._count._all, 0)
-    // Latest statement balance per bank account, as of the report period's end.
-    const latest = await prisma.bankTransaction.findMany({
-      where: { date: { lt: end }, statementBalance: { not: null }, ...LIVE_STMT },
-      orderBy: [{ date: 'desc' }, { id: 'desc' }],
-      select: { bankAccountId: true, date: true, statementBalance: true },
-    })
+    // Latest statement balance per bank account, as of the report period's end:
+    // the line that closed the last statement day before it.
+    const latest = await statementClosings(end)
     // Same currency policy as the true-up: a foreign account's statement
     // balance is valued at the bank-rec exchange rate in force on that date.
     const fxAccts2 = [...byId.values()].filter(a => a.currency && a.currency !== 'PHP')
@@ -1728,10 +1765,8 @@ export async function computeLedgerStatements(
       return bal * rate
     }
     const latestByAcct = new Map<string, { bal: number; asOf: string }>()
-    for (const t of latest) {
-      if (!latestByAcct.has(t.bankAccountId)) {
-        latestByAcct.set(t.bankAccountId, { bal: toPhp2(t.bankAccountId, Number(t.statementBalance), t.date), asOf: t.date.toISOString().slice(0, 10) })
-      }
+    for (const [acctId, t] of latest) {
+      latestByAcct.set(acctId, { bal: toPhp2(acctId, t.balance, t.date), asOf: t.date.toISOString().slice(0, 10) })
     }
     if (latestByAcct.size || pendingCount) {
       const reconRows = cashRows

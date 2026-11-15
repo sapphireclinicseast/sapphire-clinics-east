@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { isForeign, rateFor, toPhp } from '@/lib/fx'
+import { closingLine, statementDay } from '@/lib/bank-statement-order'
 
 // GET ?date=YYYY-MM-DD → for every bank account that has uploaded statement
 // lines carrying a running balance, the balance as of that date.
@@ -26,16 +27,22 @@ export async function GET(req: Request) {
 
   const out = []
   for (const a of accounts) {
-    const line = await prisma.bankTransaction.findFirst({
-      // Excluded/archived lines are ones the user switched off in Bank Rec, so
-      // their printed running balance must not seed an opening balance either.
-      where: {
-        bankAccountId: a.id, date: { lte: upTo }, statementBalance: { not: null },
-        status: { in: ['PENDING', 'POSTED'] },
-      },
-      orderBy: [{ date: 'desc' }, { createdAt: 'desc' }],
-      select: { date: true, statementBalance: true, description: true },
-    })
+    // Excluded/archived lines are ones the user switched off in Bank Rec, so
+    // their printed running balance must not seed an opening balance either.
+    const live = {
+      bankAccountId: a.id, date: { lte: upTo }, statementBalance: { not: null },
+      status: { in: ['PENDING', 'POSTED'] },
+    }
+    const last = await prisma.bankTransaction.findFirst({ where: live, orderBy: { date: 'desc' }, select: { date: true } })
+    // The line that closed that day, read from the running balance — a
+    // newest-first upload stores the day's first line last (lib/bank-statement-order).
+    const line = last
+      ? closingLine(await prisma.bankTransaction.findMany({
+          where: { ...live, date: { gte: new Date(`${statementDay(last.date)}T00:00:00.000Z`), lte: upTo } },
+          orderBy: [{ date: 'asc' }, { id: 'asc' }],
+          select: { date: true, statementBalance: true, spent: true, received: true },
+        }))
+      : undefined
     // How far the uploaded data actually runs, so a stale figure is visible.
     const latest = await prisma.bankTransaction.findFirst({
       where: { bankAccountId: a.id },

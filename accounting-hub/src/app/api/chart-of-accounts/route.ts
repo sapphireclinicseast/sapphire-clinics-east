@@ -3,6 +3,7 @@ import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { parsePagination, paginatedResult } from '@/lib/pagination'
 import { accountTitleKey, titleHolder, titleTakenMessage } from '@/lib/account-title'
+import { closingLine, statementDay } from '@/lib/bank-statement-order'
 
 const VALID_TYPES = ['ASSET', 'LIABILITY', 'EQUITY', 'REVENUE', 'EXPENSE']
 const VALID_BALANCES = ['DEBIT', 'CREDIT']
@@ -175,13 +176,22 @@ export async function PUT(req: Request) {
       if (!acct) return NextResponse.json({ error: 'Account not found' }, { status: 404 })
       if (bankRetired && !acct.bankRetiredAt) {
         if (!acct.isBankAccount) return NextResponse.json({ error: 'Only bank accounts can be retired' }, { status: 400 })
-        const [pending, lastLine] = await Promise.all([
+        const [pending, lastDay] = await Promise.all([
           prisma.bankTransaction.count({ where: { bankAccountId: id, status: 'PENDING' } }),
           prisma.bankTransaction.findFirst({
             where: { bankAccountId: id, statementBalance: { not: null } },
-            orderBy: [{ date: 'desc' }, { id: 'desc' }], select: { statementBalance: true },
+            orderBy: { date: 'desc' }, select: { date: true },
           }),
         ])
+        // The line that closed the last statement day — read from the running
+        // balance, since a newest-first upload stores the day's first line last.
+        const lastLine = lastDay
+          ? closingLine(await prisma.bankTransaction.findMany({
+              where: { bankAccountId: id, statementBalance: { not: null }, date: { gte: new Date(`${statementDay(lastDay.date)}T00:00:00.000Z`) } },
+              orderBy: [{ date: 'asc' }, { id: 'asc' }],
+              select: { date: true, statementBalance: true, spent: true, received: true },
+            }))
+          : undefined
         if (pending > 0) {
           return NextResponse.json({ error: `Cannot retire: ${pending} bank line(s) are still pending — match or exclude them first` }, { status: 400 })
         }

@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { splitAlreadyUploaded } from '@/lib/bank-dedupe'
+import { chronological } from '@/lib/bank-statement-order'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { postFundTransferJE, removeFundTransferJE } from '@/lib/fund-transfer-je'
@@ -106,7 +107,7 @@ export async function POST(req: Request) {
       const batch = batchRow.id
       const cutoff = await tagCutoff(bankAccountId)
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const data = body.rows.map((r: any) => {
+      let data = body.rows.map((r: any) => {
         const date = new Date(r.date)
         return {
           bankAccountId, date, description: String(r.description || '').slice(0, 500),
@@ -120,6 +121,10 @@ export async function POST(req: Request) {
         }
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       }).filter((r: any) => !isNaN(+r.date) && (r.spent > 0 || r.received > 0))
+      // Stored oldest first whatever order the file used: BDO's Current Day
+      // export lists the day newest-first, and ids follow upload order, so the
+      // day's first payment would otherwise be stored as its last line.
+      data = chronological(data)
       if (data.length === 0) {
         await prisma.bankImportBatch.delete({ where: { id: batch } }).catch(() => {})
         return NextResponse.json({ error: 'No valid rows found (need a date and a Spent or Received amount)' }, { status: 400 })
