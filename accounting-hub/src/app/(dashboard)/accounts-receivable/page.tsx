@@ -3033,7 +3033,9 @@ export default function AccountsReceivablePage() {
               const latest = subs[subs.length - 1]?.submission
               const cp = o.clinicianPayment
               g.claims.push({
-                serviceDate: o.transactionDate,
+                // Date of Service: the Change Date when one was set, else the Date
+                // column (Hannah 2026-11-15) — same rule as the Invoice and SOA.
+                serviceDate: o.arCustomDate || o.transactionDate,
                 patient: o.patientName || '',
                 service: o.items.map(i => i.name).join('\n'),
                 clinician: o.clinicianName || '',
