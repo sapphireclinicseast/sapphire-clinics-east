@@ -1412,6 +1412,51 @@ export default function AccountsReceivablePage() {
     }
   }
 
+  /* ── Mark cancelled (For Follow Up / Per HMO, Hannah 2026-11-15): voids the
+     POS order through the POS route itself, so everything a POS void does
+     happens — the sale and HMO receivable reverse, the session lands in
+     Session Adjustments (lib/hmo-session-void, shown as "Cancelled"), and PF
+     already paid on it shows in Payroll → HMO PF Adjustments to recover; PF
+     not yet paid simply drops off the clinician's next payslip. */
+  const CANCEL_SESSION_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN']
+  const canCancelSession = CANCEL_SESSION_ROLES.includes(role)
+  const [cancelFor, setCancelFor] = useState<AROrder | null>(null)
+  const [cancelReason, setCancelReason] = useState('')
+  const [cancelBusy, setCancelBusy] = useState(false)
+  const [cancelError, setCancelError] = useState('')
+  // The AR list only carries the HMO payment lines; fetch the order to warn
+  // when a void would also cancel a cash/card part of it.
+  const [cancelOthers, setCancelOthers] = useState<{ amount: number; methods: string[] } | null>(null)
+  const openCancel = (o: AROrder) => {
+    setCancelFor(o); setCancelReason(''); setCancelError(''); setCancelOthers(null)
+    fetch(`/api/pos/orders/${o.id}`).then(r => (r.ok ? r.json() : null)).then((full: { payments?: { method: string; amount: number | string }[] } | null) => {
+      const others = (full?.payments || []).filter(p => p.method !== 'HMO')
+      setCancelOthers({ amount: others.reduce((s, p) => s + toNum(p.amount), 0), methods: [...new Set(others.map(p => p.method))] })
+    }).catch(() => {})
+  }
+  const saveCancel = async () => {
+    if (!cancelFor || !cancelReason.trim()) return
+    setCancelBusy(true)
+    setCancelError('')
+    try {
+      const res = await fetch(`/api/pos/orders/${cancelFor.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'void', reason: `Cancelled in AR — ${cancelReason.trim()}` }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) { setCancelError(data.error || 'Could not cancel the session'); return }
+      const goneId = cancelFor.id
+      setOrders(prev => prev.filter(o => o.id !== goneId))
+      setPerHmoFetched(prev => prev ? prev.filter(o => o.id !== goneId) : prev)
+      setCancelFor(null)
+    } catch {
+      setCancelError('Could not cancel — check your connection and try again')
+    } finally {
+      setCancelBusy(false)
+    }
+  }
+
   const [reassignBusy, setReassignBusy] = useState<string | null>(null)
   const saveSoaBranch = async (orderId: string, soaBranch: string | null) => {
     setReassignBusy(orderId)
@@ -3689,6 +3734,14 @@ export default function AccountsReceivablePage() {
                             style={isPaid ? { background: '#dcfce7', color: '#166534' } : { background: '#fef3c7', color: '#92400e' }}>
                             {isPaid ? 'Paid' : 'Unpaid'}
                           </span>
+                          {!isPaid && canCancelSession && (isFollowUp || hmoSubTab === 'per-hmo') && (
+                            <button type="button" onClick={() => openCancel(o)}
+                              className="block mx-auto mt-1.5 px-2 py-0.5 rounded-full text-[10px] font-semibold border whitespace-nowrap hover:bg-red-50"
+                              title="The session was cancelled — void it: it leaves AR and the books, shows in Session Adjustments, and any PF already paid on it is set for recovery."
+                              style={{ borderColor: '#fca5a5', color: '#b91c1c', background: 'white' }}>
+                              Mark cancelled
+                            </button>
+                          )}
                         </td>
                         {isFollowUp && (() => {
                           const days = arDaysOf(o)
@@ -4399,6 +4452,59 @@ export default function AccountsReceivablePage() {
           </div>
         </div>
       )}
+
+      {/* Mark cancelled — reason first, then the POS void (For Follow Up / Per HMO) */}
+      {cancelFor && (() => {
+        const hmoAmt = cancelFor.payments.reduce((s, p) => s + toNum(p.amount), 0)
+        const otherAmt = cancelOthers?.amount || 0
+        return (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(15, 23, 42, 0.45)' }}
+          onClick={() => { if (!cancelBusy) setCancelFor(null) }}>
+          <div className="w-full max-w-md rounded-2xl bg-white shadow-xl" onClick={e => e.stopPropagation()}
+            role="dialog" aria-modal="true" aria-labelledby="cancel-session-title">
+            <div className="px-5 pt-5 pb-3 border-b" style={{ borderColor: 'var(--light-gray)' }}>
+              <h3 id="cancel-session-title" className="text-base font-semibold" style={{ color: 'var(--charcoal)' }}>Mark session cancelled</h3>
+              <p className="text-xs mt-1" style={{ color: 'var(--mid-gray)' }}>
+                #{cancelFor.orderNumber} · {cancelFor.patientName} · {formatDate(cancelFor.arCustomDate || cancelFor.transactionDate)} ·{' '}
+                {formatCurrency(hmoAmt)}{cancelFor.clinicianName ? ` · ${cancelFor.clinicianName}` : ''}
+              </p>
+            </div>
+            <div className="px-5 py-4 space-y-3">
+              <ul className="text-xs space-y-1 list-disc pl-4" style={{ color: 'var(--charcoal)' }}>
+                <li>POS order #{cancelFor.orderNumber} is voided: it leaves AR and the books (the sale and the HMO receivable reverse).</li>
+                <li>It shows in <strong>Session Adjustments</strong> as Cancelled, with your reason.</li>
+                <li>PF: if the clinician hasn&apos;t been paid for it yet, it drops off their next payslip. If it was already paid, it shows in Payroll → HMO PF Adjustments as PF to recover.</li>
+              </ul>
+              {otherAmt > 0 && (
+                <p className="text-xs rounded-lg px-3 py-2" style={{ background: '#fef3c7', color: '#92400e' }}>
+                  This order also has {formatCurrency(otherAmt)} paid by {cancelOthers!.methods.join(', ')}. Voiding cancels that too — refund it or re-enter it in POS.
+                </p>
+              )}
+              <div>
+                <label htmlFor="cancel-session-reason" className="block text-xs font-semibold mb-1" style={{ color: 'var(--charcoal)' }}>
+                  Reason
+                </label>
+                <textarea id="cancel-session-reason" autoFocus rows={3} maxLength={300} value={cancelReason}
+                  onChange={e => setCancelReason(e.target.value)}
+                  placeholder="e.g. Patient did not show — LOA cancelled by the HMO"
+                  className="w-full rounded-lg border px-3 py-2 text-sm" style={{ borderColor: 'var(--light-gray)' }} />
+              </div>
+              {cancelError && <p className="text-xs font-medium" style={{ color: '#B91C1C' }}>{cancelError}</p>}
+            </div>
+            <div className="px-5 pb-5 flex justify-end gap-2">
+              <button type="button" onClick={() => setCancelFor(null)} disabled={cancelBusy}
+                className="px-4 py-2 rounded-lg text-sm border" style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}>
+                Keep session
+              </button>
+              <button type="button" onClick={saveCancel} disabled={cancelBusy || !cancelReason.trim()}
+                className="px-4 py-2 rounded-lg text-sm font-semibold text-white disabled:opacity-50" style={{ background: '#b91c1c' }}>
+                {cancelBusy ? 'Cancelling…' : 'Mark cancelled'}
+              </button>
+            </div>
+          </div>
+        </div>
+        )
+      })()}
 
       {/* Decrease due to HMO Payment — opened from the Record Payment tag list */}
       {settleOrder && (

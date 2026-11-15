@@ -41,6 +41,9 @@ interface RevisedRow {
 }
 
 const KIND_LABEL: Record<RevisedRow['kind'], string> = { REVISED: 'Amount revised', VOIDED: 'Voided' }
+// A void made with AR's "Mark cancelled" (reason "Cancelled in AR — …") reads as Cancelled.
+const kindLabel = (r: Pick<RevisedRow, 'kind' | 'note'>) =>
+  r.kind === 'VOIDED' && /^Order voided: Cancelled in AR/.test(r.note || '') ? 'Cancelled' : KIND_LABEL[r.kind]
 
 const fmtDate = (d: string) => new Date(d).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })
 
@@ -99,7 +102,7 @@ export default function RevisedSessionsTab({ branch }: { branch: string }) {
     headers: ['Date', 'Order #', 'Branch', 'Type', 'Service', 'Patient', 'Clinician', 'HMO', 'Original Amount', 'Adjusted Amount', 'Decrease',
       ...(showPf ? ['PF to Recover', 'PF Deducted'] : []), 'Reference', 'Note', 'Adjusted By', 'Adjusted On'],
     rows: shown.map(r => [
-      r.date.slice(0, 10), r.orderNumber, branchLabel(r.branch), KIND_LABEL[r.kind], r.service, r.patient, r.clinician, r.hmo,
+      r.date.slice(0, 10), r.orderNumber, branchLabel(r.branch), kindLabel(r), r.service, r.patient, r.clinician, r.hmo,
       r.originalAmount, r.revisedAmount, r.difference,
       ...(showPf ? [r.pf?.toRecover || 0, r.pf?.recovered || 0] : []),
       r.reference ?? '', r.note ?? '', r.revisedBy ?? '', r.revisedAt.slice(0, 10),
@@ -181,7 +184,7 @@ export default function RevisedSessionsTab({ branch }: { branch: string }) {
                   <span className="px-2 py-0.5 rounded-full text-[11px] font-semibold"
                     style={r.kind === 'VOIDED' ? { background: '#FEE2E2', color: '#991B1B' } : { background: '#FEF3C7', color: '#92400E' }}
                     title={r.kind === 'VOIDED' ? (r.note || 'Order voided') : 'Decreased to what the HMO paid'}>
-                    {KIND_LABEL[r.kind]}
+                    {kindLabel(r)}
                   </span>
                   {(r.reenteredAs?.length || 0) > 0 && (
                     <span className="block text-[11px] mt-0.5" style={{ color: 'var(--mid-gray)' }}
