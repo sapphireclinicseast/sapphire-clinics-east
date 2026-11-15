@@ -53,6 +53,71 @@ export function downloadXlsx(filename: string, sheets: ExportSheet[]) {
 
 // ── PDF Export (HTML → Print) ───────────────────────────────
 
+/* Both PDF exports below open a blank window, write a branded page into it and
+   print it. The pieces they share live here. */
+
+const escHtml = (v: unknown) =>
+  String(v ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c] as string))
+
+/** At this many columns a table prints compact, so every column fits across the page. */
+const WIDE_TABLE_COLS = 14
+
+const manilaStamp = () =>
+  new Date().toLocaleString('en-PH', { dateStyle: 'long', timeStyle: 'short', timeZone: 'Asia/Manila' })
+
+/** Text for <title> and CSS strings: markup and angle brackets dropped. */
+const plainText = (v: unknown) => String(v ?? '').replace(/<[^>]*>/g, '').replace(/[<>]/g, '').trim()
+const cssString = (v: string) => `'${plainText(v).replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/\s+/g, ' ')}'`
+
+/** Chrome names the saved PDF after the window title, so the date goes in. */
+const printTitle = (title: string) =>
+  `${plainText(title)} - ${new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' })}`
+
+/** A cell holding one long unbroken token (a reference, an e-mail) may break inside it rather than push the table off the page. */
+const longToken = (v: unknown) => /[^\s\-/]{18,}/.test(String(v ?? ''))
+
+/**
+ * Page setup and the fonts shared by every print window.
+ *
+ * The window is opened on about:blank. With Chrome's "Headers and footers"
+ * option on, Chrome would print its own date, the title, "about:blank" and
+ * "1/4" in the margins. Chrome (131+) leaves its header out when the page
+ * defines a top margin box, and its footer out when the page defines a bottom
+ * one. So the page sets an empty top box and its own footer (company, report,
+ * page X of Y). The margins themselves stay, so every page keeps its border.
+ *
+ * Numbers print in Roboto (Hannah's rule for the whole hub). The window shares
+ * the hub's origin, so the self-hosted subset loads from /fonts.
+ */
+function printShellCss(title: string, landscape: boolean): string {
+  const origin = window.location.origin
+  const face = (weight: number) =>
+    `@font-face { font-family: 'Print Roboto'; font-weight: ${weight}; font-style: normal; src: url('${origin}/fonts/roboto-latin-${weight}.woff2') format('woff2'); }`
+  const marginFont = `font-family: 'Print Roboto', Roboto, Arial, sans-serif; font-size: 7pt; color: #9ca3af;`
+  return `
+    ${face(400)} ${face(500)} ${face(700)}
+    @page {
+      size: A4 ${landscape ? 'landscape' : 'portrait'};
+      margin: 12mm 12mm 14mm;
+      @top-right { content: ''; }
+      @bottom-left { content: ${cssString(`Sapphire Clinics East Incorporated · ${title}`)}; ${marginFont} }
+      @bottom-right { content: 'Page ' counter(page) ' of ' counter(pages); ${marginFont} }
+    }
+    /* The column headers repeat on every page, and a row never splits across two. */
+    thead { display: table-header-group; }
+    tr { break-inside: avoid; page-break-inside: avoid; }
+    td.brk { overflow-wrap: anywhere; }
+    /* Wide tables (Detailed GL has 25 columns): smaller type, tighter cells. */
+    table.wide { font-size: 7px; }
+    table.wide th { font-size: 6.5px; letter-spacing: 0; padding: 4px 3px; }
+    table.wide td { padding: 3px 3px; }`
+}
+
+/** Prints once the fonts are in, so the PDF never falls back mid-print. */
+const PRINT_SCRIPT = `<script>window.onload = function () { (document.fonts ? document.fonts.ready : Promise.resolve()).then(function () { window.print() }) }</script>`
+
+const FONT_STACK = `'Print Roboto', Roboto, 'Segoe UI', Arial, sans-serif`
+
 interface PdfTableConfig {
   title: string
   subtitle?: string
@@ -88,18 +153,17 @@ export function downloadPdf(config: PdfTableConfig) {
       // Right-align numeric columns (check if header contains amount/price/cost/qty/balance/rate)
       const hdr = headers[i]?.toLowerCase() || ''
       const isNumeric = /amount|price|cost|qty|quantity|balance|rate|total|fee|debit|credit|sessions|level|points/.test(hdr)
-      return `<td style="${isNumeric ? 'text-align:right;' : ''}">${val}</td>`
+      return `<td${longToken(val) ? ' class="brk"' : ''} style="${isNumeric ? 'text-align:right;' : ''}">${val}</td>`
     }).join('')}</tr>`
   }).join('')
 
   const html = `<!DOCTYPE html>
 <html>
 <head>
-  <title>${title}</title>
+  <title>${escHtml(printTitle(title))}</title>
   <style>
-    @page { size: A4 ${landscape ? 'landscape' : 'portrait'}; margin: 15mm; }
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { font-family: 'Segoe UI', Arial, sans-serif; font-size: 10px; color: #1a1a1a; padding: 20px; }
+    body { font-family: ${FONT_STACK}; font-size: 10px; color: #1a1a1a; padding: 20px; }
     .header { display: flex; align-items: center; gap: 12px; margin-bottom: 6px; border-bottom: 2px solid #0d9488; padding-bottom: 10px; }
     .header img { height: 44px; }
     .header-text h1 { font-size: 10px; font-weight: 600; color: #374151; letter-spacing: 0.5px; }
@@ -114,6 +178,7 @@ export function downloadPdf(config: PdfTableConfig) {
     tr:hover td { background: #f0fdfa; }
     .footer { margin-top: 20px; padding-top: 8px; border-top: 1px solid #e5e7eb; font-size: 8px; color: #9ca3af; display: flex; justify-content: space-between; }
     @media print { body { padding: 0; } .no-print { display: none; } }
+    ${printShellCss(title, landscape)}
   </style>
 </head>
 <body>
@@ -128,9 +193,9 @@ export function downloadPdf(config: PdfTableConfig) {
 
   <div class="report-title">${title}</div>
   ${subtitle ? `<div class="report-subtitle">${subtitle}</div>` : ''}
-  <div class="timestamp">Generated: ${new Date().toLocaleString('en-PH', { dateStyle: 'long', timeStyle: 'short', timeZone: 'Asia/Manila' })}</div>
+  <div class="timestamp">Generated: ${manilaStamp()}</div>
 
-  <table>
+  <table${headers.length + (withPhotos ? 1 : 0) >= WIDE_TABLE_COLS ? ' class="wide"' : ''}>
     ${colgroup}
     <thead><tr>${headerRow}</tr></thead>
     <tbody>${bodyRows}</tbody>
@@ -141,7 +206,7 @@ export function downloadPdf(config: PdfTableConfig) {
     <span>Total rows: ${rows.length}</span>
   </div>
 
-  <script>window.onload = () => { window.print(); }</script>
+  ${PRINT_SCRIPT}
 </body>
 </html>`
 
@@ -175,9 +240,6 @@ export interface ReportPdfConfig {
   landscape?: boolean
 }
 
-const escHtml = (v: unknown) =>
-  String(v ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c] as string))
-
 export function downloadReportPdf(config: ReportPdfConfig) {
   const { title, subtitle, kpis = [], sections, landscape = false } = config
 
@@ -187,16 +249,22 @@ export function downloadReportPdf(config: ReportPdfConfig) {
 
   const renderRow = (row: (string | number | null | undefined)[], headers: string[], bold = false) =>
     `<tr${bold ? ' class="total"' : ''}>${row.map((cell, i) =>
-      `<td style="${isNumericHeader(headers[i] || '') ? 'text-align:right;' : ''}">${escHtml(cell)}</td>`
+      `<td${longToken(cell) ? ' class="brk"' : ''} style="${isNumericHeader(headers[i] || '') ? 'text-align:right;' : ''}">${escHtml(cell)}</td>`
     ).join('')}</tr>`
 
+  // A short table stays in one piece (it moves to the next page whole when it
+  // won't fit). A long one starts right where it is and runs on across pages:
+  // keeping it whole used to push it past a page, leaving page 1 holding only
+  // the title (Detailed GL, 2026-11-15).
+  const KEEP_WHOLE_ROWS = 15
+
   const sectionHtml = sections.map(s => `
-    <div class="section">
+    <div class="section${s.rows.length + (s.totalRow ? 1 : 0) <= KEEP_WHOLE_ROWS ? ' keep' : ''}">
       <div class="section-heading">${escHtml(s.heading)}</div>
       ${s.note ? `<div class="section-note">${escHtml(s.note)}</div>` : ''}
       ${s.rows.length === 0
         ? '<div class="empty">Nothing to show for the current filters.</div>'
-        : `<table>
+        : `<table${s.headers.length >= WIDE_TABLE_COLS ? ' class="wide"' : ''}>
              <thead><tr>${s.headers.map(h => `<th style="${isNumericHeader(h) ? 'text-align:right;' : ''}">${escHtml(h)}</th>`).join('')}</tr></thead>
              <tbody>
                ${s.rows.map(r => renderRow(r, s.headers)).join('')}
@@ -208,11 +276,10 @@ export function downloadReportPdf(config: ReportPdfConfig) {
   const html = `<!DOCTYPE html>
 <html>
 <head>
-  <title>${escHtml(title)}</title>
+  <title>${escHtml(printTitle(title))}</title>
   <style>
-    @page { size: A4 ${landscape ? 'landscape' : 'portrait'}; margin: 14mm; }
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { font-family: 'Segoe UI', Arial, sans-serif; font-size: 10px; color: #1a1a1a; padding: 20px; }
+    body { font-family: ${FONT_STACK}; font-size: 10px; color: #1a1a1a; padding: 20px; }
     .header { display: flex; align-items: center; gap: 12px; margin-bottom: 6px; border-bottom: 2px solid #0d9488; padding-bottom: 10px; }
     .header img { height: 44px; }
     .header-text h1 { font-size: 10px; font-weight: 600; color: #374151; letter-spacing: 0.5px; }
@@ -224,7 +291,10 @@ export function downloadReportPdf(config: ReportPdfConfig) {
     .kpi { flex: 1 1 140px; border: 1px solid #e5e7eb; border-left: 3px solid #0d9488; border-radius: 6px; padding: 8px 10px; }
     .kpi .k-label { font-size: 8px; text-transform: uppercase; letter-spacing: 0.4px; color: #6b7280; }
     .kpi .k-value { font-size: 13px; font-weight: 700; color: #0f766e; margin-top: 2px; }
-    .section { margin-bottom: 18px; page-break-inside: avoid; }
+    .section { margin-bottom: 18px; }
+    .section.keep { break-inside: avoid; page-break-inside: avoid; }
+    /* A heading or note never sits alone at the foot of a page. */
+    .section-heading, .section-note { break-after: avoid; page-break-after: avoid; }
     .section-heading { font-size: 11px; font-weight: 700; color: #0f766e; border-bottom: 1px solid #cbd5e1; padding-bottom: 3px; margin-bottom: 6px; }
     .section-note { font-size: 8px; color: #6b7280; margin-bottom: 5px; }
     .empty { font-size: 9px; color: #9ca3af; padding: 6px 0; }
@@ -235,6 +305,7 @@ export function downloadReportPdf(config: ReportPdfConfig) {
     tr.total td { background: #f0fdfa; font-weight: 700; border-top: 1.5px solid #0d9488; }
     .footer { margin-top: 18px; padding-top: 8px; border-top: 1px solid #e5e7eb; font-size: 8px; color: #9ca3af; display: flex; justify-content: space-between; }
     @media print { body { padding: 0; } }
+    ${printShellCss(title, landscape)}
   </style>
 </head>
 <body>
@@ -249,7 +320,7 @@ export function downloadReportPdf(config: ReportPdfConfig) {
 
   <div class="report-title">${escHtml(title)}</div>
   ${subtitle ? `<div class="report-subtitle">${escHtml(subtitle)}</div>` : ''}
-  <div class="timestamp">Generated: ${new Date().toLocaleString('en-PH', { dateStyle: 'long', timeStyle: 'short', timeZone: 'Asia/Manila' })}</div>
+  <div class="timestamp">Generated: ${manilaStamp()}</div>
 
   ${kpis.length ? `<div class="kpis">${kpis.map(k => `
     <div class="kpi"><div class="k-label">${escHtml(k.label)}</div><div class="k-value">${escHtml(k.value)}</div></div>`).join('')}</div>` : ''}
@@ -261,7 +332,7 @@ export function downloadReportPdf(config: ReportPdfConfig) {
     <span>${sections.length} section${sections.length === 1 ? '' : 's'}</span>
   </div>
 
-  <script>window.onload = () => { window.print(); }</script>
+  ${PRINT_SCRIPT}
 </body>
 </html>`
 
