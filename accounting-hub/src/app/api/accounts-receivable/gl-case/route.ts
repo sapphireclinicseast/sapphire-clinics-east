@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { GL_STAGES } from '@/lib/gl-stage'
+import { GL_STAGES, parseAgency, AGENCY_ERROR } from '@/lib/gl-stage'
 
 /**
  * PATCH /api/accounts-receivable/gl-case
@@ -175,6 +175,11 @@ export async function PATCH(req: Request) {
       if (!st.ok) return NextResponse.json({ error: STAGE_ERROR }, { status: 400 })
       data.glStage = st.value
     }
+    if ('agency' in body) {
+      const ag = parseAgency(body.agency)
+      if (!ag.ok) return NextResponse.json({ error: AGENCY_ERROR }, { status: 400 })
+      data.agency = ag.value
+    }
 
     if (Object.keys(data).length === 0) {
       return NextResponse.json({ error: 'Nothing to update' }, { status: 400 })
@@ -186,7 +191,7 @@ export async function PATCH(req: Request) {
       select: {
         id: true, glRequestedAmount: true, glDocsSubmittedAt: true, glReleasedAt: true,
         soaAmount: true, soaSubmittedAt: true, soaResubmittedAt: true, guardianName: true,
-        soaCommissionRate: true, payoutBatch: true, qbEntry: true, glLetterNo: true, glStage: true,
+        soaCommissionRate: true, payoutBatch: true, qbEntry: true, glLetterNo: true, glStage: true, agency: true,
       },
     })
     return NextResponse.json(updated)
@@ -201,7 +206,7 @@ const CASE_SELECT = {
   glRequestedAmount: true, glDocsSubmittedAt: true, glReleasedAt: true,
   approvedAmount: true, soaAmount: true, soaSubmittedAt: true,
   soaResubmittedAt: true, guardianName: true, soaCommissionRate: true, payoutBatch: true,
-  qbEntry: true, glLetterNo: true, paidAt: true, notes: true, createdAt: true, glStage: true,
+  qbEntry: true, glLetterNo: true, paidAt: true, notes: true, createdAt: true, glStage: true, agency: true,
   processorRfpId: true, processorPaidAt: true, processorProofUrl: true,
 } as const
 
@@ -252,6 +257,11 @@ export async function POST(req: Request) {
       data.glLetterNo = cleanGlNo(body.glLetterNo)
       const taken = await glNoTaken(data.glLetterNo, { walletId: data.walletId ?? walletId })
       if (taken) return NextResponse.json({ error: taken }, { status: 409 })
+    }
+    if ('agency' in body) {
+      const ag = parseAgency(body.agency)
+      if (!ag.ok) return NextResponse.json({ error: AGENCY_ERROR }, { status: 400 })
+      data.agency = ag.value
     }
 
     const created = await prisma.glCase.create({ data, select: CASE_SELECT })
@@ -318,6 +328,11 @@ export async function PUT(req: Request) {
       const st = parseStage(body.glStage)
       if (!st.ok) return NextResponse.json({ error: STAGE_ERROR }, { status: 400 })
       data.glStage = st.value
+    }
+    if ('agency' in body) {
+      const ag = parseAgency(body.agency)
+      if (!ag.ok) return NextResponse.json({ error: AGENCY_ERROR }, { status: 400 })
+      data.agency = ag.value
     }
 
     if (Object.keys(data).length === 0) {

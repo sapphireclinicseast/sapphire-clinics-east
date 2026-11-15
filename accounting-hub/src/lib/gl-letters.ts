@@ -39,6 +39,8 @@ export interface GlCaseWallet {
   qbEntry?: string | null
   glLetterNo?: string | null
   glStage?: string | null
+  /** Issuing office: STAR or ODESFA (lib/gl-stage GL_AGENCIES). */
+  agency?: string | null
   /** True when any order has been billed against the letter. */
   hasOrders?: boolean
   dateObtained?: string | null
@@ -70,6 +72,7 @@ export interface GlCaseRow {
   paidAt?: string | null
   notes?: string | null
   glStage?: string | null
+  agency?: string | null
 }
 
 export function fileUrls(w: GlCaseWallet): string[] {
@@ -111,6 +114,8 @@ export interface GlLetterRow {
   glLetterNo?: string | null
   /** Where the letter is in the OP's payment process (STAR OFFICE → PAID). */
   glStage?: string | null
+  /** Issuing office, STAR or ODESFA; an entry's own value wins over its wallet's. */
+  agency?: string | null
   /** Remaining on the tagged wallet in POS; null when nothing is tagged. */
   posBalance: number | null
   /** Has the letter actually been drawn down — balance below the approved amount. */
@@ -184,6 +189,7 @@ export function rowOf(c: GlCaseRow | null, w: GlCaseWallet | null): GlLetterRow 
     // A recorded payment settles the stage. The stored stage stays underneath, so
     // undoing the payment puts the letter back where it was.
     glStage: paid ? 'PAID' : pick(c?.glStage, w?.glStage),
+    agency: pick(c?.agency, w?.agency),
     posBalance: posBalanceOf(w),
     rendered: drawnDown(w),
     paid,

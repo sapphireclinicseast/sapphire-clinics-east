@@ -6,7 +6,7 @@ import { formatCurrency } from '@/lib/utils'
 import { branchLabel } from '@/lib/branch'
 import { downloadXlsx, downloadReportPdf } from '@/lib/export'
 import ExpandablePanel from './ExpandablePanel'
-import { GL_STAGES } from '@/lib/gl-stage'
+import { GL_STAGES, GL_AGENCIES } from '@/lib/gl-stage'
 import { num, buildRows, arRunningDays, soaSubmittedOn, avgArRunningDays, posBalanceOf, drawnDown, type GlCaseWallet, type GlCaseRow, type GlLetterRow } from '@/lib/gl-letters'
 
 export type { GlCaseWallet, GlCaseRow } from '@/lib/gl-letters'
@@ -225,13 +225,15 @@ type ColKey =
   | 'stage' | 'name' | 'branch' | 'docsDate' | 'requested' | 'released' | 'approved' | 'soaAmount'
   | 'posBalance'
   | 'rendered' | 'soaSubmitted' | 'soaDate' | 'soaResubDate' | 'status' | 'paidDate' | 'arDays' | 'arDaysResub' | 'perMonths'
-  | 'guardian' | 'drive' | 'commission' | 'payout' | 'qb' | 'linked' | 'glNo'
+  | 'guardian' | 'drive' | 'commission' | 'payout' | 'qb' | 'linked' | 'glNo' | 'agency'
 
 interface Col { key: ColKey; label: string; numeric?: boolean }
 
 const COLS: Col[] = [
   // Hannah, 2026-11-03: which OP office the letter is at, so each stage can be chased.
   { key: 'stage', label: 'Stage' },
+  // Hannah 11/15: which office issued the letter — STAR or ODESFA.
+  { key: 'agency', label: 'Agency' },
   { key: 'name', label: 'Name' },
   // Hannah 11/11: the number printed on the OP letter — OP payment lists name letters by it.
   { key: 'glNo', label: 'GL No.' },
@@ -263,6 +265,7 @@ const COLS: Col[] = [
 function cellText(r: Row, k: ColKey): string {
   switch (k) {
     case 'stage': return r.glStage || '—'
+    case 'agency': return r.agency || '—'
     case 'name': return r.patientName || ''
     case 'branch': return branchLabel(r.branch) || '—'
     case 'linked': return r.wallet ? r.wallet.patientName : 'needs GL wallet in POS'
@@ -303,6 +306,8 @@ function sortValue(r: Row, k: ColKey): string | number {
   switch (k) {
     // Process order (STAR OFFICE first, PAID last), letters with no stage after them.
     case 'stage': { const i = (GL_STAGES as readonly string[]).indexOf(r.glStage || ''); return i < 0 ? GL_STAGES.length : i }
+    // STAR, then ODESFA, then letters with no agency.
+    case 'agency': { const i = (GL_AGENCIES as readonly string[]).indexOf(r.agency || ''); return i < 0 ? GL_AGENCIES.length : i }
     case 'name': return r.patientName || ''
     case 'branch': return branchLabel(r.branch) || ''
     case 'linked': return r.wallet ? 'tagged' : (r.caseId ? 'needs GL wallet in POS' : 'POS')
@@ -356,11 +361,33 @@ export default function DetailedGl({
 
   // Stage picked in the table, shown at once while it saves.
   const [stageEdits, setStageEdits] = useState<Record<string, string | null>>({})
+  // Agency picked in the table, likewise. Paid letters keep theirs editable — the
+  // issuing office does not change when the cheque arrives.
+  const [agencyEdits, setAgencyEdits] = useState<Record<string, string | null>>({})
   const [stageError, setStageError] = useState('')
   const allRows = useMemo(
-    () => buildRows(wallets, glCases).map(r => (r.key in stageEdits && !r.paid ? { ...r, glStage: stageEdits[r.key] } : r)),
-    [wallets, glCases, stageEdits],
+    () => buildRows(wallets, glCases).map(r => {
+      let out = r
+      if (r.key in stageEdits && !r.paid) out = { ...out, glStage: stageEdits[r.key] }
+      if (r.key in agencyEdits) out = { ...out, agency: agencyEdits[r.key] }
+      return out
+    }),
+    [wallets, glCases, stageEdits, agencyEdits],
   )
+  const saveAgency = async (r: Row, value: string) => {
+    const agency = value || null
+    setStageError('')
+    setAgencyEdits(m => ({ ...m, [r.key]: agency }))
+    try {
+      const res = r.caseId
+        ? await fetch('/api/accounts-receivable/gl-case', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ caseId: r.caseId, agency }) })
+        : await fetch('/api/accounts-receivable/gl-case', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: r.wallet?.id, agency }) })
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'Could not save the agency')
+    } catch (e) {
+      setAgencyEdits(m => { const n = { ...m }; delete n[r.key]; return n })
+      setStageError(`${r.patientName}: ${e instanceof Error ? e.message : 'Could not save the agency'}`)
+    }
+  }
   const saveStage = async (r: Row, value: string) => {
     const glStage = value || null
     setStageError('')
@@ -385,6 +412,7 @@ export default function DetailedGl({
   const canTick = (r: Row) => canWrite && !!(r.caseId || r.wallet)
   const [picked, setPicked] = useState<string[]>([])
   const [bulkStage, setBulkStage] = useState('')
+  const [bulkAgency, setBulkAgency] = useState('')
   const [bulkRelease, setBulkRelease] = useState('')
   const [bulkSoa, setBulkSoa] = useState('')
   const [bulkResoa, setBulkResoa] = useState('')
@@ -397,9 +425,10 @@ export default function DetailedGl({
   const saveBulk = async (targets: Row[]) => {
     const stageTargets = bulkStage ? targets.filter(r => !r.paid) : []
     const glStage = bulkStage === CLEAR_STAGE ? null : bulkStage
+    const agency = bulkAgency === CLEAR_STAGE ? null : bulkAgency
     const anyDate = !!(bulkRelease || bulkSoa || bulkResoa)
-    if (!targets.length || (!bulkStage && !anyDate)) return
-    if (bulkStage && !stageTargets.length && !anyDate) {
+    if (!targets.length || (!bulkStage && !bulkAgency && !anyDate)) return
+    if (bulkStage && !stageTargets.length && !anyDate && !bulkAgency) {
       setStageError('Bulk edit: every ticked letter is paid, and a paid letter keeps PAID as its stage.')
       return
     }
@@ -416,6 +445,7 @@ export default function DetailedGl({
     const beforeFirst = bulkResoa ? targets.filter(r => soaOn(r) && soaOn(r) > bulkResoa).length : 0
     const lines = [
       ...(bulkStage ? [`• Stage → ${glStage || 'Not set'} on ${stageTargets.length}${paidSkipped ? ` (${paidSkipped} paid keep PAID)` : ''}`] : []),
+      ...(bulkAgency ? [`• Agency → ${agency || 'Not set'} on ${targets.length}`] : []),
       ...(bulkRelease ? [`• GL released → ${fmtDate(`${bulkRelease}T00:00:00+08:00`)} on ${targets.length}${replacingRel ? ` (replaces the date on ${replacingRel})` : ''}`] : []),
       ...(bulkRelease && bulkRelease > manilaToday() ? ['⚠ the GL release date is in the future'] : []),
       ...(relBeforeDocs ? [`⚠ on ${relBeforeDocs} the GL release would be before the documents were submitted`] : []),
@@ -429,6 +459,8 @@ export default function DetailedGl({
     setStageError(''); setBulkBusy(true)
     const before = Object.fromEntries(stageTargets.map(r => [r.key, r.key in stageEdits ? stageEdits[r.key] : undefined]))
     if (stageTargets.length) setStageEdits(m => ({ ...m, ...Object.fromEntries(stageTargets.map(r => [r.key, glStage])) }))
+    const agencyBefore = Object.fromEntries(targets.map(r => [r.key, r.key in agencyEdits ? agencyEdits[r.key] : undefined]))
+    if (bulkAgency) setAgencyEdits(m => ({ ...m, ...Object.fromEntries(targets.map(r => [r.key, agency])) }))
     try {
       const res = await fetch('/api/accounts-receivable/gl-case/bulk', {
         method: 'PUT', headers: { 'Content-Type': 'application/json' },
@@ -437,15 +469,21 @@ export default function DetailedGl({
           ...(bulkRelease ? { glReleasedAt: { value: bulkRelease, ...idsOf(targets) } } : {}),
           ...(bulkSoa ? { soaSubmittedAt: { value: bulkSoa, ...idsOf(targets) } } : {}),
           ...(bulkResoa ? { soaResubmittedAt: { value: bulkResoa, ...idsOf(targets) } } : {}),
+          ...(bulkAgency ? { agency: { value: agency ?? '', ...idsOf(targets) } } : {}),
         }),
       })
       if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'Could not save')
-      setPicked([]); setBulkStage(''); setBulkRelease(''); setBulkSoa(''); setBulkResoa('')
+      setPicked([]); setBulkStage(''); setBulkAgency(''); setBulkRelease(''); setBulkSoa(''); setBulkResoa('')
       if (anyDate) onSaved() // reload: the dates drive their columns, AR days and the row colour
     } catch (e) {
       setStageEdits(m => {
         const n = { ...m }
         for (const [k, v] of Object.entries(before)) { if (v === undefined) delete n[k]; else n[k] = v }
+        return n
+      })
+      if (bulkAgency) setAgencyEdits(m => {
+        const n = { ...m }
+        for (const [k, v] of Object.entries(agencyBefore)) { if (v === undefined) delete n[k]; else n[k] = v }
         return n
       })
       setStageError(`Bulk edit: ${e instanceof Error ? e.message : 'Could not save'}`)
@@ -497,7 +535,9 @@ export default function DetailedGl({
     for (const [k, v] of Object.entries(filters)) {
       const needle = (v || '').trim().toLowerCase()
       if (!needle) continue
-      out = out.filter(r => cellText(r, k as ColKey).toLowerCase().includes(needle))
+      out = out.filter(r => (k === 'agency'
+        ? cellText(r, 'agency').toLowerCase() === needle
+        : cellText(r, k as ColKey).toLowerCase().includes(needle)))
     }
     if (stageTicks.length) out = out.filter(r => stageTicks.includes(r.glStage || '—'))
     return out
@@ -513,7 +553,9 @@ export default function DetailedGl({
     for (const [k, v] of Object.entries(filters)) {
       const needle = (v || '').trim().toLowerCase()
       if (!needle || k === 'stage') continue
-      out = out.filter(r => cellText(r, k as ColKey).toLowerCase().includes(needle))
+      out = out.filter(r => (k === 'agency'
+        ? cellText(r, 'agency').toLowerCase() === needle
+        : cellText(r, k as ColKey).toLowerCase().includes(needle)))
     }
     return out
   }, [baseRows, allRows, search, filters, ticked, branchOptions, noSoaOnly, stageTicks])
@@ -574,6 +616,15 @@ export default function DetailedGl({
               </button>
               {c.key === 'stage' ? (
                 <StageTickFilter value={stageTicks} onChange={setStageTicks} />
+              ) : c.key === 'agency' ? (
+                // Exact match, so a pick never also catches another agency's name.
+                <select value={filters.agency || ''} onChange={e => setFilters(f => ({ ...f, agency: e.target.value }))}
+                  className="mt-1 w-full min-w-[70px] px-1 py-0.5 rounded border text-[10px] outline-none font-normal bg-white"
+                  style={{ borderColor: 'var(--light-gray)', color: filters.agency ? 'var(--charcoal)' : 'var(--mid-gray)' }}>
+                  <option value="">All</option>
+                  {GL_AGENCIES.map(a => <option key={a} value={a}>{a}</option>)}
+                  <option value="—">Not set</option>
+                </select>
               ) : (
               <input
                 value={filters[c.key] || ''}
@@ -603,7 +654,7 @@ export default function DetailedGl({
                 <span className="flex items-center gap-1">
                   <input type="checkbox" checked={picked.includes(r.key)} disabled={!canTick(r)} onChange={() => togglePick(r.key)}
                     aria-label={`Tick ${r.patientName}`}
-                    title={canTick(r) ? (r.paid ? 'Tick to set the GL release / SOA dates in bulk (paid — the stage stays PAID)' : 'Tick to set the stage, GL release or SOA dates in bulk') : 'No entry or wallet to save on'}
+                    title={canTick(r) ? (r.paid ? 'Tick to set the agency or the GL release / SOA dates in bulk (paid — the stage stays PAID)' : 'Tick to set the stage, agency, GL release or SOA dates in bulk') : 'No entry or wallet to save on'}
                     className="w-3.5 h-3.5 cursor-pointer disabled:cursor-not-allowed disabled:opacity-30" style={{ accentColor: 'var(--teal)' }} />
                   <button
                     onClick={() => (r.source ? setEditingCase(r.source) : setEditing(r.wallet))}
@@ -635,6 +686,16 @@ export default function DetailedGl({
                         </span>
                       )
                     })()
+                  : c.key === 'agency'
+                  ? (canWrite && (r.caseId || r.wallet)
+                      ? <select value={r.agency || ''} onChange={e => saveAgency(r, e.target.value)}
+                          aria-label={`Agency for ${r.patientName}`}
+                          className="px-1.5 py-0.5 rounded border text-[11px] font-semibold outline-none bg-white"
+                          style={{ borderColor: r.agency ? 'var(--teal)' : 'var(--light-gray)', color: r.agency ? 'var(--deep-teal)' : 'var(--mid-gray)' }}>
+                          <option value="">— set agency —</option>
+                          {GL_AGENCIES.map(a => <option key={a} value={a}>{a}</option>)}
+                        </select>
+                      : <span className="text-[11px] font-semibold">{r.agency || '—'}</span>)
                   : c.key === 'drive'
                   ? (r.files.length
                       ? r.files.map((u, i) => (
@@ -917,6 +978,16 @@ export default function DetailedGl({
             </select>
           </label>
           <label className="flex items-center gap-1.5 text-xs" style={{ color: 'var(--mid-gray)' }}>
+            Agency
+            <select value={bulkAgency} onChange={e => setBulkAgency(e.target.value)} disabled={bulkBusy}
+              className="px-2 py-1 rounded-lg border text-xs font-semibold outline-none bg-white"
+              style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}>
+              <option value="">— no change —</option>
+              {GL_AGENCIES.map(a => <option key={a} value={a}>{a}</option>)}
+              <option value={CLEAR_STAGE}>Clear the agency (Not set)</option>
+            </select>
+          </label>
+          <label className="flex items-center gap-1.5 text-xs" style={{ color: 'var(--mid-gray)' }}>
             GL released
             <input type="date" value={bulkRelease} onChange={e => setBulkRelease(e.target.value)} disabled={bulkBusy}
               title="Status/ GL release date"
@@ -938,7 +1009,7 @@ export default function DetailedGl({
               style={{ borderColor: 'var(--light-gray)', color: bulkResoa ? 'var(--charcoal)' : 'var(--mid-gray)' }} />
           </label>
           <button onClick={() => saveBulk(pickedRows)}
-            disabled={(!bulkStage && !bulkRelease && !bulkSoa && !bulkResoa) || [bulkSoa, bulkResoa].some(d => !!d && d > manilaToday()) || bulkBusy}
+            disabled={(!bulkStage && !bulkAgency && !bulkRelease && !bulkSoa && !bulkResoa) || [bulkSoa, bulkResoa].some(d => !!d && d > manilaToday()) || bulkBusy}
             className="px-3 py-1 rounded-lg text-xs font-semibold text-white disabled:opacity-40"
             style={{ background: 'var(--teal)' }}>
             {bulkBusy ? 'Saving…' : 'Apply'}
@@ -970,6 +1041,21 @@ export default function DetailedGl({
   )
 }
 
+/** STAR or ODESFA — the same two choices as the table's Agency column. */
+function AgencyField({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  return (
+    <div>
+      <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Agency</label>
+      <select value={value} onChange={e => onChange(e.target.value)}
+        className="w-full px-3 py-2 rounded-xl border text-sm outline-none bg-white" style={{ borderColor: 'var(--light-gray)' }}>
+        <option value="">— not set —</option>
+        {GL_AGENCIES.map(a => <option key={a} value={a}>{a}</option>)}
+      </select>
+      <p className="text-[10px] mt-0.5" style={{ color: 'var(--mid-gray)' }}>The office that issued the letter</p>
+    </div>
+  )
+}
+
 /* ── Add / edit a standalone entry, including which POS wallet it is tagged to ── */
 function GlEntryModal({
   entry, wallets, claimedWalletIds, onClose, onSaved,
@@ -996,6 +1082,7 @@ function GlEntryModal({
     payoutBatch: entry?.payoutBatch || '',
     qbEntry: entry?.qbEntry || '',
     glLetterNo: entry?.glLetterNo || '',
+    agency: entry?.agency || '',
     paidAt: dayKey(entry?.paidAt),
     notes: entry?.notes || '',
   })
@@ -1146,6 +1233,7 @@ function GlEntryModal({
           {field('Requested GL (₱)', 'glRequestedAmount', 'number')}
           {field('GL release date', 'glReleasedAt', 'date')}
           {field('GL No.', 'glLetterNo', 'text', 'Printed at the bottom of the OP guarantee letter, beside the QR code — e.g. PHD-170925112436-WA7')}
+          <AgencyField value={form.agency} onChange={v => set('agency', v)} />
           {field('Approved GL (₱)', 'approvedAmount', 'number', 'Ignored once tagged — the wallet’s approved amount wins.')}
           {field('Amount in SOA (₱)', 'soaAmount', 'number')}
           {field('Date submission of SOA', 'soaSubmittedAt', 'date', 'AR running days and Per months count from here')}
@@ -1200,6 +1288,7 @@ function GlCaseModal({ wallet, cases, wallets, onClose, onSaved }: { wallet: GlC
     payoutBatch: wallet.payoutBatch || '',
     qbEntry: wallet.qbEntry || '',
     glLetterNo: wallet.glLetterNo || '',
+    agency: wallet.agency || '',
   })
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
@@ -1312,6 +1401,7 @@ function GlCaseModal({ wallet, cases, wallets, onClose, onSaved }: { wallet: GlC
           {field('Requested GL (₱)', 'glRequestedAmount', 'number')}
           {field('GL release date', 'glReleasedAt', 'date')}
           {field('GL No.', 'glLetterNo', 'text', 'Printed at the bottom of the OP guarantee letter, beside the QR code — e.g. PHD-170925112436-WA7')}
+          <AgencyField value={form.agency} onChange={v => set('agency', v)} />
           {field('Amount in SOA (₱)', 'soaAmount', 'number')}
           {field('Date submission of SOA', 'soaSubmittedAt', 'date', 'AR running days and Per months count from here')}
           {field('SOA Resubmission Date', 'soaResubmittedAt', 'date', 'Only for SOAs returned for errors — starts the second AR-days clock')}

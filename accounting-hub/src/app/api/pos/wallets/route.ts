@@ -3,6 +3,7 @@ import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { parsePagination, paginatedResult } from '@/lib/pagination'
 import { obtainedDateError } from '@/lib/wallet-dates'
+import { parseAgency, AGENCY_ERROR } from '@/lib/gl-stage'
 
 const WRITE_ROLES = ['ADMIN', 'PAYROLL_OFFICER', 'ACCOUNTANT', 'BOOKKEEPER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN', 'AHEA_FRONTDESK', 'AHGH_FRONTDESK']
 
@@ -144,6 +145,11 @@ export async function POST(req: Request) {
       )
     }
 
+    // GL agency is STAR or ODESFA (lib/gl-stage); blank leaves it unset.
+    const parsedAgency = parseAgency(walletType === 'GL' ? agency : '')
+    if (!parsedAgency.ok) return NextResponse.json({ error: AGENCY_ERROR }, { status: 400 })
+    const glAgency = parsedAgency.value
+
     // For GL wallets, auto-assign 1010 Accounts Receivable
     let resolvedAccountId = accountId || null
     if (walletType === 'GL' && !resolvedAccountId) {
@@ -215,7 +221,7 @@ export async function POST(req: Request) {
         rewardPoints: walletType === 'VIP' && initialRewardPoints ? Number(initialRewardPoints) : 0,
         attachmentUrl: attachmentUrl || null,
         attachmentUrls: Array.isArray(attachmentUrls) && attachmentUrls.length > 0 ? attachmentUrls : undefined,
-        agency: walletType === 'GL' ? (agency?.trim() || null) : null,
+        agency: walletType === 'GL' ? glAgency : null,
         diagnosis: walletType === 'GL' ? (diagnosis?.trim() || null) : null,
         approvedServices: walletType === 'GL' && Array.isArray(approvedServices) && approvedServices.length > 0 ? approvedServices : undefined,
         totalGlAmount: walletType === 'GL' && totalGlAmount ? Number(totalGlAmount) : null,

@@ -871,6 +871,8 @@ BEGIN
   ALTER TABLE "GlCase" ADD COLUMN IF NOT EXISTS "processorRfpId" TEXT;
   ALTER TABLE "GlCase" ADD COLUMN IF NOT EXISTS "processorPaidAt" TIMESTAMP(3);
   ALTER TABLE "GlCase" ADD COLUMN IF NOT EXISTS "processorProofUrl" TEXT;
+  -- Detailed GL Agency column (11/15): STAR | ODESFA, for entries with no wallet behind them.
+  ALTER TABLE "GlCase" ADD COLUMN IF NOT EXISTS "agency" TEXT;
 
   CREATE INDEX IF NOT EXISTS "GlCase_processorRfpId_idx" ON "GlCase"("processorRfpId");
 

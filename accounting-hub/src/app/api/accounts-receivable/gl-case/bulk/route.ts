@@ -1,19 +1,21 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { GL_STAGES } from '@/lib/gl-stage'
+import { GL_STAGES, parseAgency, AGENCY_ERROR } from '@/lib/gl-stage'
 
 /**
  * PUT /api/accounts-receivable/gl-case/bulk
  *   { glStage?:        { value: 'BILLING' | '' , caseIds: [], walletIds: [] },
  *     glReleasedAt?:   { value: 'YYYY-MM-DD',    caseIds: [], walletIds: [] },
  *     soaSubmittedAt?: { value: 'YYYY-MM-DD',    caseIds: [], walletIds: [] },
- *     soaResubmittedAt?: { value: 'YYYY-MM-DD',  caseIds: [], walletIds: [] } }
+ *     soaResubmittedAt?: { value: 'YYYY-MM-DD',  caseIds: [], walletIds: [] },
+ *     agency?:         { value: 'STAR' | 'ODESFA' | '', caseIds: [], walletIds: [] } }
  *
  * Detailed GL bulk edit for the ticked letters (Hannah 2026-11-11: "allow me to
  * tick all and set the stage in bulk", then "also allow bulk setting the SOA
  * submission date", "also allow bulk setting the SOA resubmission date",
- * 2026-11-12 "also allow bulk setting the GL release date"). The same writes as
+ * 2026-11-12 "also allow bulk setting the GL release date", 2026-11-15 the Agency
+ * column, STAR or ODESFA). The same writes as
  * editing one row: a row backed by a Detailed GL entry stores them on the entry,
  * a wallet-only row on the GL wallet. Only these fields are touched. A blank
  * stage clears it; neither SOA date can be in the future (the single-row rule in
@@ -57,6 +59,13 @@ export async function PUT(req: Request) {
       }
       glStage = s || null
     }
+    const agencyPart = part(body.agency)
+    let agency: string | null = null
+    if (agencyPart) {
+      const ag = parseAgency(body.agency.value)
+      if (!ag.ok) return NextResponse.json({ error: AGENCY_ERROR }, { status: 400 })
+      agency = ag.value
+    }
     const todayManila = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' })
     const dates: { field: DateField; day: string; at: Date; ids: Part }[] = []
     for (const field of DATE_FIELDS) {
@@ -69,8 +78,8 @@ export async function PUT(req: Request) {
       }
       dates.push({ field, day, at: new Date(`${day}T00:00:00+08:00`), ids })
     }
-    if (!size(stage) && !dates.some(d => size(d.ids))) return NextResponse.json({ error: 'Tick at least one letter' }, { status: 400 })
-    if (size(stage) > MAX || dates.some(d => size(d.ids) > MAX)) return NextResponse.json({ error: `At most ${MAX} letters at a time` }, { status: 400 })
+    if (!size(stage) && !size(agencyPart) && !dates.some(d => size(d.ids))) return NextResponse.json({ error: 'Tick at least one letter' }, { status: 400 })
+    if (size(stage) > MAX || size(agencyPart) > MAX || dates.some(d => size(d.ids) > MAX)) return NextResponse.json({ error: `At most ${MAX} letters at a time` }, { status: 400 })
 
     const ops = []
     if (stage) {
@@ -81,21 +90,27 @@ export async function PUT(req: Request) {
       ops.push(prisma.glCase.updateMany({ where: { id: { in: d.ids.caseIds } }, data: { [d.field]: d.at } }))
       ops.push(prisma.digitalWallet.updateMany({ where: { id: { in: d.ids.walletIds }, walletType: 'GL' }, data: { [d.field]: d.at } }))
     }
+    if (agencyPart) {
+      ops.push(prisma.glCase.updateMany({ where: { id: { in: agencyPart.caseIds } }, data: { agency } }))
+      ops.push(prisma.digitalWallet.updateMany({ where: { id: { in: agencyPart.walletIds }, walletType: 'GL' }, data: { agency } }))
+    }
     const counts = await prisma.$transaction(ops)
-    // Two updateMany per part, in push order: stage first (if any), then each date.
+    // Two updateMany per part, in push order: stage first (if any), then each date, then agency.
     const pair = (i: number) => counts[2 * i].count + counts[2 * i + 1].count
     const stageUpdated = stage ? pair(0) : 0
     const dateUpdated = Object.fromEntries(dates.map((d, i) => [d.field, pair(i + (stage ? 1 : 0))]))
+    const agencyUpdated = agencyPart ? pair(dates.length + (stage ? 1 : 0)) : 0
     await prisma.auditLog.create({
       data: {
         userId: session.user.id as string, action: 'UPDATE', entity: 'gl_case_bulk', entityId: 'detailed-gl',
         details: {
           ...(stage ? { glStage, stageCaseIds: stage.caseIds, stageWalletIds: stage.walletIds, stageUpdated } : {}),
+          ...(agencyPart ? { agency, agencyCaseIds: agencyPart.caseIds, agencyWalletIds: agencyPart.walletIds, agencyUpdated } : {}),
           ...Object.fromEntries(dates.map(d => [d.field, { day: d.day, caseIds: d.ids.caseIds, walletIds: d.ids.walletIds, updated: dateUpdated[d.field] }])),
         },
       },
     })
-    return NextResponse.json({ ok: true, stageUpdated, dateUpdated })
+    return NextResponse.json({ ok: true, stageUpdated, dateUpdated, agencyUpdated })
   } catch (e) {
     console.error('GL bulk edit error:', e)
     return NextResponse.json({ error: 'Failed to save' }, { status: 500 })

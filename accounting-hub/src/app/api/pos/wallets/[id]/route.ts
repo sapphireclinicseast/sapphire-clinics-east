@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { obtainedDateError } from '@/lib/wallet-dates'
+import { parseAgency, AGENCY_ERROR } from '@/lib/gl-stage'
 import { glWalletsPaid } from '@/lib/gl-paid'
 
 const WRITE_ROLES = ['ADMIN', 'PAYROLL_OFFICER', 'ACCOUNTANT', 'BOOKKEEPER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN', 'AHEA_FRONTDESK', 'AHGH_FRONTDESK']
@@ -327,7 +328,12 @@ export async function PUT(
     if (accountId !== undefined) data.accountId = accountId || null
     if (dateObtained !== undefined) data.dateObtained = dateObtained ? new Date(dateObtained) : null
     if (paymentModeId !== undefined) data.paymentModeId = paymentModeId || null
-    if (agency !== undefined) data.agency = agency?.trim() || null
+    if (agency !== undefined) {
+      // GL agency is STAR or ODESFA (lib/gl-stage); blank clears it.
+      const ag = parseAgency(agency)
+      if (!ag.ok) return NextResponse.json({ error: AGENCY_ERROR }, { status: 400 })
+      data.agency = ag.value
+    }
     if (diagnosis !== undefined) data.diagnosis = diagnosis?.trim() || null
     if (approvedServices !== undefined) data.approvedServices = Array.isArray(approvedServices) && approvedServices.length > 0 ? approvedServices : null
     if (vipTier !== undefined) data.vipTier = vipTier || null
