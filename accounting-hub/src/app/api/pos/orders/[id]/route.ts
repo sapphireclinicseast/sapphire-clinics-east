@@ -6,6 +6,7 @@ import { prisma } from '@/lib/prisma'
 import { glOverdraws, glOverdrawMessage } from '@/lib/gl-balance'
 import { restoreFifoLots, recalcWeightedUnitCost } from '@/lib/fifo'
 import { postOrderJournal, reverseOrderJournal } from '@/lib/accounting/post-order'
+import { noteGlFailure } from '@/lib/accounting/pos-gl-check'
 import { linkReferredPatientFromOrder } from '@/lib/referral-link'
 import { normalizeSI } from '@/lib/sales-invoice'
 import { recordHmoSessionVoid, decreaseRowsOnly } from '@/lib/hmo-session-void'
@@ -164,7 +165,13 @@ export async function PUT(
         if (e instanceof GiftCardPaymentError) return NextResponse.json({ error: e.message }, { status: 400 })
         throw e
       }
-      try { await postOrderJournal(prisma, id, session.user.id) } catch (e) { console.error('[GL] recordPayment posting threw:', e) }
+      try {
+        const r = await postOrderJournal(prisma, id, session.user.id)
+        await noteGlFailure(prisma, { orderId: id, userId: session.user.id, step: 'payment', result: r })
+      } catch (e) {
+        console.error('[GL] recordPayment posting threw:', e)
+        await noteGlFailure(prisma, { orderId: id, userId: session.user.id, step: 'payment', error: e })
+      }
       return NextResponse.json({ ok: true, paid: true })
     }
 
@@ -270,8 +277,14 @@ export async function PUT(
       // The sale no longer stands — cancel its GL posting with a mirrored
       // POS_ORDER_REVERSAL (no-op if the order was never posted). A reopened
       // order that gets completed again posts a fresh forward JE.
-      try { await reverseOrderJournal(prisma, id, session.user.id, body.action === 'reopen' ? 'order reopened' : isReturn ? 'returned by buyer' : 'order voided') }
-      catch (e) { console.error('[GL] void/reopen reversal posting threw:', e) }
+      const glStep = body.action === 'reopen' ? 'reopen' as const : isReturn ? 'return' as const : 'void' as const
+      try {
+        const r = await reverseOrderJournal(prisma, id, session.user.id, body.action === 'reopen' ? 'order reopened' : isReturn ? 'returned by buyer' : 'order voided')
+        await noteGlFailure(prisma, { orderId: id, userId: session.user.id, step: glStep, result: r })
+      } catch (e) {
+        console.error('[GL] void/reopen reversal posting threw:', e)
+        await noteGlFailure(prisma, { orderId: id, userId: session.user.id, step: glStep, error: e })
+      }
 
       // When voiding or returning, reverse ALL wallet changes
       if (body.action === 'void' || isReturn) {
@@ -835,7 +848,13 @@ export async function PUT(
     // and deleting it leaves that reversal dangling — the fresh forward then nets
     // to zero against it and the sale silently vanishes from the books.
     if (updated.status !== 'VOIDED') {
-      try { await postOrderJournal(prisma, id, session.user.id) } catch (e) { console.error('Order re-post after edit failed:', e) }
+      try {
+        const r = await postOrderJournal(prisma, id, session.user.id)
+        await noteGlFailure(prisma, { orderId: id, userId: session.user.id, step: 'edit', result: r })
+      } catch (e) {
+        console.error('Order re-post after edit failed:', e)
+        await noteGlFailure(prisma, { orderId: id, userId: session.user.id, step: 'edit', error: e })
+      }
     }
 
     // A re-completed Class Hub tuition sale is the payment again: mark the

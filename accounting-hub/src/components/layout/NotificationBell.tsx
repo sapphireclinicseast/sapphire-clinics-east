@@ -9,8 +9,9 @@ import { pfPriceOpenSince } from '@/lib/payroll/pf-price'
 /* Top-bar bell: one place for what needs action soon —
    PF to recover after HMO decreases, PF above the service price, recurring expenses, BIR tax deadlines,
    benefit/government compliance deadlines (Taxes → Compliance Calendar),
-   tuition promissory payments due within 7 days (AR → Tuition), and HMO MOAs
-   due for renewal (AR → HMO Directory).
+   tuition promissory payments due within 7 days (AR → Tuition), HMO MOAs
+   due for renewal (AR → HMO Directory), and POS orders whose posting
+   disagrees with the books (Posting Check — admin/accountant/bookkeeper only).
    Each source is role-gated by its own API; a 403 just means "not yours". */
 
 const TAX_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER']
@@ -25,7 +26,7 @@ const dueText = (d: number) => (d < 0 ? `${-d} day${d === -1 ? '' : 's'} overdue
 const getJson = (url: string) => fetch(url).then(r => (r.ok ? r.json() : null)).catch(() => null)
 
 async function loadGroups(role: string): Promise<Group[]> {
-  const [pf, pfPrice, recurring, compliance, expiring, tuition, moa] = await Promise.all([
+  const [pf, pfPrice, recurring, compliance, expiring, tuition, moa, posting] = await Promise.all([
     getJson('/api/payroll/hmo-settlement-alerts'),
     getJson(`/api/payroll/pf-price-check?since=${pfPriceOpenSince()}`),
     getJson('/api/expenses/reminders'),
@@ -33,6 +34,7 @@ async function loadGroups(role: string): Promise<Group[]> {
     getJson('/api/official-documents?expiring=1'),
     getJson('/api/tuition/reminders'),
     getJson('/api/accounts-receivable/hmo-directory?alerts=1'),
+    TAX_ROLES.includes(role) ? getJson('/api/posting-check?alerts=1') : Promise.resolve(null),
   ])
   const groups: Group[] = []
 
@@ -152,6 +154,19 @@ async function loadGroups(role: string): Promise<Group[]> {
       items: moaDue.map(m => ({
         key: `moa-${m.walletId}`, title: m.hmoName, detail: `MOA valid until ${m.validUntil}`,
         daysUntil: m.daysLeft, href: `/accounts-receivable?sub=directory&hmo=${encodeURIComponent(m.walletId)}`,
+      })),
+    })
+  }
+  // POS orders that disagree with the books and need a person (Posting Check).
+  const postingIssues: { orderId: string; orderNumber: string; branch: string; transactionDate: string; netAmount: number; detail: string; kind: string }[] = posting?.exceptions || []
+  if (postingIssues.length) {
+    const BR: Record<string, string> = { SANDBOX_EAST: 'East', SANDBOX_GREENHILLS: 'Greenhills', VERDANA_STORE: 'Verdana', AURA_INSTITUTE: 'AHI' }
+    groups.push({
+      key: 'posting', label: 'POS orders not matching the books', icon: AlertOctagon,
+      items: postingIssues.map(i => ({
+        key: `post-${i.kind}-${i.orderId}`, title: `Order #${i.orderNumber} — ${peso(i.netAmount)}`,
+        detail: `${BR[i.branch] || i.branch} · ${i.transactionDate} · ${i.detail.split('. ')[0]}`,
+        daysUntil: null, href: '/posting-check',
       })),
     })
   }

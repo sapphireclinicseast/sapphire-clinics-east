@@ -8,6 +8,7 @@ import { parsePagination, paginatedResult } from '@/lib/pagination'
 import { consumeFifoLots, recalcWeightedUnitCost } from '@/lib/fifo'
 import { postJournalEntry, UnbalancedJournalEntryError } from '@/lib/accounting/posting'
 import { postOrderJournal } from '@/lib/accounting/post-order'
+import { noteGlFailure } from '@/lib/accounting/pos-gl-check'
 import { linkReferredPatientFromOrder } from '@/lib/referral-link'
 import { decreaseRowsOnly } from '@/lib/hmo-session-void'
 import {
@@ -609,9 +610,11 @@ export async function POST(req: Request) {
         console.log(`[GL] Posted JE ${postingResult.journalEntryId} for order ${order.orderNumber}`)
       } else if (postingResult && process.env.ENABLE_GL_POSTING === 'true') {
         console.warn(`[GL] Skipped posting for order ${order.orderNumber}: ${postingResult.reason}`)
+        await noteGlFailure(prisma, { orderId: order.id, userId: session.user.id, step: 'create', result: postingResult })
       }
     } catch (postErr) {
       console.error(`[GL] Posting threw for order ${order.orderNumber}:`, postErr)
+      await noteGlFailure(prisma, { orderId: order.id, userId: session.user.id, step: 'create', error: postErr })
     }
 
     await prisma.auditLog.create({

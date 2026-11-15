@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import {
   LayoutDashboard,
+  ListChecks,
   BookOpen,
   Wallet,
   Shield,
@@ -129,6 +130,8 @@ export const NAV_SECTIONS: NavSection[] = [
       // Catches mentorship sessions paid for without the "Mentorship" service.
       // The cashier prompt is advisory by design, so this is where a miss surfaces.
       { href: '/mentorship-audit', icon: AlertTriangle, label: 'Mentorship Audit', roles: SERVICES_POS_ACCESS },
+      // POS orders vs the books — the nightly check's leftovers (lib/accounting/pos-gl-check).
+      { href: '/posting-check', icon: ListChecks, label: 'Posting Check', roles: TAX_ACCESS },
       { href: '/products-analysis', icon: PackageSearch, label: 'Products Analysis', roles: [...ANALYSIS_ACCESS, 'ACCOUNTANT', 'BOOKKEEPER'] },
       { href: '/sales-analysis', icon: TrendingUp, label: 'Sales Analysis', roles: ANALYSIS_ACCESS },
     ],
