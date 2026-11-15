@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { splitAlreadyUploaded } from '@/lib/bank-dedupe'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { postFundTransferJE, removeFundTransferJE } from '@/lib/fund-transfer-je'
@@ -125,39 +126,39 @@ export async function POST(req: Request) {
       }
 
       // Re-uploading a statement must not double up the ledger, so skip lines
-      // this account already has on the same date, amount and description.
-      //
-      // Counted, not de-duplicated: a statement legitimately repeats a line —
-      // two suppliers paying the same amount on the same day are two separate
-      // transactions, not one entered twice. So a line is skipped only while the
-      // account already holds an unclaimed copy of it. A file with two identical
-      // rows against an empty account imports both; re-uploading that same file
-      // then skips both.
+      // this account already holds (lib/bank-dedupe): same date and amounts
+      // AND the same running balance or the same bank wording — the same BDO
+      // line arrives in several shapes (Transaction History, Current Day,
+      // older "Branch; …; check number" uploads), so exact text alone let
+      // overlaps in twice. Counted, not de-duplicated: two genuinely equal
+      // lines that day still both come in when the account holds only one.
       const dates = data.map((r: { date: Date }) => +r.date)
       const existing = await prisma.bankTransaction.findMany({
         where: { bankAccountId, date: { gte: new Date(Math.min(...dates)), lte: new Date(Math.max(...dates)) } },
-        select: { date: true, description: true, spent: true, received: true },
+        select: { date: true, description: true, spent: true, received: true, statementBalance: true },
       })
+      const { fresh, already } = splitAlreadyUploaded(
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        data.map((r: any) => ({ ...r, balance: r.statementBalance })),
+        existing.map(e => ({ ...e, balance: e.statementBalance })),
+      )
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const key = (r: any) => `${new Date(r.date).toISOString().slice(0, 10)}|${String(r.description).trim().toLowerCase()}|${Number(r.spent).toFixed(2)}|${Number(r.received).toFixed(2)}`
-      const onFile = new Map<string, number>()
-      for (const e of existing) onFile.set(key(e), (onFile.get(key(e)) || 0) + 1)
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const fresh = data.filter((r: any) => {
-        const k = key(r), left = onFile.get(k) || 0
-        if (left > 0) { onFile.set(k, left - 1); return false }
-        return true
-      })
-      const skipped = data.length - fresh.length
-      if (fresh.length === 0) {
+      const freshRows = fresh.map(({ balance, ...r }: any) => { void balance; return r })
+      // The lines left out, so the upload can say exactly which ones were already there.
+      const skippedRows = already.slice(0, 50).map(r => ({
+        date: new Date(r.date).toISOString().slice(0, 10), description: r.description,
+        amount: Number(r.spent) > 0 ? -Number(r.spent) : Number(r.received),
+      }))
+      const skipped = data.length - freshRows.length
+      if (freshRows.length === 0) {
         await prisma.bankImportBatch.delete({ where: { id: batch } }).catch(() => {})
-        return NextResponse.json({ imported: 0, skipped, archived: 0 })
+        return NextResponse.json({ imported: 0, skipped, skippedRows, archived: 0 })
       }
 
-      const res = await prisma.bankTransaction.createMany({ data: fresh })
+      const res = await prisma.bankTransaction.createMany({ data: freshRows })
       await prisma.bankImportBatch.update({ where: { id: batch }, data: { rowCount: res.count } })
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const archived = fresh.filter((r: any) => r.status === ARCHIVED).length
+      const archived = freshRows.filter((r: any) => r.status === ARCHIVED).length
       // Recurring payees are a decision made once: the active auto-rules run
       // over the batch that was just imported, so a fresh statement arrives
       // already categorized as far as the rules can carry it.
@@ -166,7 +167,7 @@ export async function POST(req: Request) {
         const auto = await applyBankRules(prisma, session.user.id as string, { importBatch: batch })
         autoPosted = auto.posted
       } catch { /* rules must never break an upload */ }
-      return NextResponse.json({ imported: res.count, skipped, archived, autoPosted })
+      return NextResponse.json({ imported: res.count, skipped, skippedRows, archived, autoPosted })
     }
 
     if (!body.date || !body.description) return NextResponse.json({ error: 'Date and description are required' }, { status: 400 })

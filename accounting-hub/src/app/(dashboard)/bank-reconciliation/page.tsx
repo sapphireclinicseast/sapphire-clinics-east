@@ -860,7 +860,12 @@ function UploadModal({ bankAccountId, onClose, onDone }: { bankAccountId: string
       // earlier upload, so it was not added a second time. It does not mean the
       // line was matched to anything — matching is reconciling a bank line
       // against a Hub record, which is a separate step you do in the grid.
-      if (d.skipped) bits.push(`${d.skipped} already uploaded previously, so not added again (this is not the same as matching).`)
+      if (d.skipped) {
+        bits.push(`⚠ ${d.skipped} line(s) were ALREADY UPLOADED before, so they were NOT added again (this is not the same as matching):`)
+        const list = (d.skippedRows || []) as { date: string; description: string; amount: number }[]
+        for (const x of list.slice(0, 12)) bits.push(`   • ${x.date}  ${x.amount < 0 ? '−' : '+'}₱${Math.abs(x.amount).toLocaleString('en-PH', { minimumFractionDigits: 2 })}  ${String(x.description).slice(0, 60)}`)
+        if (d.skipped > 12) bits.push(`   … and ${d.skipped - 12} more.`)
+      }
       alert(bits.join('\n')); onDone()
     } finally { setBusy(false) }
   }
