@@ -4,8 +4,8 @@
 // shell cached for up to a year).
 export const dynamic = 'force-dynamic'
 
-import { useMemo, useRef, useState, type ReactNode } from 'react'
-import { Download, FileText, Search } from 'lucide-react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { ArrowUp, Download, FileText, Search } from 'lucide-react'
 
 /**
  * Staff Portal — User Handbook, shown IN the staff portal at /handbook.
@@ -87,9 +87,38 @@ const BOff = () => <Badge cls="b-off" letter="O">Office staff</Badge>
 const BInt = () => <Badge cls="b-int" letter="I">Intern</Badge>
 const BAll = () => <Badge cls="b-all" letter="★">Everyone</Badge>
 
+const SECTIONS: { id: string; label: string }[] = [
+  { id: 'getting-started', label: 'Getting started' },
+  { id: 'systems', label: 'Connected systems' },
+  { id: 'access', label: 'Your access at a glance' },
+  { id: 'features', label: 'Feature guide' },
+  { id: 'meetings', label: 'Meetings' },
+  { id: 'playbooks', label: 'Role playbooks' },
+  { id: 'tasks', label: 'Common tasks' },
+  { id: 'help', label: 'Help & FAQ' },
+]
+
 export default function StaffPortalHandbookPage() {
   const [query, setQuery] = useState('')
   const rootRef = useRef<HTMLDivElement>(null)
+  const mastRef = useRef<HTMLElement>(null)
+  // Which section is being read (highlighted in Contents), and whether the
+  // masthead has scrolled away (shows "Back to top"). IntersectionObserver,
+  // so it works whichever element the portal shell scrolls.
+  const [active, setActive] = useState<string>(SECTIONS[0].id)
+  const [showTop, setShowTop] = useState(false)
+  useEffect(() => {
+    const els = SECTIONS.map((s) => document.getElementById(s.id)).filter((e): e is HTMLElement => !!e)
+    const io = new IntersectionObserver((entries) => {
+      const hit = entries.filter((e) => e.isIntersecting).sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top)[0]
+      if (hit) setActive(hit.target.id)
+    }, { rootMargin: '-10% 0px -70% 0px' })
+    els.forEach((e) => io.observe(e))
+    const mast = mastRef.current
+    const io2 = new IntersectionObserver(([e]) => setShowTop(!e.isIntersecting))
+    if (mast) io2.observe(mast)
+    return () => { io.disconnect(); io2.disconnect() }
+  }, [])
 
   const results = useMemo(() => {
     const q = query.trim().toLowerCase()
@@ -195,6 +224,20 @@ export default function StaffPortalHandbookPage() {
         .sph-hb section p{max-width:var(--measure);}
         .sph-hb h3.blockh{font-size:17px; font-weight:700; margin:24px 0 8px;}
 
+        /* Wide screens: Contents becomes a sticky side panel beside the sections. */
+        .sph-hb .hb-layout{display:block;}
+        @media(min-width:1180px){
+          .sph-hb .hb-layout{display:grid; grid-template-columns:210px minmax(0,1fr); gap:22px; align-items:start;}
+          .sph-hb .hb-layout>.toc{position:sticky; top:16px; margin:0; padding:14px 12px;}
+          .sph-hb .hb-layout>.toc ol{grid-template-columns:1fr; gap:1px;}
+          .sph-hb .hb-layout>.toc a{display:flex; gap:8px; padding:6px 9px; font-size:13.5px; line-height:1.35;}
+          .sph-hb .hb-layout>.toc a b{margin-right:0; flex:0 0 auto; padding-top:1px;}
+        }
+        .sph-hb .toc a.on{background:var(--teal-soft); color:var(--teal-deep); font-weight:600;}
+        .sph-hb .hb-top{position:fixed; right:22px; bottom:22px; z-index:20; height:38px; padding:0 14px; border-radius:999px;
+          display:inline-flex; align-items:center; gap:6px; font:600 12.5px var(--sans); cursor:pointer;
+          background:#244952; color:#fff; border:0; box-shadow:0 6px 18px rgba(23,50,58,.22);}
+        .sph-hb .hb-top:hover{opacity:.92;}
         /* TOC card */
         .sph-hb .toc{border:1px solid var(--line); border-radius:12px; background:var(--card); padding:16px 20px; margin:0 0 20px;}
         .sph-hb .toc .toc-h{font-family:var(--display); font-weight:700; font-size:11px; letter-spacing:.12em; text-transform:uppercase; color:var(--muted); margin:0 0 8px;}
@@ -325,6 +368,8 @@ export default function StaffPortalHandbookPage() {
 
         @media(prefers-reduced-motion:reduce){.sph-hb *{transition:none!important;}}
         @media print{
+          .sph-hb .hb-layout{display:block!important;}
+          .sph-hb .hb-layout>.toc{position:static!important;}
           .sph-hb{background:#fff;}
           .sph-hb section{border:none; padding:0;}
           .sph-hb .mast-actions,.sph-hb .hb-search,.sph-hb [data-noexport]{display:none!important;}
@@ -335,7 +380,7 @@ export default function StaffPortalHandbookPage() {
       `}</style>
 
       {/* ── Masthead ── */}
-      <header className="mast">
+      <header className="mast" ref={mastRef}>
         <div className="wrap">
           <div className="mast-text">
           <span className="kicker">Resources · Handbook</span>
@@ -357,21 +402,21 @@ export default function StaffPortalHandbookPage() {
         </div>
       </header>
 
-      <main className="wrap">
+      <main className="wrap hb-layout">
         {/* TOC */}
         <nav className="toc" aria-label="Contents">
           <p className="toc-h">Contents</p>
           <ol>
-            <li><a href="#getting-started"><b>01</b>Getting started</a></li>
-            <li><a href="#systems"><b>02</b>Connected systems</a></li>
-            <li><a href="#access"><b>03</b>Your access at a glance</a></li>
-            <li><a href="#features"><b>04</b>Feature guide</a></li>
-            <li><a href="#meetings"><b>05</b>Meetings</a></li>
-            <li><a href="#playbooks"><b>06</b>Role playbooks</a></li>
-            <li><a href="#tasks"><b>07</b>Common tasks</a></li>
-            <li><a href="#help"><b>08</b>Help &amp; FAQ</a></li>
+            {SECTIONS.map((sec, i) => (
+              <li key={sec.id}>
+                <a href={`#${sec.id}`} className={active === sec.id ? 'on' : undefined} aria-current={active === sec.id ? 'location' : undefined}>
+                  <b>{String(i + 1).padStart(2, '0')}</b>{sec.label}
+                </a>
+              </li>
+            ))}
           </ol>
         </nav>
+        <div className="hb-body">
 
         {/* ── 01 GETTING STARTED ── */}
         <section id="getting-started">
@@ -984,7 +1029,14 @@ export default function StaffPortalHandbookPage() {
           Aura Health Rehab · Sapphire Clinics East, Inc. — Staff Portal handbook. Reflects portal features as of the
           current deploy. Access shown reflects account type and HR tags; the clinic manager can adjust these anytime.
         </footer>
+        </div>
       </main>
+
+      {showTop && (
+        <button type="button" className="hb-top" data-noexport="" onClick={() => mastRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })}>
+          <ArrowUp size={14} aria-hidden /> Back to top
+        </button>
+      )}
     </div>
   )
 }
