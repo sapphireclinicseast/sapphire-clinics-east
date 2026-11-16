@@ -772,6 +772,31 @@ export default function DetailedGl({
   const arDaysAvg = avgArRunningDays(rows)
   const avgArDays = arDaysAvg?.avg ?? null
 
+  // What an export covers (Hannah 11/16: "add the agency filter to the Excel and
+  // PDF exports too"). The exported rows were already the filtered rows; this
+  // names the agency and branches in the file, sheet and PDF, and adds the totals.
+  const agencyFilter = filters.agency || ''
+  const agencyLabel = agencyFilter === '—' ? 'No agency set' : agencyFilter
+  const branchScope = ticked.length !== branchOptions.length
+    ? ticked.map(b => (b ? branchLabel(b) || b : 'No branch')).join(', ') : ''
+  const otherFilters = Object.entries(filters).filter(([k, v]) => k !== 'agency' && (v || '').trim()).length
+    + (stageTicks.length ? 1 : 0) + (search.trim() ? 1 : 0) + toneTicks.length + (noSoaOnly ? 1 : 0) + (writtenOffOnly ? 1 : 0)
+  const exportScope = [
+    agencyFilter ? `Agency: ${agencyLabel}` : 'All agencies',
+    branchScope ? `Branch: ${branchScope}` : 'All branches',
+    ...(otherFilters ? [`${otherFilters} other filter${otherFilters === 1 ? '' : 's'} applied`] : []),
+  ].join(' · ')
+  const exportTag = (agencyFilter === '—' ? 'no-agency' : agencyFilter).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')
+  const exportFile = `detailed-gl${exportTag ? `-${exportTag}` : ''}-${new Date().toISOString().slice(0, 10)}`
+  // Excel sheet names: at most 31 characters, none of : \ / ? * [ ]
+  const exportSheet = (agencyFilter ? `Detailed GL - ${agencyLabel}` : 'Detailed GL').replace(/[:\\/?*[\]]/g, ' ').slice(0, 31)
+  const exportTotalRow = () => COLS.map(c => (
+    c.key === 'name' ? `TOTAL (${rows.length} letter${rows.length === 1 ? '' : 's'})`
+      : c.key === 'requested' ? formatCurrency(totals.requested)
+      : c.key === 'approved' ? formatCurrency(totals.approved)
+      : c.key === 'soaAmount' ? formatCurrency(totals.soa)
+      : ''))
+
   return (
     <div className="space-y-3">
       {/* Branch filter + headline totals for the ticked branches */}
@@ -913,17 +938,26 @@ export default function DetailedGl({
           </button>
         )}
         <button
-          onClick={() => downloadXlsx(`detailed-gl-${new Date().toISOString().slice(0, 10)}`,
-            [{ name: 'Detailed GL', headers: COLS.map(c => c.label), rows: exportRows() }])}
+          onClick={() => downloadXlsx(exportFile,
+            [{ name: exportSheet, headers: COLS.map(c => c.label), rows: [...exportRows(), exportTotalRow(), [], [exportScope]] }])}
+          title={`Export ${rows.length} letter${rows.length === 1 ? '' : 's'} · ${exportScope}`}
           className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border"
           style={{ borderColor: 'var(--teal)', color: 'var(--teal)' }}>
           <Download size={13} /> Excel
         </button>
         <button
           onClick={() => downloadReportPdf({
-            title: 'Detailed GL', subtitle: `${rows.length} Guarantee Letters`, landscape: true,
-            sections: [{ heading: 'Guarantee Letters', headers: COLS.map(c => c.label), rows: exportRows() }],
+            title: agencyFilter ? `Detailed GL — ${agencyLabel}` : 'Detailed GL',
+            subtitle: `${rows.length} Guarantee Letter${rows.length === 1 ? '' : 's'} · ${exportScope}`, landscape: true,
+            kpis: [
+              { label: 'Requested GL', value: formatCurrency(totals.requested) },
+              { label: 'Approved GL', value: formatCurrency(totals.approved) },
+              { label: 'Amount in SOA', value: formatCurrency(totals.soa) },
+              { label: 'Avg AR running days', value: avgArDays == null ? '—' : `${avgArDays.toFixed(1)} days` },
+            ],
+            sections: [{ heading: 'Guarantee Letters', headers: COLS.map(c => c.label), rows: exportRows(), totalRow: exportTotalRow() }],
           })}
+          title={`Export ${rows.length} letter${rows.length === 1 ? '' : 's'} · ${exportScope}`}
           className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border"
           style={{ borderColor: 'var(--mid-gray)', color: 'var(--mid-gray)' }}>
           <Download size={13} /> PDF
