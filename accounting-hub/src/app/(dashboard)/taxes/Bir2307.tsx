@@ -13,8 +13,9 @@
  *    on the certificate) are per-branch settings, editable in 2307 Settings.
  */
 
-import { useState, useEffect, useCallback } from 'react'
-import { Loader2, FileText, Eye, Download, Plus, X, RotateCcw, Save } from 'lucide-react'
+import { useState, useEffect, useCallback, type ReactNode } from 'react'
+import { Loader2, FileText, Eye, Download, Plus, X, RotateCcw, Save, CheckCircle2 } from 'lucide-react'
+import { StatCard, hrBtn } from '@/components/ui/hr-look'
 import { generateBir2307Pdf, type Bir2307Row } from '@/lib/bir2307-pdf'
 import { SignaturePanel, SignatureStrip, useSignatureStatus } from './Bir2307Signature'
 
@@ -29,10 +30,15 @@ const BRANCHES = [
 const MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 const monthLabel = (ym: string) => { const [y, m] = ym.split('-'); return `${MON[parseInt(m) - 1]} ${y}` }
 const peso = (n: number) => n.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+/** "2026-10-01" → "Oct 1, 2026". */
+const shortDay = (ymd: string) => { const [y, m, d] = ymd.split('-').map(Number); return y && m && d ? `${MON[m - 1]} ${d}, ${y}` : ymd }
 
-const inputCls = 'w-full px-3 py-2 rounded-xl border text-sm outline-none focus:border-[var(--teal)]'
+// HR Hub fields: 36px, 8px radius, white, green focus ring.
+const inputCls = 'w-full h-9 px-3 rounded-lg border text-[13px] bg-white outline-none focus:border-[var(--teal)] disabled:bg-[var(--off-white)]'
 const inputStyle = { borderColor: 'var(--light-gray)' }
-const labelCls = 'block text-[11px] font-semibold uppercase tracking-wide mb-1'
+const labelCls = 'block text-[11px] font-semibold uppercase tracking-[.4px] mb-1'
+/** A compact field inside the income table. */
+const cellCls = 'w-full h-8 px-2 rounded-md border text-xs bg-white outline-none focus:border-[var(--teal)]'
 const labelStyle = { color: 'var(--mid-gray)' }
 
 interface IncomeRow extends Bir2307Row { id: number }
@@ -143,177 +149,197 @@ export function Bir2307Generator({ branch, canWrite }: { branch: string; canWrit
     setRows([newRow()]); setMonthCols([]); setAutoNote(''); setResult(null)
   }
 
-  const colLabel = (i: number) => monthCols[i] ? `${['1st', '2nd', '3rd'][i]} Month (${monthLabel(monthCols[i])})` : `${['1st', '2nd', '3rd'][i]} Month`
+  const colLabel = (i: number) => monthCols[i] ? `${['1st', '2nd', '3rd'][i]} month · ${monthLabel(monthCols[i])}` : `${['1st', '2nd', '3rd'][i]} month`
+  const consultantName = consultants.find(c => c.id === consultantId)?.name || ''
+  const periodText = from && to ? `${shortDay(from)} – ${shortDay(to)}` : from ? `From ${shortDay(from)}` : to ? `To ${shortDay(to)}` : ''
+
+  // 2307 Generator in the HR Hub look (Hannah 11/16: "make the 2307 Generator
+  // view look like this too"): summary cards, numbered section cards with light
+  // headers, read-only payor details as text, one action bar.
+  const section = (n: number, title: string, body: ReactNode, aside?: ReactNode) => (
+    <div className="rounded-lg border bg-white overflow-hidden" style={{ borderColor: 'var(--light-gray)' }}>
+      <div className="flex items-center gap-2.5 flex-wrap px-4 py-2.5 border-b" style={{ background: 'var(--hr-head)', borderColor: 'var(--hr-line)' }}>
+        <span className="inline-flex items-center justify-center w-5 h-5 rounded-full text-[11px] font-bold" style={{ background: 'var(--pale-teal)', color: 'var(--deep-teal)' }}>{n}</span>
+        <h3 className="text-[13px] font-bold" style={{ color: 'var(--charcoal)' }}>{title}</h3>
+        {aside && <div className="ml-auto">{aside}</div>}
+      </div>
+      <div className="p-4">{body}</div>
+    </div>
+  )
+  const readField = (label: string, value: string, wide = false) => (
+    <div className={wide ? 'sm:col-span-2' : ''}>
+      <p className={labelCls} style={labelStyle}>{label}</p>
+      <p className="text-[13px] min-h-[20px]" style={{ color: value ? 'var(--charcoal)' : 'var(--hr-faint)' }}>{value || '—'}</p>
+    </div>
+  )
 
   return (
-    <div className="rounded-2xl border bg-white p-5 space-y-5" style={{ borderColor: 'var(--light-gray)' }}>
-      <div className="flex items-center gap-2">
-        <FileText size={18} style={{ color: 'var(--teal)' }} />
-        <h3 className="text-sm font-bold" style={{ color: 'var(--charcoal)' }}>BIR Form 2307 Generator</h3>
+    <div className="space-y-4">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <StatCard label="Consultant" value={consultantName || '—'} sub={consultantName ? (payee.tin ? `TIN ${payee.tin}` : 'No TIN on file') : 'Pick one below'}
+          tone={consultantName ? 'blue' : 'zero'} compact />
+        <StatCard label="Period" value={periodText || '—'} sub={monthCols.length ? `${monthCols.length} month${monthCols.length === 1 ? '' : 's'} of payroll` : 'From – to dates'}
+          tone={periodText ? 'blue' : 'zero'} compact />
+        <StatCard label="Total income" value={`₱${peso(totals.total)}`} sub={rows.length > 1 ? `${rows.length} income rows` : 'Professional fees'}
+          tone={totals.total ? 'green' : 'zero'} compact />
+        <StatCard label="Tax withheld (5%)" value={`₱${peso(totals.tax)}`} sub="ATC WI010 · 5% EWT"
+          tone={totals.tax ? 'amber' : 'zero'} compact />
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-        <div>
-          <label className={labelCls} style={labelStyle}>Consultant *</label>
-          <select value={consultantId} onChange={e => onConsultant(e.target.value)} className={inputCls} style={inputStyle}>
-            <option value="">— Select Consultant —</option>
-            {consultants.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-          </select>
-        </div>
-        <div>
-          <label className={labelCls} style={labelStyle}>Period From</label>
-          <input type="date" value={from} onChange={e => setFrom(e.target.value)} className={inputCls} style={inputStyle} />
-        </div>
-        <div>
-          <label className={labelCls} style={labelStyle}>Period To</label>
-          <input type="date" value={to} onChange={e => setTo(e.target.value)} className={inputCls} style={inputStyle} />
-        </div>
-      </div>
-
-      <div>
-        <p className="text-xs font-bold mb-2" style={{ color: 'var(--charcoal)' }}>Part I — Payee Information (Consultant)</p>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+      {section(1, 'Consultant and period', (
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
           <div>
-            <label className={labelCls} style={labelStyle}>TIN</label>
-            <input value={payee.tin} onChange={e => setPayee(p => ({ ...p, tin: e.target.value }))} className={inputCls} style={inputStyle} placeholder="000-000-000" />
-          </div>
-          <div>
-            <label className={labelCls} style={labelStyle}>Name</label>
-            <input value={payee.name} readOnly className={inputCls} style={{ ...inputStyle, background: 'var(--off-white)' }} />
-          </div>
-          <div>
-            <label className={labelCls} style={labelStyle}>Registered Address (from Consultant List · BIR Address)</label>
-            <input value={payee.address} onChange={e => setPayee(p => ({ ...p, address: e.target.value }))} className={inputCls} style={inputStyle}
-              placeholder="Set the BIR Address in the Consultant List to auto-fill" />
-          </div>
-          <div className="max-w-[120px]">
-            <label className={labelCls} style={labelStyle}>Zip Code</label>
-            <input value={payee.zip} onChange={e => setPayee(p => ({ ...p, zip: e.target.value }))} className={inputCls} style={inputStyle} placeholder="ZIP" />
-          </div>
-        </div>
-      </div>
-
-      <div>
-        <p className="text-xs font-bold mb-2" style={{ color: 'var(--charcoal)' }}>Part II — Payor Information (Company)</p>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          <div>
-            <label className={labelCls} style={labelStyle}>Branch *</label>
-            <select value={payorBranch} onChange={e => setPayorBranch(e.target.value)} className={inputCls} style={inputStyle}>
-              {BRANCHES.map(b => <option key={b.value} value={b.value}>{b.label}</option>)}
+            <label className={labelCls} style={labelStyle}>Consultant *</label>
+            <select value={consultantId} onChange={e => onConsultant(e.target.value)} className={inputCls} style={inputStyle}>
+              <option value="">— Select consultant —</option>
+              {consultants.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
           </div>
           <div>
-            <label className={labelCls} style={labelStyle}>TIN</label>
-            <input value={payor.tin} readOnly className={inputCls} style={{ ...inputStyle, background: 'var(--off-white)' }} />
+            <label className={labelCls} style={labelStyle}>Period from</label>
+            <input type="date" value={from} onChange={e => setFrom(e.target.value)} className={inputCls} style={inputStyle} />
           </div>
           <div>
-            <label className={labelCls} style={labelStyle}>Payor&apos;s Name</label>
-            <input value={payor.name} readOnly className={inputCls} style={{ ...inputStyle, background: 'var(--off-white)' }} />
-          </div>
-          <div className="max-w-[120px]">
-            <label className={labelCls} style={labelStyle}>Zip Code</label>
-            <input value={payor.zip} readOnly className={inputCls} style={{ ...inputStyle, background: 'var(--off-white)' }} />
-          </div>
-          <div className="md:col-span-2">
-            <label className={labelCls} style={labelStyle}>Registered Address</label>
-            <input value={payor.address} readOnly className={inputCls} style={{ ...inputStyle, background: 'var(--off-white)' }} />
+            <label className={labelCls} style={labelStyle}>Period to</label>
+            <input type="date" value={to} onChange={e => setTo(e.target.value)} className={inputCls} style={inputStyle} />
           </div>
         </div>
-        <p className="text-[11px] mt-1" style={{ color: 'var(--mid-gray)' }}>Payor fields come from 2307 Settings for the chosen branch.</p>
-        <div className="mt-3">
-          <SignatureStrip branch={payorBranch} info={settings[payorBranch]} status={sig.signatures[payorBranch]}
-            canManage={sig.canManage} settings={settings} stamp={stampSignature} onStamp={setStampSignature} onChanged={sig.refresh} />
-        </div>
+      ))}
+
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+        {section(2, 'Part I — Payee (consultant)', (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label className={labelCls} style={labelStyle}>TIN</label>
+              <input value={payee.tin} onChange={e => setPayee(p => ({ ...p, tin: e.target.value }))} className={inputCls} style={inputStyle} placeholder="000-000-000" />
+            </div>
+            {readField('Name', payee.name)}
+            <div className="sm:col-span-2 grid grid-cols-[1fr_110px] gap-3">
+              <div>
+                <label className={labelCls} style={labelStyle}>Registered address</label>
+                <input value={payee.address} onChange={e => setPayee(p => ({ ...p, address: e.target.value }))} className={inputCls} style={inputStyle}
+                  placeholder="Set the BIR Address in the Consultant List to auto-fill" />
+              </div>
+              <div>
+                <label className={labelCls} style={labelStyle}>Zip code</label>
+                <input value={payee.zip} onChange={e => setPayee(p => ({ ...p, zip: e.target.value }))} className={inputCls} style={inputStyle} placeholder="ZIP" />
+              </div>
+            </div>
+            <p className="sm:col-span-2 text-[11px]" style={{ color: 'var(--hr-faint)' }}>TIN and address come from the Consultant List (BIR Address); edit here for this certificate only.</p>
+          </div>
+        ))}
+
+        {section(3, 'Part II — Payor (company)', (
+          <div className="space-y-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className={labelCls} style={labelStyle}>Branch *</label>
+                <select value={payorBranch} onChange={e => setPayorBranch(e.target.value)} className={inputCls} style={inputStyle}>
+                  {BRANCHES.map(b => <option key={b.value} value={b.value}>{b.label}</option>)}
+                </select>
+              </div>
+              {readField('TIN', payor.tin)}
+              {readField("Payor's name", payor.name)}
+              {readField('Zip code', payor.zip)}
+              {readField('Registered address', payor.address, true)}
+            </div>
+            <p className="text-[11px]" style={{ color: 'var(--hr-faint)' }}>From 2307 Settings for the chosen branch.</p>
+            <SignatureStrip branch={payorBranch} info={settings[payorBranch]} status={sig.signatures[payorBranch]}
+              canManage={sig.canManage} settings={settings} stamp={stampSignature} onStamp={setStampSignature} onChanged={sig.refresh} />
+          </div>
+        ))}
       </div>
 
-      <div>
-        <div className="flex items-center justify-between mb-2">
-          <p className="text-xs font-bold" style={{ color: 'var(--charcoal)' }}>Part III — Income Payments</p>
-          {autoNote && <p className="text-[11px]" style={{ color: 'var(--mid-gray)' }}>{autoNote}</p>}
-        </div>
-        <div className="overflow-x-auto rounded-xl border" style={{ borderColor: 'var(--light-gray)' }}>
-          <table className="w-full text-xs" style={{ minWidth: 760 }}>
-            <thead>
-              <tr style={{ background: 'var(--off-white)' }}>
-                {['Income Payment Description', 'ATC', colLabel(0), colLabel(1), colLabel(2), 'Total', 'Tax Withheld (5%)', ''].map((h, i) => (
-                  <th key={i} className="px-2 py-2 text-left font-semibold whitespace-nowrap" style={{ color: 'var(--mid-gray)' }}>{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map(r => (
-                <tr key={r.id} className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
-                  <td className="px-2 py-1.5" style={{ minWidth: 200 }}>
-                    <input value={r.desc} onChange={e => setRowField(r.id, { desc: e.target.value })} className="w-full px-2 py-1 rounded-lg border text-xs" style={inputStyle} />
-                  </td>
-                  <td className="px-2 py-1.5" style={{ width: 80 }}>
-                    <input value={r.atc} onChange={e => setRowField(r.id, { atc: e.target.value })} className="w-full px-2 py-1 rounded-lg border text-xs" style={inputStyle} />
-                  </td>
-                  {(['m1', 'm2', 'm3'] as const).map(k => (
-                    <td key={k} className="px-2 py-1.5" style={{ width: 110 }}>
-                      <input type="number" step="0.01" min="0" value={r[k] || ''} placeholder="0"
-                        onChange={e => setRowField(r.id, { [k]: parseFloat(e.target.value) || 0 })}
-                        className="w-full px-2 py-1 rounded-lg border text-xs text-right" style={inputStyle} />
-                    </td>
+      {section(4, 'Part III — Income payments', (
+        <>
+          <div className="overflow-x-auto rounded-lg border" style={{ borderColor: 'var(--light-gray)' }}>
+            <table className="w-full text-xs" style={{ minWidth: 760 }}>
+              <thead>
+                <tr style={{ background: 'var(--hr-head)' }}>
+                  {['Income payment description', 'ATC', colLabel(0), colLabel(1), colLabel(2), 'Total', 'Tax withheld (5%)', ''].map((h, i) => (
+                    <th key={i} className={`px-2.5 py-2 text-[11px] font-bold uppercase tracking-[.4px] whitespace-nowrap ${i >= 2 && i <= 6 ? 'text-right' : 'text-left'}`}
+                      style={{ color: 'var(--mid-gray)', borderBottom: '1px solid var(--hr-line)' }}>{h}</th>
                   ))}
-                  <td className="px-2 py-1.5 text-right font-semibold whitespace-nowrap">{peso(r.total)}</td>
-                  <td className="px-2 py-1.5 text-right font-semibold whitespace-nowrap">{peso(r.tax)}</td>
-                  <td className="px-2 py-1.5">
-                    {rows.length > 1 && (
-                      <button onClick={() => setRows(prev => prev.filter(x => x.id !== r.id))} className="p-1 rounded-lg" style={{ color: '#b91c1c' }} title="Remove row">
-                        <X size={13} />
-                      </button>
-                    )}
-                  </td>
                 </tr>
-              ))}
-              <tr className="border-t font-bold" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
-                <td className="px-2 py-2">TOTAL</td><td />
-                <td className="px-2 py-2 text-right">{peso(totals.m1)}</td>
-                <td className="px-2 py-2 text-right">{peso(totals.m2)}</td>
-                <td className="px-2 py-2 text-right">{peso(totals.m3)}</td>
-                <td className="px-2 py-2 text-right">{peso(totals.total)}</td>
-                <td className="px-2 py-2 text-right">{peso(totals.tax)}</td>
-                <td />
-              </tr>
-            </tbody>
-          </table>
-        </div>
-        <div className="flex items-center gap-2 mt-2">
-          <button onClick={() => setRows(prev => [...prev, newRow()])} className="flex items-center gap-1 px-3 py-1.5 rounded-xl border text-xs font-semibold"
-            style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>
-            <Plus size={13} /> Add Row
-          </button>
-          <button onClick={loadAmounts} className="flex items-center gap-1 px-3 py-1.5 rounded-xl border text-xs font-semibold"
-            style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }} title="Re-fill the first row's months from finalized payroll">
-            <RotateCcw size={13} /> Reset to payroll amounts
-          </button>
-        </div>
-      </div>
+              </thead>
+              <tbody>
+                {rows.map(r => (
+                  <tr key={r.id} style={{ borderTop: '1px solid var(--hr-line)' }}>
+                    <td className="px-2.5 py-1.5" style={{ minWidth: 200 }}>
+                      <input value={r.desc} onChange={e => setRowField(r.id, { desc: e.target.value })} className={cellCls} style={inputStyle} />
+                    </td>
+                    <td className="px-2.5 py-1.5" style={{ width: 84 }}>
+                      <input value={r.atc} onChange={e => setRowField(r.id, { atc: e.target.value })} className={cellCls} style={inputStyle} />
+                    </td>
+                    {(['m1', 'm2', 'm3'] as const).map(k => (
+                      <td key={k} className="px-2.5 py-1.5" style={{ width: 130 }}>
+                        <input type="number" step="0.01" min="0" value={r[k] || ''} placeholder="0"
+                          onChange={e => setRowField(r.id, { [k]: parseFloat(e.target.value) || 0 })}
+                          className={`${cellCls} text-right tabular-nums`} style={inputStyle} />
+                      </td>
+                    ))}
+                    <td className="px-2.5 py-1.5 text-right font-semibold tabular-nums whitespace-nowrap" style={{ color: 'var(--charcoal)' }}>{peso(r.total)}</td>
+                    <td className="px-2.5 py-1.5 text-right font-semibold tabular-nums whitespace-nowrap" style={{ color: '#b45309' }}>{peso(r.tax)}</td>
+                    <td className="px-2 py-1.5 text-center">
+                      {rows.length > 1 && (
+                        <button onClick={() => setRows(prev => prev.filter(x => x.id !== r.id))} className="p-1 rounded-md hover:bg-[#fef2f2]" style={{ color: '#b91c1c' }} title="Remove row">
+                          <X size={13} />
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+                <tr className="font-bold" style={{ borderTop: '1px solid var(--light-gray)', background: 'var(--hr-head)' }}>
+                  <td className="px-2.5 py-2 text-[11px] uppercase tracking-[.4px]" style={{ color: 'var(--mid-gray)' }}>Total</td><td />
+                  <td className="px-2.5 py-2 text-right tabular-nums">{peso(totals.m1)}</td>
+                  <td className="px-2.5 py-2 text-right tabular-nums">{peso(totals.m2)}</td>
+                  <td className="px-2.5 py-2 text-right tabular-nums">{peso(totals.m3)}</td>
+                  <td className="px-2.5 py-2 text-right tabular-nums">{peso(totals.total)}</td>
+                  <td className="px-2.5 py-2 text-right tabular-nums" style={{ color: '#b45309' }}>{peso(totals.tax)}</td>
+                  <td />
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div className="flex items-center gap-2 mt-3 flex-wrap">
+            <button onClick={() => setRows(prev => [...prev, newRow()])} className={hrBtn.ghost} style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}>
+              <Plus size={13} /> Add row
+            </button>
+            <button onClick={loadAmounts} className={hrBtn.ghost} style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }} title="Re-fill the first row's months from finalized payroll">
+              <RotateCcw size={13} /> Reset to payroll amounts
+            </button>
+          </div>
+        </>
+      ), autoNote ? (
+        <span className="px-2 py-0.5 rounded-full text-[11px] font-semibold"
+          style={autoNote.startsWith('Auto-filled') ? { background: '#dcfce7', color: '#166534' } : { background: '#fef3c7', color: '#92400e' }}>
+          {autoNote}
+        </span>
+      ) : undefined)}
 
-      <div className="flex items-center gap-2 flex-wrap">
-        <button onClick={generate} disabled={!canWrite || generating || !consultantId}
-          className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-50" style={{ background: 'var(--teal)' }}>
+      {/* Action bar */}
+      <div className="rounded-lg border bg-white px-4 py-3 flex items-center gap-2 flex-wrap" style={{ borderColor: 'var(--light-gray)' }}>
+        <button onClick={generate} disabled={!canWrite || generating || !consultantId} className={hrBtn.primary} style={{ background: 'var(--teal)' }}>
           {generating ? <Loader2 size={15} className="animate-spin" /> : <FileText size={15} />} Generate BIR 2307 PDF
         </button>
-        <button onClick={clearForm} className="px-4 py-2.5 rounded-xl border text-sm font-semibold" style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>
-          Clear Form
+        <button onClick={clearForm} className={hrBtn.outline} style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}>
+          Clear form
         </button>
         {result && (
-          <div className="flex items-center gap-2 px-3 py-2 rounded-xl" style={{ background: '#f0fdf4', border: '1px solid #bbf7d0' }}>
-            <span className="text-xs font-semibold" style={{ color: '#16a34a' }}>Generated</span>
-            <a href={result.url} target="_blank" rel="noreferrer" className="flex items-center gap-1 text-xs font-semibold" style={{ color: 'var(--teal)' }}>
+          <span className="inline-flex items-center gap-3 h-9 px-3 rounded-lg" style={{ background: '#f0fdf4', border: '1px solid #bbf7d0' }}>
+            <span className="inline-flex items-center gap-1 text-xs font-semibold" style={{ color: '#166534' }}><CheckCircle2 size={14} /> Generated</span>
+            <a href={result.url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-xs font-semibold hover:underline" style={{ color: 'var(--teal)' }}>
               <Eye size={13} /> View
             </a>
-            <a href={result.url} download={result.filename} className="flex items-center gap-1 text-xs font-semibold" style={{ color: 'var(--teal)' }}>
+            <a href={result.url} download={result.filename} className="inline-flex items-center gap-1 text-xs font-semibold hover:underline" style={{ color: 'var(--teal)' }}>
               <Download size={13} /> Download
             </a>
-          </div>
+          </span>
         )}
+        <p className="basis-full text-[11px] mt-1" style={{ color: 'var(--hr-faint)' }}>
+          The certificate prints the payor signatory (name and title from 2307 Settings, with the branch&apos;s e-signature unless you untick it), and the consultant&apos;s printed name on the payee line.
+        </p>
       </div>
-      <p className="text-[11px]" style={{ color: 'var(--mid-gray)' }}>
-        The certificate prints the payor signatory (name and title from 2307 Settings, with the branch&apos;s e-signature unless you untick it), and the consultant&apos;s printed name on the payee line.
-      </p>
     </div>
   )
 }
