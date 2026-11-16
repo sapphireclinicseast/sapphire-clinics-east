@@ -95,6 +95,7 @@ export default function ServiceInvoiceTab({ branch: branchProp, canWrite }: { br
   // Tracking & Reminders: which COR holders to list (stat cards and the Show switch).
   const [trackShow, setTrackShow] = useState<'all' | 'owing' | 'ok' | 'settle'>('all')
   const [noTaxOnly, setNoTaxOnly] = useState(false)
+  const [corShow, setCorShow] = useState<'all' | 'on' | 'none' | 'no2303'>('all')
   const [hrSync, setHrSync] = useState<{ reached: boolean; unmatched: string[] } | null>(null)
   const [corTarget, setCorTarget] = useState<Consultant | null>(null)
   const [dialog, setDialog] = useState<{ c: Consultant; mode: 'upload' | 'EMAIL' | 'SMS' } | null>(null)
@@ -249,6 +250,12 @@ export default function ServiceInvoiceTab({ branch: branchProp, canWrite }: { br
   // COR sub-tab: on file or not, read from the upload itself so it can't go stale.
   const corRows = noTaxOnly ? filtered.filter(c => c.taxDeduction !== 'FIVE_PERCENT') : filtered
   const noTaxCount = filtered.filter(c => c.taxDeduction !== 'FIVE_PERCENT').length
+  // COR sub-view: cards and the Show switch (on file / no COR / No 2303).
+  const corOnFile = corRows.filter(c => c.corUrl)
+  const corMissing = corRows.filter(c => !c.corUrl && !c.no2303At)
+  const corNo2303 = corRows.filter(c => !c.corUrl && c.no2303At)
+  const corFromHr = corOnFile.filter(c => isHrCorUrl(c.corUrl)).length
+  const corShown = corShow === 'on' ? corOnFile : corShow === 'none' ? corMissing : corShow === 'no2303' ? corNo2303 : corRows
   const owing = withCor.filter(c => outstandingOf(c.id).length > 0).length
   /** Finalized payroll gross for the cutoffs not yet invoiced. */
   const owedOf = (cid: string) => {
@@ -592,69 +599,115 @@ export default function ServiceInvoiceTab({ branch: branchProp, canWrite }: { br
       ) : view === 'settings2307' ? (
         <Bir2307Settings canWrite={canWrite} />
       ) : view === 'cor' ? (
+        // COR in the same HR Hub look as the other sub-views (Hannah 11/16:
+        // "make the COR view look like this too").
         <>
-          <div className="flex items-center gap-2 flex-wrap">
-            <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search consultant…"
-              className="px-3 py-2 rounded-xl border text-xs flex-1 min-w-[160px]" style={{ borderColor: 'var(--light-gray)' }} />
-            <button onClick={() => setNoTaxOnly(v => !v)} className="px-3 py-2 rounded-xl text-xs font-semibold border"
-              style={noTaxOnly ? { background: 'var(--teal)', color: '#fff', borderColor: 'var(--teal)' } : { background: '#fff', color: 'var(--charcoal)', borderColor: 'var(--light-gray)' }}>
-              No 5% withholding ({noTaxCount})
-            </button>
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+            <StatCard label="COR on file" value={String(corOnFile.length)}
+              sub={corFromHr ? `${corFromHr} synced from the HR Hub` : 'Uploaded here or in the HR Hub'}
+              tone={corOnFile.length ? 'green' : 'zero'} active={corShow === 'on'} loading={loading}
+              onClick={() => setCorShow(v => (v === 'on' ? 'all' : 'on'))} title="Show only consultants with a COR on file" />
+            <StatCard label="No COR" value={String(corMissing.length)} sub="Still to register or upload"
+              tone={corMissing.length ? 'red' : 'zero'} active={corShow === 'none'} loading={loading}
+              onClick={() => setCorShow(v => (v === 'none' ? 'all' : 'none'))} title="Show only consultants with no COR yet" />
+            <StatCard label="No 2303" value={String(corNo2303.length)} sub="Not BIR-registered"
+              accent={corNo2303.length ? { line: '#94a3b8', bg: '#f8fafc', fg: '#475569' } : undefined} tone="zero"
+              active={corShow === 'no2303'} loading={loading}
+              onClick={() => setCorShow(v => (v === 'no2303' ? 'all' : 'no2303'))} title="Show only consultants marked No 2303" />
+            <StatCard label="No 5% withholding" value={String(noTaxCount)} sub="Paid without the 5% EWT"
+              tone={noTaxCount ? 'amber' : 'zero'} active={noTaxOnly} loading={loading}
+              onClick={() => setNoTaxOnly(v => !v)} title="Show only consultants paid without the 5% withholding" />
           </div>
-          <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>CORs uploaded in the HR Hub under Staff Profiles → COR show here automatically.</p>
-          {hrSync && !hrSync.reached && (
-            <p className="text-xs" style={{ color: '#92400e' }}>Could not reach the HR Hub just now, so this list may be behind. Reopen this tab to try again.</p>
-          )}
-          {!!hrSync?.unmatched.length && (
-            <p className="text-xs" style={{ color: '#92400e' }}>In the HR Hub with a COR, but no payroll consultant has this name: {hrSync.unmatched.join(', ')}.</p>
-          )}
-          {loading ? (
-            <div className="py-12 text-center"><Loader2 size={18} className="animate-spin mx-auto" style={{ color: 'var(--teal)' }} /></div>
-          ) : (
-            ([
-              { title: 'COR on file', rows: corRows.filter(c => c.corUrl), color: 'var(--deep-teal)' },
-              { title: 'No COR', rows: corRows.filter(c => !c.corUrl), color: 'var(--mid-gray)' },
-            ]).map(group => (
-              <div key={group.title}>
-                <p className="text-xs font-bold uppercase tracking-wide mb-2" style={{ color: group.color }}>{group.title} ({group.rows.length})</p>
-                {group.rows.length === 0 ? (
-                  <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>{q.trim() || noTaxOnly ? 'No consultant matches.' : group.title === 'COR on file' ? 'No consultant has a COR uploaded yet.' : 'Every consultant has a COR on file.'}</p>
-                ) : (
-                  <div className="rounded-xl border overflow-x-auto bg-white" style={{ borderColor: 'var(--light-gray)' }}>
-                    <table className="w-full text-xs">
-                      <thead>
-                        <tr style={{ color: 'var(--mid-gray)', borderBottom: '1px solid var(--light-gray)' }}>
-                          {['Consultant', 'Department', 'Branch', '5% withholding', 'COR', ''].map(h => (
-                            <th key={h} className="px-3 py-2 text-left font-semibold whitespace-nowrap">{h}</th>
-                          ))}
+
+          <div className="rounded-lg border bg-white overflow-hidden" style={{ borderColor: 'var(--light-gray)' }}>
+            {/* Toolbar */}
+            <div className="flex items-center gap-2 flex-wrap px-3 py-2.5 border-b" style={{ background: 'var(--hr-head)', borderColor: 'var(--hr-line)' }}>
+              <div className="relative flex-1 min-w-[200px]">
+                <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2" style={{ color: 'var(--hr-faint)' }} />
+                <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search consultant or department…"
+                  className="w-full h-8 pl-8 pr-3 rounded-lg border text-xs bg-white outline-none focus:border-[var(--teal)]" style={{ borderColor: 'var(--light-gray)' }} />
+              </div>
+              <div className="flex rounded-lg border overflow-hidden" style={{ borderColor: 'var(--light-gray)' }}>
+                {([['all', 'All'], ['on', 'COR on file'], ['none', 'No COR'], ...(corNo2303.length ? [['no2303', 'No 2303']] : [])] as [typeof corShow, string][]).map(([v, label]) => (
+                  <button key={v} onClick={() => setCorShow(v)} className="h-8 px-3 text-xs font-semibold"
+                    style={corShow === v ? { background: 'var(--teal)', color: '#fff' } : { background: '#fff', color: 'var(--mid-gray)' }}>
+                    {label}
+                  </button>
+                ))}
+              </div>
+              <button onClick={() => setNoTaxOnly(v => !v)} aria-pressed={noTaxOnly}
+                className="h-8 px-3 rounded-lg border text-xs font-semibold inline-flex items-center gap-1.5"
+                style={noTaxOnly ? { background: 'var(--pale-teal)', borderColor: 'var(--teal)', color: 'var(--deep-teal)' } : { background: '#fff', borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>
+                No 5% withholding <span className="tabular-nums">({noTaxCount})</span>
+              </button>
+              <span className="text-[11px] ml-auto" style={{ color: 'var(--hr-faint)' }}>CORs in HR Hub Staff Profiles show here automatically</span>
+            </div>
+            {hrSync && !hrSync.reached && (
+              <p className="px-4 py-2 text-xs border-b" style={{ background: '#fffbeb', color: '#92400e', borderColor: '#fde68a' }}>
+                Could not reach the HR Hub just now, so this list may be behind. Reopen this tab to try again.
+              </p>
+            )}
+            {!!hrSync?.unmatched.length && (
+              <p className="px-4 py-2 text-xs border-b" style={{ background: '#fffbeb', color: '#92400e', borderColor: '#fde68a' }}>
+                In the HR Hub with a COR, but no payroll consultant has this name: {hrSync.unmatched.join(', ')}.
+              </p>
+            )}
+
+            {loading ? (
+              <div className="py-12 text-center"><Loader2 size={18} className="animate-spin mx-auto" style={{ color: 'var(--teal)' }} /></div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr style={{ background: 'var(--hr-head)' }}>
+                      {['Consultant', '5% withholding', 'COR', ''].map((h, i) => (
+                        <th key={i} className={`px-4 py-2 text-[11px] font-bold uppercase tracking-[.4px] whitespace-nowrap ${i === 3 ? 'text-right' : 'text-left'}`}
+                          style={{ color: 'var(--mid-gray)', borderBottom: '1px solid var(--hr-line)' }}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {([
+                      { key: 'on', title: 'COR on file', rows: corShown.filter(c => c.corUrl) },
+                      { key: 'none', title: 'No COR', rows: corShown.filter(c => !c.corUrl && !c.no2303At) },
+                      { key: 'no2303', title: 'No 2303 — not BIR-registered', rows: corShown.filter(c => !c.corUrl && c.no2303At) },
+                    ]).filter(g => g.rows.length > 0).map(group => (
+                      <Fragment key={group.key}>
+                        <tr>
+                          <td colSpan={4} className="px-4 pt-3 pb-1.5 text-[11px] font-bold uppercase tracking-[.4px]"
+                            style={{ color: group.key === 'on' ? 'var(--deep-teal)' : 'var(--mid-gray)', borderTop: '1px solid var(--hr-line)' }}>
+                            {group.title} <span className="tabular-nums font-semibold" style={{ color: 'var(--hr-faint)' }}>· {group.rows.length}</span>
+                          </td>
                         </tr>
-                      </thead>
-                      <tbody>
                         {group.rows.map(c => (
-                          <tr key={c.id} style={{ borderBottom: '1px solid var(--light-gray)' }}>
-                            <td className="px-3 py-2 font-semibold" style={{ color: 'var(--charcoal)' }}>{c.name}</td>
-                            <td className="px-3 py-2 whitespace-nowrap" style={{ color: 'var(--mid-gray)' }}>{c.department}</td>
-                            <td className="px-3 py-2 whitespace-nowrap" style={{ color: 'var(--mid-gray)' }}>{branchCode(c.branch)}</td>
-                            <td className="px-3 py-2 whitespace-nowrap">
-                              {c.taxDeduction === 'FIVE_PERCENT'
-                                ? <span style={{ color: 'var(--mid-gray)' }}>5%</span>
-                                : <span className="font-semibold" style={{ color: '#92400e' }}>None</span>}
+                          <tr key={c.id} className="group" style={{ borderTop: '1px solid var(--hr-line)', opacity: c.no2303At && !c.corUrl ? 0.8 : 1 }}>
+                            <td className="px-4 py-2.5 group-hover:bg-[var(--off-white)]"
+                              style={{ boxShadow: `inset 3px 0 0 ${c.corUrl ? '#059669' : c.no2303At ? 'var(--light-gray)' : '#dc2626'}` }}>
+                              <span className="block text-[13px] font-semibold leading-tight" style={{ color: 'var(--charcoal)' }}>{c.name}</span>
+                              <span className="block text-[11px] mt-0.5" style={{ color: 'var(--mid-gray)' }}>{c.department} · {branchCode(c.branch)}</span>
                             </td>
-                            <td className="px-3 py-2 whitespace-nowrap">
+                            <td className="px-4 py-2.5 whitespace-nowrap group-hover:bg-[var(--off-white)]">
+                              {c.taxDeduction === 'FIVE_PERCENT'
+                                ? <span className="px-2 py-0.5 rounded-full text-[11px] font-semibold" style={{ background: '#f1f5f9', color: '#475569' }}>5%</span>
+                                : <span className="px-2 py-0.5 rounded-full text-[11px] font-semibold" style={{ background: '#fef3c7', color: '#92400e' }}>None</span>}
+                            </td>
+                            <td className="px-4 py-2.5 whitespace-nowrap group-hover:bg-[var(--off-white)]">
                               {c.corUrl ? (
                                 <span className="inline-flex items-center gap-2">
-                                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold" style={{ background: '#dcfce7', color: '#166534' }}>On file</span>
-                                  {isHrCorUrl(c.corUrl) && <span style={{ color: 'var(--mid-gray)' }}>HR Hub</span>}
-                                  <span style={{ color: 'var(--mid-gray)' }}>{String(c.corUploadedAt || '').slice(0, 10)}</span>
-                                  <a href={c.corUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 font-semibold" style={{ color: 'var(--teal)' }}>
+                                  <span className="px-2 py-0.5 rounded-full text-[11px] font-semibold" style={{ background: '#dcfce7', color: '#166534' }}>On file</span>
+                                  {isHrCorUrl(c.corUrl) && (
+                                    <span className="px-1.5 py-px rounded-full text-[10px] font-bold" style={{ background: 'var(--pale-teal)', color: 'var(--deep-teal)' }}>HR Hub</span>
+                                  )}
+                                  {c.corUploadedAt && <span className="text-[11px]" style={{ color: 'var(--hr-faint)' }}>{shortDate(String(c.corUploadedAt))}</span>}
+                                  <a href={c.corUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 font-semibold hover:underline" style={{ color: 'var(--teal)' }}>
                                     <Eye size={12} /> View
                                   </a>
                                 </span>
                               ) : (
-                                <span className="inline-flex items-center gap-1">
-                                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold" style={{ background: '#fee2e2', color: '#b91c1c' }}>No COR</span>
+                                <span className="inline-flex items-center gap-1.5">
+                                  <span className="px-2 py-0.5 rounded-full text-[11px] font-semibold" style={{ background: '#fee2e2', color: '#991b1b' }}>No COR</span>
                                   {c.no2303At && (
-                                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold" style={{ background: '#f1f5f9', color: '#64748b' }}
+                                    <span className="px-2 py-0.5 rounded-full text-[11px] font-semibold" style={{ background: '#f1f5f9', color: '#64748b' }}
                                       title={`Marked as not BIR-registered on ${String(c.no2303At).slice(0, 10)}`}>
                                       No 2303
                                     </span>
@@ -662,22 +715,32 @@ export default function ServiceInvoiceTab({ branch: branchProp, canWrite }: { br
                                 </span>
                               )}
                             </td>
-                            <td className="px-3 py-2 text-right whitespace-nowrap">
-                              {canWrite && !isHrCorUrl(c.corUrl) && (
-                                <button onClick={() => setCorTarget(c)} className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-semibold border" style={{ borderColor: 'var(--light-gray)', color: 'var(--teal)' }}>
-                                  <Upload size={12} /> {c.corUrl ? 'Replace' : 'Upload COR'}
+                            <td className="px-4 py-2.5 text-right whitespace-nowrap group-hover:bg-[var(--off-white)]">
+                              {canWrite && !isHrCorUrl(c.corUrl) && (c.corUrl ? (
+                                <button onClick={() => setCorTarget(c)} className={hrBtn.ghost} style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}>
+                                  <Upload size={12} /> Replace
                                 </button>
-                              )}
+                              ) : (
+                                <button onClick={() => setCorTarget(c)}
+                                  className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg text-xs font-semibold text-white transition-colors hover:bg-[var(--deep-teal)]" style={{ background: 'var(--teal)' }}>
+                                  <Upload size={13} /> Upload COR
+                                </button>
+                              ))}
                             </td>
                           </tr>
                         ))}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
+                      </Fragment>
+                    ))}
+                    {corShown.length === 0 && (
+                      <tr><td colSpan={4} className="px-4 py-10 text-center" style={{ color: 'var(--mid-gray)' }}>
+                        {q.trim() || noTaxOnly || corShow !== 'all' ? 'No consultant matches this view.' : 'No consultants yet.'}
+                      </td></tr>
+                    )}
+                  </tbody>
+                </table>
               </div>
-            ))
-          )}
+            )}
+          </div>
         </>
       ) : view === 'matrix' ? (
         // Compliance by Person, in the HR Hub look (Hannah 11/16: "this view looks
