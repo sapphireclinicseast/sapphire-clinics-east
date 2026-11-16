@@ -20,6 +20,7 @@ const DAYS = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'] as const
 
 export interface DeckingSlotOut {
   id: string
+  staffId: string
   dayOfWeek: string
   startTime: string
   endTime: string
@@ -33,10 +34,13 @@ export interface DeckingSlotOut {
   /** Set only on a one-off or make-up: the single date it applies to. */
   date: string | null
   isMakeup: boolean
+  /** A weekly hour front desk marked unavailable (break, blocked hour). */
+  disabled: boolean
   patient: { id: string; firstName: string; lastName: string } | null
 }
 
 export interface DeckingConfigOut {
+  staffId: string
   branch: string
   department: string
   deliveryMode: string | null
@@ -80,17 +84,17 @@ export async function GET(req: NextRequest) {
   // No staff record linked to this account — not an error, just nothing to
   // show. Returning [] lets the page say so instead of rendering a failure.
   if (staffIds.length === 0) {
-    return NextResponse.json({ configs: [], weekly: [], dated: [], today: manilaToday() })
+    return NextResponse.json({ configs: [], weekly: [], dated: [], staff: [], today: manilaToday() })
   }
 
   const today = manilaToday()
   const todayDate = new Date(`${today}T00:00:00Z`)
 
-  const [configs, slots] = await Promise.all([
+  const [configs, slots, staffRows] = await Promise.all([
     prisma.deckingTherapistConfig.findMany({
       where: { staffId: { in: staffIds } },
       select: {
-        branch: true, department: true, deliveryMode: true,
+        staffId: true, branch: true, department: true, deliveryMode: true,
         workDays: true, startTime: true, endTime: true,
         slotsPerDay: true, slotMinutes: true, breakStart: true, breakMinutes: true,
       },
@@ -98,21 +102,26 @@ export async function GET(req: NextRequest) {
     prisma.deckingSlot.findMany({
       where: {
         staffId: { in: staffIds },
-        // A disabled cell is front desk marking the hour closed. It is not a
-        // session and the clinician has nothing to do with it.
-        disabled: false,
-        // Dated rows: only from today forward. A term's worth of lapsed
-        // one-offs is exactly the clutter the hub hides from the Sheet, and
-        // it would bury this week's actual board.
-        OR: [{ date: null }, { date: { gte: todayDate } }],
+        // Weekly rows come with their disabled ones: the board is drawn as the
+        // hub's grid now (Hannah 11/16), and an hour front desk closed has to
+        // show hatched "Unavailable" there — left out, it would read as open.
+        // Dated rows: only enabled ones, from today forward. A term's worth of
+        // lapsed one-offs is exactly the clutter the hub hides from the Sheet,
+        // and it would bury this week's actual board.
+        OR: [{ date: null }, { date: { gte: todayDate }, disabled: false }],
       },
       select: {
-        id: true, dayOfWeek: true, startTime: true, endTime: true,
+        id: true, staffId: true, disabled: true, dayOfWeek: true, startTime: true, endTime: true,
         branch: true, department: true, deliveryMode: true,
         paymentType: true, hmoProvider: true, isClass: true, notes: true,
         date: true, isMakeup: true, patientId: true,
       },
       orderBy: [{ date: 'asc' }, { startTime: 'asc' }],
+    }),
+    // For the card header: whose board it is, as the hub's cards show it.
+    prisma.staff.findMany({
+      where: { id: { in: staffIds } },
+      select: { id: true, firstName: true, lastName: true, department: true },
     }),
   ])
 
@@ -129,6 +138,7 @@ export async function GET(req: NextRequest) {
 
   const shape = (s: typeof slots[number]): DeckingSlotOut => ({
     id: s.id,
+    staffId: s.staffId,
     dayOfWeek: s.dayOfWeek,
     startTime: s.startTime,
     endTime: s.endTime,
@@ -141,6 +151,7 @@ export async function GET(req: NextRequest) {
     notes: s.notes,
     date: s.date ? s.date.toISOString().slice(0, 10) : null,
     isMakeup: s.isMakeup,
+    disabled: s.disabled,
     patient: s.patientId ? byId.get(s.patientId) ?? null : null,
   })
 
@@ -155,7 +166,9 @@ export async function GET(req: NextRequest) {
 
   return NextResponse.json({
     today,
+    staff: staffRows.map(st => ({ id: st.id, firstName: st.firstName, lastName: st.lastName, department: String(st.department) })),
     configs: configs.map((c): DeckingConfigOut => ({
+      staffId: c.staffId,
       branch: c.branch,
       department: c.department,
       deliveryMode: c.deliveryMode,
