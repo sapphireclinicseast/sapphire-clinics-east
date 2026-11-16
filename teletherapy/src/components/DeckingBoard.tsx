@@ -6,21 +6,32 @@
  * Read only, and deliberately so. The board is front desk's — they hold the
  * phone, they know who cancelled — and a second place to edit it would be a
  * second version of the truth. What a consultant needs is to see what is
- * actually written down for them, which is what this is.
+ * actually written down for them.
  *
- * It is live by construction rather than by syncing: the staff portal and the
+ * Live by construction rather than by syncing: the staff portal and the
  * Operations Hub read one database, so the Decking module and the Google Sheet
  * (which writes back into the same rows every five minutes) both land here.
+ *
+ * ── Why it is laid out by BRANCH ──
+ *
+ * The first draft was three flat lists — working days, weekly hours, dates —
+ * each repeating the branch on every row, and for a consultant who works at
+ * both it took real effort to answer "what is my Tuesday at Greenhills".
+ * An interbranch consultant does not have one week; they have one week per
+ * clinic, and the question they arrive with is always "where am I, and when".
+ *
+ * So: one card per branch, holding everything about that branch — the window,
+ * the weekly hours, and the coming dates. Nothing repeats the branch inside
+ * its own card, because the card already said it.
  *
  * Booked hours plus the working window, not a drawn grid. The hub computes an
  * empty cell from the config at render time — an open hour is not a row in any
  * table — so reproducing the grid here would mean a second copy of that
- * arithmetic, free to drift from the hub's. The window is stated instead, and
- * the hours that are actually taken are listed under it.
+ * arithmetic, free to drift from the hub's.
  */
 
 import { useEffect, useMemo, useState } from 'react'
-import { AlertTriangle, CalendarDays, CalendarPlus, Info, Loader2, UserPlus } from 'lucide-react'
+import { CalendarClock, CalendarDays, Clock, Info, Loader2, MapPin, UserPlus } from 'lucide-react'
 import { formatTime } from '@/lib/utils'
 import { branchLabel } from '@/lib/branch-label'
 import { CARD_STYLE, EmptyState, SUBTLE_BG } from '@/components/hub/ui'
@@ -56,6 +67,9 @@ interface ConfigOut {
 }
 
 const DAY_ORDER = ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN']
+const DAY_SHORT: Record<string, string> = {
+  MON: 'Mon', TUE: 'Tue', WED: 'Wed', THU: 'Thu', FRI: 'Fri', SAT: 'Sat', SUN: 'Sun',
+}
 const DAY_FULL: Record<string, string> = {
   MON: 'Monday', TUE: 'Tuesday', WED: 'Wednesday', THU: 'Thursday',
   FRI: 'Friday', SAT: 'Saturday', SUN: 'Sunday',
@@ -65,6 +79,8 @@ const MODE_LABEL: Record<string, string> = {
 }
 
 const MAKEUP_FG = '#C2410C'
+const MAKEUP_BG = '#FFF7F1'
+const MAKEUP_BORDER = '#FBD5BC'
 const PAY_STYLE: Record<string, { bg: string; fg: string }> = {
   CASH: { bg: '#EFF6FF', fg: '#1D4ED8' },
   HMO:  { bg: '#F5F3FF', fg: '#6D28D9' },
@@ -73,19 +89,34 @@ const PAY_STYLE: Record<string, { bg: string; fg: string }> = {
 
 function fmtDate(iso: string): string {
   return new Date(`${iso}T12:00:00`).toLocaleDateString('en-PH', {
-    weekday: 'short', day: 'numeric', month: 'short', year: 'numeric',
+    weekday: 'long', day: 'numeric', month: 'long',
   })
 }
 
-/** "On-site · East Branch · OT" — the heading for one working pattern. */
-function configTitle(c: ConfigOut): string {
-  const parts = [branchLabel(c.branch) ?? c.branch, c.department]
-  if (c.deliveryMode) parts.unshift(MODE_LABEL[c.deliveryMode] ?? c.deliveryMode)
-  return parts.join(' · ')
+/** "in 3 days", "Tomorrow" — so a date reads without counting on a calendar. */
+function relativeDay(iso: string, todayIso: string): string | null {
+  const a = new Date(`${iso}T00:00:00Z`).getTime()
+  const b = new Date(`${todayIso}T00:00:00Z`).getTime()
+  const days = Math.round((a - b) / 86_400_000)
+  if (days === 0) return 'Today'
+  if (days === 1) return 'Tomorrow'
+  if (days > 1 && days <= 14) return `in ${days} days`
+  return null
+}
+
+/** The window a config describes, as one readable line. */
+function windowLine(c: ConfigOut): string {
+  const bits = [`${formatTime(c.startTime)} – ${formatTime(c.endTime)}`]
+  if (c.slotsPerDay) bits.push(`${c.slotsPerDay} patients a day`)
+  else if (c.slotMinutes) bits.push(`${c.slotMinutes} min each`)
+  if (c.breakStart) {
+    bits.push(`break ${formatTime(c.breakStart)}${c.breakMinutes ? ` (${c.breakMinutes} min)` : ''}`)
+  }
+  return bits.join(' · ')
 }
 
 export default function DeckingBoard() {
-  const [data, setData] = useState<{ configs: ConfigOut[]; weekly: SlotOut[]; dated: SlotOut[] } | null>(null)
+  const [data, setData] = useState<{ today: string; configs: ConfigOut[]; weekly: SlotOut[]; dated: SlotOut[] } | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
 
@@ -94,8 +125,8 @@ export default function DeckingBoard() {
     setLoading(true); setError('')
     fetch('/api/decking', { cache: 'no-store', signal: ctl.signal })
       .then(async r => {
-        const d = await r.json()
-        if (!r.ok) throw new Error(d.error ?? 'Could not load your decking.')
+        const d = await r.json().catch(() => null)
+        if (!r.ok || !d) throw new Error(d?.error ?? 'Could not load your decking.')
         setData(d)
       })
       .catch(e => { if (e.name !== 'AbortError') setError(e.message) })
@@ -103,33 +134,33 @@ export default function DeckingBoard() {
     return () => ctl.abort()
   }, [])
 
-  // Days with something on them, in week order. A consultant whose config
-  // says Mon–Fri but who has nothing booked on Wednesday still sees
-  // Wednesday — an empty column IS the information on a board like this.
-  const days = useMemo(() => {
+  /** Everything this consultant has, gathered under the clinic it belongs to. */
+  const branches = useMemo(() => {
     if (!data) return []
-    const configured = new Set(data.configs.flatMap(c => c.workDays))
-    const booked = new Set(data.weekly.map(s => s.dayOfWeek))
-    return DAY_ORDER.filter(d => configured.has(d) || booked.has(d))
-  }, [data])
-
-  const totalBooked = data?.weekly.length ?? 0
-
-  // An interbranch consultant is decked separately at each branch. With both
-  // on one page, every hour has to say where it is — "Tuesday 10:00" means
-  // nothing if the reader has to guess which clinic to turn up at.
-  const multiBranch = useMemo(() => {
-    if (!data) return false
-    return new Set([
+    const keys = [...new Set([
       ...data.configs.map(c => c.branch),
       ...data.weekly.map(s => s.branch),
       ...data.dated.map(s => s.branch),
-    ]).size > 1
+    ])].sort()
+    return keys.map(branch => {
+      const configs = data.configs.filter(c => c.branch === branch)
+      const weekly = data.weekly.filter(s => s.branch === branch)
+      const dated = data.dated.filter(s => s.branch === branch)
+      // Days worth a row: configured anywhere in this branch, or booked.
+      const days = DAY_ORDER.filter(d =>
+        configs.some(c => c.workDays.includes(d)) || weekly.some(s => s.dayOfWeek === d))
+      const departments = [...new Set([
+        ...configs.map(c => c.department),
+        ...weekly.map(s => s.department),
+        ...dated.map(s => s.department),
+      ])]
+      return { branch, configs, weekly, dated, days, departments }
+    })
   }, [data])
 
   if (loading) {
     return (
-      <div className="rounded-xl px-5 py-10 flex items-center justify-center gap-2 text-sm"
+      <div className="rounded-xl px-5 py-12 flex items-center justify-center gap-2 text-sm"
         style={{ ...CARD_STYLE, color: 'var(--mid-gray)' }}>
         <Loader2 size={15} className="animate-spin" /> Loading your decking…
       </div>
@@ -144,25 +175,21 @@ export default function DeckingBoard() {
     )
   }
 
-  const nothingAtAll = !data || (data.configs.length === 0 && totalBooked === 0 && data.dated.length === 0)
-
   return (
     <div className="space-y-4 min-w-0">
-      {/* The note. It is the point of the page as much as the board is: a
-          consultant looking at a wrong schedule needs to know whose it is to
-          fix, and that it is not fixed here. */}
-      <div role="note" className="rounded-xl px-4 py-3 flex gap-2.5"
-        style={{ background: '#FFFBEB', border: '1px solid #FDE68A' }}>
-        <Info size={16} className="flex-shrink-0 mt-0.5" style={{ color: '#92400E' }} aria-hidden />
-        <p className="text-[13px] leading-relaxed m-0" style={{ color: '#7A5C00' }}>
-          This is the board exactly as front desk keep it. <strong>If your decking is not up to
-          date, please inquire with the front desk so they can update it</strong> — they edit it in
-          the Decking module or in the branch Google Sheet, and whichever they use shows here.
-          It cannot be changed from this page.
-        </p>
-      </div>
+      {/* One line, not a paragraph. It used to be four lines of bold across
+          the top of the page, which is a lot of shouting for a thing that is
+          true every day and actionable on about one of them. */}
+      <p className="flex items-start gap-2 text-[12.5px] leading-relaxed rounded-lg px-3.5 py-2.5 m-0"
+        style={{ background: '#FFFBEB', border: '1px solid #FDE68A', color: '#7A5C00' }}>
+        <Info size={14} className="flex-shrink-0 mt-0.5" aria-hidden />
+        <span>
+          This is front desk&rsquo;s board, shown as they keep it.{' '}
+          <strong>Not up to date? Ask front desk to update it</strong> — it cannot be changed here.
+        </span>
+      </p>
 
-      {nothingAtAll ? (
+      {branches.length === 0 ? (
         <div className="rounded-xl" style={CARD_STYLE}>
           <EmptyState
             title="Nothing on the board for you yet"
@@ -170,157 +197,201 @@ export default function DeckingBoard() {
           />
         </div>
       ) : (
-        <>
-          {/* ── The working window, per branch / service ── */}
-          {data!.configs.length > 0 && (
-            <section className="rounded-xl overflow-hidden" style={CARD_STYLE}>
-              <header className="px-4 py-2.5 flex items-center gap-2"
-                style={{ background: SUBTLE_BG, borderBottom: '1px solid var(--light-gray)' }}>
-                <CalendarDays size={14} style={{ color: 'var(--deep-teal)' }} aria-hidden />
-                <h3 className="text-[13px] font-bold m-0"
-                  style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>
-                  Your working days
-                </h3>
-              </header>
-              <ul className="divide-y" style={{ borderColor: 'var(--light-gray)' }}>
-                {data!.configs.map((c, i) => (
-                  <li key={`${c.branch}-${c.department}-${c.deliveryMode ?? 'general'}-${i}`} className="px-4 py-3">
-                    <p className="text-[13px] font-semibold m-0" style={{ color: 'var(--charcoal)' }}>
-                      {configTitle(c)}
-                    </p>
-                    <p className="text-[12.5px] mt-1 m-0" style={{ color: 'var(--mid-gray)' }}>
-                      {c.workDays.length > 0
-                        ? DAY_ORDER.filter(d => c.workDays.includes(d)).map(d => DAY_FULL[d].slice(0, 3)).join(' · ')
-                        : 'No days set'}
-                      {' — '}
-                      {formatTime(c.startTime)} to {formatTime(c.endTime)}
-                      {c.slotsPerDay ? ` · ${c.slotsPerDay} patients a day` : ''}
-                      {c.slotMinutes ? ` · ${c.slotMinutes} min each` : ''}
-                      {c.breakStart ? ` · break ${formatTime(c.breakStart)}${c.breakMinutes ? ` for ${c.breakMinutes} min` : ''}` : ''}
-                    </p>
-                  </li>
-                ))}
-              </ul>
-            </section>
-          )}
-
-          {/* ── The booked hours, by weekday ── */}
-          <section className="rounded-xl overflow-hidden" style={CARD_STYLE}>
-            <header className="px-4 py-2.5 flex flex-wrap items-center gap-2"
-              style={{ background: SUBTLE_BG, borderBottom: '1px solid var(--light-gray)' }}>
-              <h3 className="text-[13px] font-bold m-0"
-                style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>
-                Booked hours each week
-              </h3>
-              <span className="text-[11.5px]" style={{ color: 'var(--mid-gray)' }}>
-                {totalBooked} {totalBooked === 1 ? 'hour' : 'hours'} held
-              </span>
-            </header>
-
-            {days.length === 0 ? (
-              <div className="px-4 py-6 text-[13px]" style={{ color: 'var(--mid-gray)' }}>
-                No weekly hours on the board. Anything arranged for a single date is listed below.
-              </div>
-            ) : (
-              <div className="divide-y" style={{ borderColor: 'var(--light-gray)' }}>
-                {days.map(day => {
-                  const rows = data!.weekly.filter(s => s.dayOfWeek === day)
-                  return (
-                    <div key={day} className="px-4 py-3 flex flex-wrap gap-x-4 gap-y-2">
-                      <p className="text-[12.5px] font-bold w-[92px] flex-shrink-0 m-0"
-                        style={{ fontFamily: 'var(--font-display)', color: 'var(--deep-teal)' }}>
-                        {DAY_FULL[day]}
-                      </p>
-                      {rows.length === 0 ? (
-                        <p className="text-[12.5px] m-0" style={{ color: 'var(--mid-gray)' }}>
-                          Nothing booked
-                        </p>
-                      ) : (
-                        <ul className="flex-1 min-w-[200px] flex flex-col gap-1.5 m-0 p-0 list-none">
-                          {rows.map(s => <SlotRow key={s.id} slot={s} showBranch={multiBranch} />)}
-                        </ul>
-                      )}
-                    </div>
-                  )
-                })}
-              </div>
-            )}
-          </section>
-
-          {/* ── One-off and make-up dates ──
-              Kept out of the weekday columns above. A one-off drawn in its
-              weekday column reads as "every Tuesday", which is exactly the
-              claim it must not make — and for psychology and the doctors,
-              whose boards are dated blocks rather than a standing week, this
-              IS their schedule. */}
-          {data!.dated.length > 0 && (
-            <section className="rounded-xl overflow-hidden" style={CARD_STYLE}>
-              <header className="px-4 py-2.5 flex items-center gap-2"
-                style={{ background: SUBTLE_BG, borderBottom: '1px solid var(--light-gray)' }}>
-                <CalendarPlus size={14} style={{ color: MAKEUP_FG }} aria-hidden />
-                <h3 className="text-[13px] font-bold m-0"
-                  style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>
-                  Coming dates
-                </h3>
-                <span className="text-[11.5px]" style={{ color: 'var(--mid-gray)' }}>
-                  single dates only — these do not repeat
-                </span>
-              </header>
-              <div className="divide-y" style={{ borderColor: 'var(--light-gray)' }}>
-                {[...new Set(data!.dated.map(s => s.date!))].sort().map(date => (
-                  <div key={date} className="px-4 py-3 flex flex-wrap gap-x-4 gap-y-2">
-                    <p className="text-[12.5px] font-bold w-[150px] flex-shrink-0 m-0"
-                      style={{ fontFamily: 'var(--font-display)', color: 'var(--deep-teal)' }}>
-                      {fmtDate(date)}
-                    </p>
-                    <ul className="flex-1 min-w-[200px] flex flex-col gap-1.5 m-0 p-0 list-none">
-                      {data!.dated.filter(s => s.date === date).map(s => <SlotRow key={s.id} slot={s} showBranch={multiBranch} />)}
-                    </ul>
-                  </div>
-                ))}
-              </div>
-            </section>
-          )}
-        </>
+        branches.map(b => (
+          <BranchCard key={b.branch} {...b} today={data!.today} />
+        ))
       )}
     </div>
   )
 }
 
+/**
+ * One clinic: the window, the week, and the coming dates.
+ *
+ * Self-contained on purpose. The branch is said once, in the header, and
+ * never again inside — a chip on every row repeating what the card already
+ * says is the noise the first version was made of.
+ */
+function BranchCard({ branch, configs, weekly, dated, days, departments, today }: {
+  branch: string
+  configs: ConfigOut[]
+  weekly: SlotOut[]
+  dated: SlotOut[]
+  days: string[]
+  departments: string[]
+  today: string
+}) {
+  const bookedCount = weekly.length
+  // A config with no days is not a weekly schedule. Saying "No days set"
+  // three times down the page told the clinician nothing; what it actually
+  // means is that this service is booked date by date, which IS how
+  // psychology and the doctors work — so say that instead.
+  const scheduled = configs.filter(c => c.workDays.length > 0)
+  const byDate = configs.filter(c => c.workDays.length === 0)
+
+  return (
+    <section className="rounded-xl overflow-hidden" style={CARD_STYLE}>
+      {/* ── Header: where you are ── */}
+      <header className="px-4 py-3 flex flex-wrap items-center gap-x-2.5 gap-y-1"
+        style={{ background: SUBTLE_BG, borderBottom: '1px solid var(--light-gray)' }}>
+        <MapPin size={15} style={{ color: 'var(--deep-teal)' }} aria-hidden />
+        <h3 className="text-[14px] font-bold m-0"
+          style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>
+          {branchLabel(branch) ?? branch}
+        </h3>
+        {departments.map(d => (
+          <span key={d} className="text-[10px] font-bold px-1.5 py-0.5 rounded tracking-wide"
+            style={{ background: '#fff', color: 'var(--deep-teal)', border: '1px solid var(--light-gray)' }}>
+            {d}
+          </span>
+        ))}
+        <span className="ml-auto text-[11.5px]" style={{ color: 'var(--mid-gray)' }}>
+          {bookedCount > 0 ? `${bookedCount} weekly ${bookedCount === 1 ? 'hour' : 'hours'}` : 'no weekly hours'}
+          {dated.length > 0 ? ` · ${dated.length} dated` : ''}
+        </span>
+      </header>
+
+      {/* ── The window, one line per service ── */}
+      <div className="px-4 py-2.5 flex flex-col gap-1.5"
+        style={{ borderBottom: '1px solid var(--light-gray)' }}>
+        {scheduled.map((c, i) => (
+          <p key={`s${i}`} className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[12.5px] m-0"
+            style={{ color: 'var(--mid-gray)' }}>
+            <Clock size={12} className="flex-shrink-0" aria-hidden />
+            {c.deliveryMode && (
+              <span className="font-semibold" style={{ color: 'var(--charcoal)' }}>
+                {MODE_LABEL[c.deliveryMode] ?? c.deliveryMode}
+              </span>
+            )}
+            <span className="font-semibold" style={{ color: 'var(--deep-teal)' }}>
+              {DAY_ORDER.filter(d => c.workDays.includes(d)).map(d => DAY_SHORT[d]).join(' · ')}
+            </span>
+            <span>{windowLine(c)}</span>
+          </p>
+        ))}
+        {byDate.map((c, i) => (
+          <p key={`d${i}`} className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[12.5px] m-0"
+            style={{ color: 'var(--mid-gray)' }}>
+            <CalendarClock size={12} className="flex-shrink-0" aria-hidden />
+            {c.deliveryMode && (
+              <span className="font-semibold" style={{ color: 'var(--charcoal)' }}>
+                {MODE_LABEL[c.deliveryMode] ?? c.deliveryMode}
+              </span>
+            )}
+            <span>Booked date by date, no fixed weekly days &middot; {windowLine(c)}</span>
+          </p>
+        ))}
+        {configs.length === 0 && (
+          <p className="text-[12.5px] m-0" style={{ color: 'var(--mid-gray)' }}>
+            No working hours set for this branch.
+          </p>
+        )}
+      </div>
+
+      {/* ── The week ── */}
+      {days.length > 0 && (
+        <div className="divide-y" style={{ borderColor: 'var(--light-gray)' }}>
+          {days.map(day => {
+            const rows = weekly.filter(s => s.dayOfWeek === day)
+            return (
+              <div key={day} className="flex items-stretch">
+                {/* Day rail — fixed width so every day lines up down the card. */}
+                <div className="w-[88px] flex-shrink-0 px-3 py-2.5"
+                  style={{ background: rows.length ? '#FBFDF6' : '#fff', borderRight: '1px solid var(--light-gray)' }}>
+                  <p className="text-[12px] font-bold m-0"
+                    style={{ fontFamily: 'var(--font-display)', color: rows.length ? 'var(--deep-teal)' : 'var(--mid-gray)' }}>
+                    {DAY_FULL[day]}
+                  </p>
+                  <p className="text-[10.5px] m-0 mt-0.5" style={{ color: 'var(--mid-gray)' }}>
+                    {rows.length === 0 ? 'free' : `${rows.length} ${rows.length === 1 ? 'hour' : 'hours'}`}
+                  </p>
+                </div>
+                <div className="flex-1 min-w-0 px-3 py-2">
+                  {rows.length === 0 ? (
+                    <p className="text-[12px] m-0 py-1" style={{ color: '#9AA5A0' }}>Nothing booked</p>
+                  ) : (
+                    <ul className="flex flex-col gap-1 m-0 p-0 list-none">
+                      {rows.map(s => <SlotRow key={s.id} slot={s} />)}
+                    </ul>
+                  )}
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      )}
+
+      {/* ── Coming dates, inside the branch they belong to ──
+          A one-off is never drawn in a weekday column: there it would read as
+          "every Tuesday", which is the one thing it must not say. For
+          psychology and the doctors these dates ARE the schedule. */}
+      {dated.length > 0 && (
+        <div style={{ borderTop: '1px solid var(--light-gray)' }}>
+          <p className="px-4 py-2 text-[11px] font-bold uppercase tracking-wider m-0 flex items-center gap-1.5"
+            style={{ background: MAKEUP_BG, color: MAKEUP_FG, borderBottom: `1px solid ${MAKEUP_BORDER}` }}>
+            <CalendarDays size={12} aria-hidden /> Coming dates
+            <span className="font-normal normal-case tracking-normal text-[11px]" style={{ color: '#9A6B4A' }}>
+              single dates — these do not repeat
+            </span>
+          </p>
+          <div className="divide-y" style={{ borderColor: 'var(--light-gray)' }}>
+            {[...new Set(dated.map(s => s.date!))].sort().map(date => {
+              const rel = relativeDay(date, today)
+              return (
+                <div key={date} className="flex items-stretch">
+                  <div className="w-[160px] flex-shrink-0 px-3 py-2.5"
+                    style={{ background: '#FFFCFA', borderRight: '1px solid var(--light-gray)' }}>
+                    <p className="text-[12px] font-bold m-0"
+                      style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>
+                      {fmtDate(date)}
+                    </p>
+                    {rel && (
+                      <p className="text-[10.5px] m-0 mt-0.5 font-semibold" style={{ color: MAKEUP_FG }}>{rel}</p>
+                    )}
+                  </div>
+                  <div className="flex-1 min-w-0 px-3 py-2">
+                    <ul className="flex flex-col gap-1 m-0 p-0 list-none">
+                      {dated.filter(s => s.date === date).map(s => <SlotRow key={s.id} slot={s} />)}
+                    </ul>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
+    </section>
+  )
+}
+
 /** One hour: when, who, and how it is paid. */
-function SlotRow({ slot, showBranch = false }: { slot: SlotOut; showBranch?: boolean }) {
+function SlotRow({ slot }: { slot: SlotOut }) {
   const pay = PAY_STYLE[slot.paymentType] ?? PAY_STYLE.CASH
   return (
-    <li className="flex flex-wrap items-center gap-2 rounded-lg px-2.5 py-1.5"
+    <li className="flex flex-wrap items-center gap-x-2.5 gap-y-1 rounded-lg px-2.5 py-1.5"
       style={{
-        background: slot.isMakeup ? '#FFFBF8' : '#fff',
-        border: `1px solid ${slot.isMakeup ? '#FBD5BC' : 'var(--light-gray)'}`,
+        background: slot.isMakeup ? MAKEUP_BG : '#fff',
+        border: `1px solid ${slot.isMakeup ? MAKEUP_BORDER : 'var(--light-gray)'}`,
       }}>
       <span className="text-[12.5px] font-semibold tabular-nums whitespace-nowrap"
         style={{ color: 'var(--charcoal)' }}>
         {formatTime(slot.startTime)} – {formatTime(slot.endTime)}
       </span>
       {slot.isMakeup && (
-        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded whitespace-nowrap"
-          style={{ background: '#FFF1E8', color: MAKEUP_FG, border: '1px solid #FBD5BC' }}>
-          <UserPlus size={9} className="inline -mt-px mr-0.5" aria-hidden />Make-up
+        <span className="inline-flex items-center gap-0.5 text-[10px] font-bold px-1.5 py-0.5 rounded whitespace-nowrap"
+          style={{ background: '#FFF1E8', color: MAKEUP_FG, border: `1px solid ${MAKEUP_BORDER}` }}>
+          <UserPlus size={9} aria-hidden /> Make-up
         </span>
       )}
-      {showBranch && (
-        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded whitespace-nowrap"
-          style={{ background: 'var(--paper)', color: 'var(--deep-teal)', border: '1px solid var(--light-gray)' }}>
-          {branchLabel(slot.branch) ?? slot.branch}
-        </span>
-      )}
-      <span className="text-[12.5px] truncate min-w-0" style={{ color: 'var(--charcoal)' }}>
+      <span className="text-[12.5px] truncate min-w-0 flex-1" style={{ color: 'var(--charcoal)' }}>
         {slot.isClass
           ? 'Class'
           : slot.patient
             ? `${slot.patient.lastName}, ${slot.patient.firstName}`
-            : <em style={{ color: 'var(--mid-gray)' }}>Open — no patient booked</em>}
+            : <span style={{ color: '#9AA5A0' }}>Open — no patient booked</span>}
       </span>
       {!slot.isClass && slot.patient && (
-        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded whitespace-nowrap ml-auto"
+        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded whitespace-nowrap"
           style={{ background: pay.bg, color: pay.fg }}
           title={slot.hmoProvider ?? undefined}>
           {slot.paymentType === 'HMO' && slot.hmoProvider ? slot.hmoProvider : slot.paymentType}
@@ -332,17 +403,5 @@ function SlotRow({ slot, showBranch = false }: { slot: SlotOut; showBranch?: boo
         </span>
       )}
     </li>
-  )
-}
-
-/** Shown when the account has no Staff record to look up. */
-export function DeckingUnlinked() {
-  return (
-    <div className="rounded-xl px-4 py-3 flex gap-2.5" style={{ background: '#FEF2F2', border: '1px solid #FCA5A5' }}>
-      <AlertTriangle size={16} className="flex-shrink-0 mt-0.5" style={{ color: '#B42318' }} aria-hidden />
-      <p className="text-[13px] m-0" style={{ color: '#B42318' }}>
-        Your account is not linked to a staff record, so there is no board to show. Ask HR to link it.
-      </p>
-    </div>
   )
 }
