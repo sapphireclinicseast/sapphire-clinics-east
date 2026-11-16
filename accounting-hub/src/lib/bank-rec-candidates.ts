@@ -1,6 +1,7 @@
 import { prisma } from '@/lib/prisma'
 import { netOfDeductions } from '@/lib/pos-settlement-shapes'
 import { FOR_MATCHING_PREFIX, forMatchingText } from '@/lib/bank-rec-flag'
+import { rfpPayable } from '@/lib/rfp-payable'
 
 /**
  * Everything the Hub has recorded that a bank line could correspond to.
@@ -23,6 +24,12 @@ export interface Candidate {
    * callers hold them to a tighter date window than ordinary candidates.
    */
   fx?: boolean
+  /**
+   * An RFP that withholds EWT: `amount` is what the bank pays (gross − EWT),
+   * these carry the gross and the EWT so the picker can say so.
+   */
+  gross?: number
+  ewt?: number
   /**
    * How much of this record settled bank lines already, counted per direction.
    * A record may legitimately be spread over several lines (a payment split
@@ -84,7 +91,11 @@ export async function candidates(bankAccountId: string | null, lo: Date, hi: Dat
     // also offered as money-in on the receiving account (its deposit leg).
     prisma.reimbursementReport.findMany({
       where: { status: 'PAID', paidAt: range },
-      select: { id: true, refNumber: true, grossTotal: true, paidAt: true, module: true, payableTo: true, debitAccount: true, depositAccount: true },
+      select: {
+        id: true, refNumber: true, grossTotal: true, paidAt: true, module: true, payableTo: true, debitAccount: true, depositAccount: true,
+        // EWT is withheld from the payee, so the bank pays gross − EWT (lib/rfp-payable).
+        meta: true, entries: { select: { vatable: true, vatPortion: true, grossAmount: true, hasEwt: true, ewtRate: true } },
+      },
     }),
     prisma.order.findMany({
       where: { status: 'COMPLETED', transactionDate: range },
@@ -250,8 +261,18 @@ export async function candidates(bankAccountId: string | null, lo: Date, hi: Dat
     // (markSettled counts the directions apart).
     const paysHere = !reconAcct?.accountNumber || !r.debitAccount || r.debitAccount.startsWith(reconAcct.accountNumber)
     const landsHere = !!(reconAcct?.accountNumber && r.depositAccount && r.depositAccount.startsWith(reconAcct.accountNumber))
-    if (paysHere) out.push({ type: 'RFP', id: r.id, label, date: r.paidAt, amount: num(r.grossTotal), dir: 'out' })
-    if (landsHere) out.push({ type: 'RFP', id: r.id, label: `${label} · deposit leg`, date: r.paidAt, amount: num(r.grossTotal), dir: 'in' })
+    // Offered at what the bank actually moves: gross less the EWT withheld from
+    // the payee (Ortigas rent, Hannah 2026-11-16: ₱353,429.86 gross went out as
+    // ₱343,435.67). At the gross it never surfaced as a suggestion, and picking
+    // it recorded a part payment that left ₱9,994.19 of EWT looking unpaid.
+    const { gross, ewt, payable } = rfpPayable(r)
+    const withEwt = ewt > 0.005
+    const peso = (v: number) => v.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+    const shown = withEwt ? `${label} · ₱${peso(gross)} less EWT ₱${peso(ewt)}` : label
+    const amount = withEwt ? payable : gross
+    const extra = withEwt ? { gross, ewt } : {}
+    if (paysHere) out.push({ type: 'RFP', id: r.id, label: shown, date: r.paidAt, amount, dir: 'out', ...extra })
+    if (landsHere) out.push({ type: 'RFP', id: r.id, label: `${shown} · deposit leg`, date: r.paidAt, amount, dir: 'in', ...extra })
   }
   for (const o of orders) {
     if (bankAccountId) {
@@ -576,7 +597,10 @@ export function remainingOn(c: Candidate, isSpent: boolean): number {
 export async function recordAmountById(id: string, isSpent: boolean): Promise<number | null> {
   const [ft, rfp, order, ar, sal, ben, tax, ca, pce, adv, loan, cs, ps, ed, bb, ap, lp, sl, apBillLine, flaggedEntry] = await Promise.all([
     prisma.fundTransfer.findUnique({ where: { id }, select: { amount: true, toAmount: true } }),
-    prisma.reimbursementReport.findUnique({ where: { id }, select: { grossTotal: true } }),
+    prisma.reimbursementReport.findUnique({
+      where: { id },
+      select: { grossTotal: true, meta: true, entries: { select: { vatable: true, vatPortion: true, grossAmount: true, hasEwt: true, ewtRate: true } } },
+    }),
     prisma.order.findUnique({ where: { id }, select: { netAmount: true } }),
     prisma.aRPayment.findUnique({ where: { id }, select: { amount: true } }),
     prisma.salaryPayment.findUnique({ where: { id }, select: { totalAmount: true } }),
@@ -603,7 +627,8 @@ export async function recordAmountById(id: string, isSpent: boolean): Promise<nu
     }),
   ])
   if (ft) return !isSpent && num(ft.toAmount) > 0 ? num(ft.toAmount) : num(ft.amount)
-  if (rfp) return num(rfp.grossTotal)
+  // What the RFP pays out — gross less EWT — so a net payment settles it in full.
+  if (rfp) return rfpPayable(rfp).payable
   if (order) return num(order.netAmount)
   if (ar) return num(ar.amount)
   if (sal) return num(sal.totalAmount)

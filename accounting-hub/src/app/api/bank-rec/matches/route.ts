@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { candidates, forDirection, remainingOn } from '@/lib/bank-rec-candidates'
+import { EWT_ROUNDING } from '@/lib/rfp-payable'
 import { posSettlementShapes } from '@/lib/pos-settlement-shapes'
 import { isForeign, rateFor, toPhp } from '@/lib/fx'
 
@@ -10,6 +11,9 @@ const WINDOW_DAYS = 7
 // line-to-line pairing and a recorded exchange's legs are held to this window.
 const FOREX_WINDOW_DAYS = 5
 const near = (a: number, b: number) => Math.abs(a - b) < 0.01
+// A record paid net of EWT: the payer rounds the withholding their own way, so
+// allow a few centavos (lib/rfp-payable).
+const nearFor = (c: { ewt?: number }, a: number, b: number) => (c.ewt ? Math.abs(a - b) <= EWT_ROUNDING : near(a, b))
 const withinFxWindow = (a: Date, b: Date) =>
   Math.abs(+new Date(a) - +new Date(b)) <= FOREX_WINDOW_DAYS * 86_400_000
 
@@ -244,13 +248,16 @@ export async function GET(req: Request) {
     return {
       type: c.type, id: c.id, date: c.date.toISOString().slice(0, 10),
       label: used > 0.005 ? `${c.label} · ₱${used.toLocaleString('en-PH')} already matched` : c.label,
-      amount: remOf(c), ...extra,
+      amount: remOf(c),
+      // Shown by the picker: an RFP offered at gross − EWT says what it withheld.
+      ...(c.ewt ? { gross: c.gross, ewt: c.ewt } : {}),
+      ...extra,
     }
   }
   const out = forDirection(all, isSpent)
     .filter(c => searching
       ? (!q || c.label.toLowerCase().includes(q))
-      : (gte(c.date) && near(remOf(c), lineFor(c)) && (!c.fx || withinFxWindow(c.date, txn.date))))
+      : (gte(c.date) && nearFor(c, remOf(c), lineFor(c)) && (!c.fx || withinFxWindow(c.date, txn.date))))
     .map(c => row(c))
 
   // Closest dates first.

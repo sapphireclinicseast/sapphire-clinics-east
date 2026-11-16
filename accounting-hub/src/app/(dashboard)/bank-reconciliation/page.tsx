@@ -46,7 +46,8 @@ const cellText = (t: Txn, key: string): string => {
 interface BankAcct { id: string; accountNumber: string; accountTitle: string; currency: string; pendingCount: number; postedCount: number; excludedCount: number; archivedCount: number; beginningBalance: number; startDate: string | null; postedBalance: number; statementBalance: number; fxRate: number | null; fxRateDate: string | null; postedBalancePhp: number | null }
 interface Txn { id: string; date: string; description: string; spent: number; received: number; status: string; fromToName: string | null; categoryAccountId: string | null; categoryLabel: string | null; matchType: string | null; matchId: string | null; matchLabel: string | null; note: string | null; proofUrl: string | null; splitFromId?: string | null; sourceRowIds?: string[] | null }
 interface Coa { id: string; accountNumber: string; accountTitle: string }
-interface Match { type: string; id: string; label: string; date: string; amount: number; modeId?: string; posPaymentIds?: string[]; details?: string[]; partial?: boolean; partOf?: boolean }
+// gross/ewt: an RFP offered at what the bank pays — gross less the EWT withheld.
+interface Match { type: string; id: string; label: string; date: string; amount: number; modeId?: string; posPaymentIds?: string[]; details?: string[]; partial?: boolean; partOf?: boolean; gross?: number; ewt?: number }
 interface FxMatch { id: string; label: string; date: string; amount: number; currency: string; rate: number | null }
 interface Hint { kind: string; label: string; amount: number; date: string; n: number }
 interface UntaggedGroup { type: string; label: string; count: number; total: number; truncated: boolean; items: { id: string; label: string; date: string; amount: number; dir: string }[] }
@@ -1271,7 +1272,10 @@ function MatchModal({ txn, coa, account, onClose, onDone, onCategorise }: { txn:
       // record is often months from the deposit (a subscription recorded at
       // year end, paid in June) and is then reached by search rather than by
       // the suggestions.
-      const isPart = m.type !== 'INTERBANK' && m.type !== 'INTERBANK_RFP' && m.type !== 'POS_SALE' && m.type !== 'POS_DAY' && m.amount > lineFor(m) + 0.01
+      // A record paid net of EWT is offered at gross − EWT already; the payer's
+      // own rounding of the withholding can leave it a few centavos off, which
+      // is not a part payment.
+      const isPart = m.type !== 'INTERBANK' && m.type !== 'INTERBANK_RFP' && m.type !== 'POS_SALE' && m.type !== 'POS_DAY' && m.amount > lineFor(m) + (m.ewt ? 0.05 : 0.01)
       const partLabel = isPart
         ? `Part payment ₱${peso(lineFor(m))} of ₱${peso(m.amount)} · ${m.label}`.slice(0, 500)
         : m.label
