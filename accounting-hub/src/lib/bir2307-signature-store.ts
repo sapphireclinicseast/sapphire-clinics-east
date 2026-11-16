@@ -11,6 +11,7 @@
  */
 import { promises as fs } from 'fs'
 import path from 'path'
+import { inflateSync } from 'zlib'
 
 export const SIGNATURE_BRANCHES = ['SBEA', 'SBGH', 'VERDANA'] as const
 export type SignatureBranch = (typeof SIGNATURE_BRANCHES)[number]
@@ -28,16 +29,66 @@ const defaultPath = () => path.join(process.cwd(), 'server-assets', 'bir2307-sig
 
 export interface SignatureStatus { source: 'uploaded' | 'default' | 'none'; updatedAt: string | null }
 
-/** PNG check: magic bytes + IHDR size. Uploads are re-encoded to PNG in the browser first. */
+const CRC_TABLE = (() => {
+  const t = new Uint32Array(256)
+  for (let n = 0; n < 256; n++) {
+    let c = n
+    for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1
+    t[n] = c >>> 0
+  }
+  return t
+})()
+const crc32 = (buf: Buffer, start: number, end: number) => {
+  let c = 0xffffffff
+  for (let i = start; i < end; i++) c = CRC_TABLE[(c ^ buf[i]) & 0xff] ^ (c >>> 8)
+  return (c ^ 0xffffffff) >>> 0
+}
+const SAMPLES: Record<number, number> = { 0: 1, 2: 3, 3: 1, 4: 2, 6: 4 }
+
+/**
+ * PNG check — the whole file, not just its first bytes: every chunk present
+ * with a matching CRC, IHDR first, IEND last, and the image data inflating to
+ * exactly the size the header promises. A cut-off or damaged upload is refused
+ * instead of being stored and then silently missing from every 2307.
+ * (Uploads from the app are re-encoded to PNG in the browser first.)
+ */
 export function checkPng(buf: Buffer): { ok: true; width: number; height: number } | { ok: false; error: string } {
+  const bad = { ok: false as const, error: 'The signature file is not a complete PNG image — upload it again' }
   const magic = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]
-  if (buf.length < 33 || magic.some((v, i) => buf[i] !== v) || buf.toString('ascii', 12, 16) !== 'IHDR') {
+  if (buf.length < 57 || magic.some((v, i) => buf[i] !== v) || buf.toString('ascii', 12, 16) !== 'IHDR') {
     return { ok: false, error: 'The signature must be a PNG image' }
   }
   const width = buf.readUInt32BE(16)
   const height = buf.readUInt32BE(20)
+  const bitDepth = buf[24], colorType = buf[25], interlace = buf[28]
   if (!width || !height || width > MAX_SIDE || height > MAX_SIDE) {
     return { ok: false, error: `The signature image must be at most ${MAX_SIDE}×${MAX_SIDE} pixels` }
+  }
+  if (!SAMPLES[colorType] || ![1, 2, 4, 8, 16].includes(bitDepth)) return bad
+
+  const idat: Buffer[] = []
+  let pos = 8, sawEnd = false
+  while (pos + 12 <= buf.length) {
+    const len = buf.readUInt32BE(pos)
+    const type = buf.toString('ascii', pos + 4, pos + 8)
+    const dataEnd = pos + 8 + len
+    if (dataEnd + 4 > buf.length) return bad
+    if (crc32(buf, pos + 4, dataEnd) !== buf.readUInt32BE(dataEnd)) return bad
+    if (type === 'IDAT') idat.push(buf.subarray(pos + 8, dataEnd))
+    pos = dataEnd + 4
+    if (type === 'IEND') { sawEnd = true; break }
+  }
+  if (!sawEnd || !idat.length) return bad
+
+  // The pixel data must inflate in full. For a plain (non-interlaced) image the
+  // size is exact: one filter byte plus the packed samples per row.
+  const rowBytes = 1 + Math.ceil((width * SAMPLES[colorType] * bitDepth) / 8)
+  const expected = rowBytes * height
+  try {
+    const raw = inflateSync(Buffer.concat(idat), { maxOutputLength: expected + 2 * height + 1024 })
+    if (interlace === 0 && raw.length !== expected) return bad
+  } catch {
+    return bad
   }
   return { ok: true, width, height }
 }
