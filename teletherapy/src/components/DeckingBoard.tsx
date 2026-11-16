@@ -49,7 +49,10 @@ interface ConfigOut {
   workDays: string[]
   startTime: string
   endTime: string
-  patientsPerDay: number | null
+  slotsPerDay: number | null
+  slotMinutes: number | null
+  breakStart: string | null
+  breakMinutes: number | null
 }
 
 const DAY_ORDER = ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN']
@@ -81,7 +84,7 @@ function configTitle(c: ConfigOut): string {
   return parts.join(' · ')
 }
 
-export default function DeckingBoard({ staffId }: { staffId?: string | null }) {
+export default function DeckingBoard() {
   const [data, setData] = useState<{ configs: ConfigOut[]; weekly: SlotOut[]; dated: SlotOut[] } | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -89,8 +92,7 @@ export default function DeckingBoard({ staffId }: { staffId?: string | null }) {
   useEffect(() => {
     const ctl = new AbortController()
     setLoading(true); setError('')
-    fetch(`/api/decking${staffId ? `?staffId=${encodeURIComponent(staffId)}` : ''}`,
-      { cache: 'no-store', signal: ctl.signal })
+    fetch('/api/decking', { cache: 'no-store', signal: ctl.signal })
       .then(async r => {
         const d = await r.json()
         if (!r.ok) throw new Error(d.error ?? 'Could not load your decking.')
@@ -99,7 +101,7 @@ export default function DeckingBoard({ staffId }: { staffId?: string | null }) {
       .catch(e => { if (e.name !== 'AbortError') setError(e.message) })
       .finally(() => setLoading(false))
     return () => ctl.abort()
-  }, [staffId])
+  }, [])
 
   // Days with something on them, in week order. A consultant whose config
   // says Mon–Fri but who has nothing booked on Wednesday still sees
@@ -112,6 +114,18 @@ export default function DeckingBoard({ staffId }: { staffId?: string | null }) {
   }, [data])
 
   const totalBooked = data?.weekly.length ?? 0
+
+  // An interbranch consultant is decked separately at each branch. With both
+  // on one page, every hour has to say where it is — "Tuesday 10:00" means
+  // nothing if the reader has to guess which clinic to turn up at.
+  const multiBranch = useMemo(() => {
+    if (!data) return false
+    return new Set([
+      ...data.configs.map(c => c.branch),
+      ...data.weekly.map(s => s.branch),
+      ...data.dated.map(s => s.branch),
+    ]).size > 1
+  }, [data])
 
   if (loading) {
     return (
@@ -180,7 +194,9 @@ export default function DeckingBoard({ staffId }: { staffId?: string | null }) {
                         : 'No days set'}
                       {' — '}
                       {formatTime(c.startTime)} to {formatTime(c.endTime)}
-                      {c.patientsPerDay ? ` · up to ${c.patientsPerDay} patients a day` : ''}
+                      {c.slotsPerDay ? ` · ${c.slotsPerDay} patients a day` : ''}
+                      {c.slotMinutes ? ` · ${c.slotMinutes} min each` : ''}
+                      {c.breakStart ? ` · break ${formatTime(c.breakStart)}${c.breakMinutes ? ` for ${c.breakMinutes} min` : ''}` : ''}
                     </p>
                   </li>
                 ))}
@@ -221,7 +237,7 @@ export default function DeckingBoard({ staffId }: { staffId?: string | null }) {
                         </p>
                       ) : (
                         <ul className="flex-1 min-w-[200px] flex flex-col gap-1.5 m-0 p-0 list-none">
-                          {rows.map(s => <SlotRow key={s.id} slot={s} />)}
+                          {rows.map(s => <SlotRow key={s.id} slot={s} showBranch={multiBranch} />)}
                         </ul>
                       )}
                     </div>
@@ -258,7 +274,7 @@ export default function DeckingBoard({ staffId }: { staffId?: string | null }) {
                       {fmtDate(date)}
                     </p>
                     <ul className="flex-1 min-w-[200px] flex flex-col gap-1.5 m-0 p-0 list-none">
-                      {data!.dated.filter(s => s.date === date).map(s => <SlotRow key={s.id} slot={s} />)}
+                      {data!.dated.filter(s => s.date === date).map(s => <SlotRow key={s.id} slot={s} showBranch={multiBranch} />)}
                     </ul>
                   </div>
                 ))}
@@ -272,7 +288,7 @@ export default function DeckingBoard({ staffId }: { staffId?: string | null }) {
 }
 
 /** One hour: when, who, and how it is paid. */
-function SlotRow({ slot }: { slot: SlotOut }) {
+function SlotRow({ slot, showBranch = false }: { slot: SlotOut; showBranch?: boolean }) {
   const pay = PAY_STYLE[slot.paymentType] ?? PAY_STYLE.CASH
   return (
     <li className="flex flex-wrap items-center gap-2 rounded-lg px-2.5 py-1.5"
@@ -288,6 +304,12 @@ function SlotRow({ slot }: { slot: SlotOut }) {
         <span className="text-[10px] font-bold px-1.5 py-0.5 rounded whitespace-nowrap"
           style={{ background: '#FFF1E8', color: MAKEUP_FG, border: '1px solid #FBD5BC' }}>
           <UserPlus size={9} className="inline -mt-px mr-0.5" aria-hidden />Make-up
+        </span>
+      )}
+      {showBranch && (
+        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded whitespace-nowrap"
+          style={{ background: 'var(--paper)', color: 'var(--deep-teal)', border: '1px solid var(--light-gray)' }}>
+          {branchLabel(slot.branch) ?? slot.branch}
         </span>
       )}
       <span className="text-[12.5px] truncate min-w-0" style={{ color: 'var(--charcoal)' }}>

@@ -243,10 +243,14 @@ export default function ClinicSchedulePage() {
       {isAdmin && tab === 'trends' ? (
         <SessionTrends />
       ) : tab === 'decking' ? (
-        // The board front desk keep, read only. activeStaffId scopes an
-        // interbranch consultant to the branch the switcher is on; without
-        // one the API unions every branch they work in.
-        <DeckingBoard staffId={isMultiBranch ? activeStaffId : null} />
+        // The board front desk keep, read only.
+        //
+        // Deliberately NOT scoped to the branch switcher. A consultant decked
+        // at both branches has one working week split across two boards, and
+        // showing the switcher's branch alone hid the other half of it with
+        // nothing on screen to say so. The API unions every branch they work
+        // in and each row carries its own.
+        <DeckingBoard />
       ) : (
       <>
 
