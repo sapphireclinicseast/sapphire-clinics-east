@@ -134,7 +134,7 @@ interface Order {
   paymentStatus?: string
   paymentDate?: string | null
   items: { id: string; name: string; quantity: number; unitPrice: string | number; lineTotal: string | number; serviceId?: string; inventoryItemId?: string; service?: { department?: string; revenueType?: string; unitPayId?: string | null; unitPayEnabled?: boolean | null; hmoPaysClinicianDirect?: boolean; unitPay?: { name: string } | null } | null }[]
-  payments: { id: string; method: string; amount: string | number; paymentModeId?: string | null; walletId?: string; reference?: string; loaNumber?: string | null }[]
+  payments: { id: string; method: string; amount: string | number; paymentModeId?: string | null; walletId?: string; reference?: string; loaNumber?: string | null; wallet?: { patientName: string | null } | null }[]
   arPaymentItems?: { paymentId: string; payment?: { paymentDate: string; notes: string | null; wallet?: { patientName: string | null } | null } | null }[]
   hmoSettlements?: HmoSettlementNote[]
   hmoCoursedThroughClinic?: boolean
@@ -3548,7 +3548,7 @@ function OrdersPanel({ branch, canSelectBranch, focusOrderId, onFocusHandled }: 
   const [viewOrder, setViewOrder] = useState<Order | null>(null)
   const [editOrder, setEditOrder] = useState<Order | null>(null)
   const [editItems, setEditItems] = useState<{ name: string; quantity: number; unitPrice: number; lineTotal: number; serviceId?: string; inventoryItemId?: string; unitPayId?: string | null; unitPayEnabled?: boolean | null }[]>([])
-  const [editPayments, setEditPayments] = useState<{ id?: string; method: string; amount: number; paymentModeId?: string; walletId?: string; reference?: string }[]>([])
+  const [editPayments, setEditPayments] = useState<{ id?: string; method: string; amount: number; paymentModeId?: string; walletId?: string; walletName?: string; reference?: string }[]>([])
   const [editPatient, setEditPatient] = useState('')
   const [editClinician, setEditClinician] = useState('')
   const [editDate, setEditDate] = useState('')
@@ -3977,6 +3977,7 @@ function OrdersPanel({ branch, canSelectBranch, focusOrderId, onFocusHandled }: 
       amount: toNum(p.amount),
       paymentModeId: p.paymentModeId || undefined,
       walletId: p.walletId,
+      walletName: p.wallet?.patientName || undefined,
       reference: p.reference,
     })))
     setEditDate(o.transactionDate ? o.transactionDate.split('T')[0] : today())
@@ -4017,6 +4018,23 @@ function OrdersPanel({ branch, canSelectBranch, focusOrderId, onFocusHandled }: 
     return { amount: 0, label: '', type: 'NONE' }
   })()
   const editNetAmount = Math.max(0, editSubtotal - computedEditDiscount.amount)
+  // Picking an HMO / agency / Advance wallet in Edit Order. It used to replace
+  // the payments with a fresh ₱0 line, which Save then dropped (only lines above
+  // ₱0 are sent) — so switching a session from INTELLICARE to VALUCARE silently
+  // kept INTELLICARE (East complaint, 2026-11-16, orders #33204 and #28840).
+  // Switching the wallet of an existing line of the same kind keeps that line —
+  // its id (payment links survive) and its amount; otherwise the new line takes
+  // the order's net, which the cashier can still change.
+  const pickEditWallet = (method: 'HMO' | 'GL' | 'ADVANCE', w: { id: string; patientName?: string | null; balance?: string | number }) => {
+    setEditPayments(prev => {
+      const same = prev.find(pp => pp.method === method)
+      const net = Math.round(editNetAmount * 100) / 100
+      // A GL or Advance wallet can only give what is left on it.
+      const cap = method === 'HMO' ? net : Math.max(0, Math.min(net, toNum(w.balance ?? net)))
+      const amount = same?.amount || cap
+      return [{ ...(same?.id ? { id: same.id } : {}), method, amount, walletId: w.id, walletName: w.patientName || undefined }]
+    })
+  }
   const editTotalPayments = editPayments.reduce((s, p) => s + p.amount, 0)
 
   const saveEditOrder = async () => {
@@ -4025,6 +4043,13 @@ function OrdersPanel({ branch, canSelectBranch, focusOrderId, onFocusHandled }: 
     const originalDate = editOrder.transactionDate ? editOrder.transactionDate.split('T')[0] : ''
     if (editDate !== originalDate && !editDateReason.trim()) {
       setEditError('Please provide a reason for changing the transaction date')
+      return
+    }
+    // A wallet line with no amount would be dropped below and the old payment
+    // kept — say so instead of saving something other than what is on screen.
+    const emptyWallet = editPayments.find(p => p.walletId && !(p.amount > 0))
+    if (emptyWallet) {
+      setEditError(`Enter the amount for the ${emptyWallet.walletName || emptyWallet.method} payment, or remove that line`)
       return
     }
     setEditSaving(true)
@@ -4830,6 +4855,12 @@ function OrdersPanel({ branch, canSelectBranch, focusOrderId, onFocusHandled }: 
                           </>
                         )}
                       </select>
+                      {p.walletId && (
+                        <span className="px-2 py-1 rounded-lg text-xs font-semibold whitespace-nowrap max-w-[160px] truncate"
+                          title={p.walletName || 'Wallet'} style={{ background: '#fff7ed', color: '#c2410c' }}>
+                          {p.walletName || 'Wallet set'}
+                        </span>
+                      )}
                       <input type="number" min={0} step="0.01" value={p.amount || ''}
                         onChange={e => setEditPayments(prev => prev.map((pp, i) => i === idx ? { ...pp, amount: parseFloat(e.target.value) || 0 } : pp))}
                         className="w-32 px-3 py-2 rounded-xl border text-sm text-right outline-none" style={{ borderColor: 'var(--light-gray)' }} />
@@ -4985,7 +5016,7 @@ function OrdersPanel({ branch, canSelectBranch, focusOrderId, onFocusHandled }: 
                         <div className="max-h-32 overflow-y-auto space-y-1">
                           {editHmoWallets.map(w => (
                             <button key={w.id} onClick={() => {
-                              setEditPayments([{ method: 'HMO', amount: 0, walletId: w.id }])
+                              pickEditWallet('HMO', w)
                               setEditShowHmoPay(false)
                             }}
                               className="w-full text-left px-3 py-2 text-sm hover:bg-orange-50 rounded-lg flex justify-between">
@@ -5009,7 +5040,7 @@ function OrdersPanel({ branch, canSelectBranch, focusOrderId, onFocusHandled }: 
                         <div className="max-h-32 overflow-y-auto space-y-1">
                           {editGlWallets.map(w => (
                             <button key={w.id} onClick={() => {
-                              setEditPayments([{ method: 'GL', amount: 0, walletId: w.id }])
+                              pickEditWallet('GL', w)
                               setEditShowGlPay(false)
                             }}
                               className="w-full text-left px-3 py-2 text-sm hover:bg-green-50 rounded-lg flex justify-between">
@@ -5033,7 +5064,7 @@ function OrdersPanel({ branch, canSelectBranch, focusOrderId, onFocusHandled }: 
                         <div className="max-h-32 overflow-y-auto space-y-1">
                           {editAdvanceWallets.map(w => (
                             <button key={w.id} onClick={() => {
-                              setEditPayments([{ method: 'ADVANCE', amount: 0, walletId: w.id }])
+                              pickEditWallet('ADVANCE', w)
                               setEditShowAdvancePay(false)
                             }}
                               className="w-full text-left px-3 py-2 text-sm hover:bg-purple-50 rounded-lg flex justify-between">

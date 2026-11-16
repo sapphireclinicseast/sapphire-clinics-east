@@ -642,6 +642,22 @@ export async function PUT(
       }
     }
 
+    // A session already tagged as paid in AR (Payment History → Record Payment)
+    // belongs to the HMO / agency that paid it. Moving its HMO or GL payment to
+    // another wallet here would leave that payment pointing at a session it no
+    // longer covers — untag it in Payment History first.
+    if (payments?.length) {
+      const tagged = await prisma.aRPaymentItem.count({ where: { orderId: id } })
+      if (tagged) {
+        const walletsOf = (rows: { method: string; walletId?: string | null }[]) =>
+          rows.filter(r => r.method === 'HMO' || r.method === 'GL').map(r => r.walletId || '').sort().join(',')
+        const before = walletsOf(await prisma.orderPayment.findMany({ where: { orderId: id }, select: { method: true, walletId: true } }))
+        if (walletsOf(payments) !== before) {
+          return NextResponse.json({ error: 'This session is already tagged as paid in AR → Payment History, so its HMO / GL cannot be switched here. Untag it in Payment History first, then change the HMO.' }, { status: 409 })
+        }
+      }
+    }
+
     // A guarantee letter pays only up to what is left on it (lib/gl-balance).
     // The edit puts this order's own GL charges back first, so count them as
     // available.
