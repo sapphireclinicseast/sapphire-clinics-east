@@ -326,6 +326,10 @@ export async function GET(req: Request) {
     const walletNameById = new Map(wallets.map(w => [w.id, w.patientName]))
     const exceptionWalletIds = new Set(wallets.filter(w => (w as { paysClinicForMd?: boolean }).paysClinicForMd).map(w => w.id))
     const deptTotals = new Map<string, number>()
+    // GL Summary's Agency filter (Hannah 11/16): the same department split, kept
+    // per issuing agency of the order's letter ('' = no agency set).
+    const agencyByWallet = new Map(wallets.map(w => [w.id, (w as { agency?: string | null }).agency || '']))
+    const deptByAgency = new Map<string, Map<string, number>>()
     const providerTotals = new Map<string, number>()
     const directProviderTotals = new Map<string, number>()
     let totalBilled = 0
@@ -371,8 +375,11 @@ export async function GET(req: Request) {
         itemsByDept.set(dept, (itemsByDept.get(dept) || 0) + 1)
       }
       const totalItems = o.items.length || 1
+      const ag = type === 'GL' ? agencyByWallet.get(o.payments[0]?.walletId || '') ?? '' : null
+      const agMap = ag === null ? null : (deptByAgency.get(ag) ?? deptByAgency.set(ag, new Map()).get(ag)!)
       for (const [dept, count] of itemsByDept) {
         deptTotals.set(dept, (deptTotals.get(dept) || 0) + (count / totalItems) * amt)
+        if (agMap) agMap.set(dept, (agMap.get(dept) || 0) + (count / totalItems) * amt)
       }
     }
 
@@ -432,6 +439,11 @@ export async function GET(req: Request) {
       byDepartment: Array.from(deptTotals.entries())
         .map(([label, amount]) => ({ label, amount }))
         .sort((a, b) => b.amount - a.amount),
+      // GL only: byDepartment split by the letter's agency ('' = not set).
+      byDepartmentByAgency: type === 'GL'
+        ? Object.fromEntries(Array.from(deptByAgency.entries()).map(([ag, m]) => [ag,
+            Array.from(m.entries()).map(([label, amount]) => ({ label, amount })).sort((a, b) => b.amount - a.amount)]))
+        : undefined,
       byProvider: Array.from(providerTotals.entries())
         .map(([label, amount]) => ({ label, amount }))
         .sort((a, b) => b.amount - a.amount),

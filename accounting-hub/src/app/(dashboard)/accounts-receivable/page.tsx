@@ -39,7 +39,11 @@ import PaymentsCard from './PaymentsCard'
 import { useResizableColumns, ResizableColgroup, ColResizeHandle } from '@/components/useResizableColumns'
 import DetailedGl, { type GlCaseRow, type GlCaseWallet } from './DetailedGl'
 import { buildRows as buildGlRows, avgArRunningDays } from '@/lib/gl-letters'
+import { agencyOptions } from '@/lib/gl-stage'
 import { HR_PAGE_CLASS, HR_PAGE_STYLE, HrShimmerStyle, hrBtn } from '@/components/ui/hr-look'
+
+/** GL Summary agency filter value for letters with no agency set. */
+const NO_AGENCY = '__none__'
 
 interface ARWallet {
   id: string
@@ -48,6 +52,8 @@ interface ARWallet {
   branch?: string | null
   // Only returned for GL wallets — the approved amount on the Guarantee Letter.
   totalGlAmount?: number | string | null
+  // GL only: the issuing agency (STAR, ODESFA, LGU, …).
+  agency?: string | null
   // Consumption-based outstanding (sum of unpaid orders)
   consumedOutstanding?: number
   // An agency that bills per session and settles afterwards (no approved SOA to
@@ -101,6 +107,8 @@ interface ARSummary {
   orderCount: number
   totalBilled: number
   byDepartment: { label: string; amount: number }[]
+  /** GL only: byDepartment per letter agency ('' = not set). */
+  byDepartmentByAgency?: Record<string, { label: string; amount: number }[]>
   byProvider: { label: string; amount: number }[]
   directToClinician?: { orderCount: number; total: number; paidOrderCount?: number; paidTotal?: number; byProvider: { label: string; amount: number }[] }
   hmoDecrease?: { total: number; sessionCount: number }
@@ -841,6 +849,8 @@ export default function AccountsReceivablePage() {
   // Approved-SOA recompute (one-shot data correction for the 2026-04-08
   // migration that clobbered totalGlAmount with the then-current balance).
   const [recomputeBusy, setRecomputeBusy] = useState(false)
+  // GL Summary agency filter (Hannah 11/16): '' = all agencies, NO_AGENCY = letters with none set.
+  const [glSummaryAgency, setGlSummaryAgency] = useState('')
   const [recomputeResult, setRecomputeResult] = useState<{
     updated: number; skipped: number;
     changes: { patientName: string; currentTotalGlAmount: number | null; derivedTotalGlAmount: number }[];
@@ -1928,7 +1938,12 @@ export default function AccountsReceivablePage() {
         // convention the order filter uses, so a company-wide letter still shows in
         // the branch views it funds.
         const inBranch = (w: ARWallet) => !branch || w.branch === branch || w.branch === 'ALL'
-        const branchWallets = wallets.filter(inBranch)
+        // Agency filter (Hannah 11/16: "add a filter by agency in the GL summary"):
+        // every card and both charts below then describe that agency's letters only.
+        const summaryAgencies = agencyOptions(wallets.filter(inBranch).map(w => w.agency))
+        const inAgency = (w: ARWallet) => !glSummaryAgency
+          || (glSummaryAgency === NO_AGENCY ? !w.agency : w.agency === glSummaryAgency)
+        const branchWallets = wallets.filter(w => inBranch(w) && inAgency(w))
         const branchWalletIds = new Set(branchWallets.map(w => w.id))
         const approvedWallets = branchWallets.filter(w => !w.perSession)
         const perSessionWallets = branchWallets.filter(w => w.perSession)
@@ -1938,7 +1953,7 @@ export default function AccountsReceivablePage() {
         // zero-balance wallets and partially-consumed wallets are included correctly.
         const totalConsumed = approvedWallets.reduce((s, w) => s + (w.consumedOutstanding ?? 0), 0)
         const totalPaid = arPayments
-          .filter(p => !branch || !p.walletId || branchWalletIds.has(p.walletId))
+          .filter(p => (!branch && !glSummaryAgency) || (p.walletId ? branchWalletIds.has(p.walletId) : !glSummaryAgency))
           .reduce((s, p) => s + toNum(p.amount), 0)
         const pctConsumed = totalApproved > 0 ? Math.min(100, (totalConsumed / totalApproved) * 100) : 0
         const pctPaid = totalApproved > 0 ? Math.min(100, (totalPaid / totalApproved) * 100) : 0
@@ -1970,11 +1985,32 @@ export default function AccountsReceivablePage() {
         }
         const svcItems: DonutItem[] = Array.from(svcTypeMap.entries()).map(([label, value]) => ({ label, value }))
         // From the API's full history: the `orders` list stops at the newest 500.
-        const glDeptItems: DonutItem[] = (summary?.byDepartment || []).map(d => ({ label: d.label, value: d.amount }))
+        const deptSource = glSummaryAgency
+          ? (summary?.byDepartmentByAgency?.[glSummaryAgency === NO_AGENCY ? '' : glSummaryAgency] || [])
+          : (summary?.byDepartment || [])
+        const glDeptItems: DonutItem[] = deptSource.map(d => ({ label: d.label, value: d.amount }))
         return (
           <div className="rounded-2xl border p-4 space-y-4" style={{ borderColor: 'var(--light-gray)', background: 'white' }}>
             <div className="flex items-start justify-between gap-3 flex-wrap">
-              <h2 className="text-base font-bold" style={{ color: 'var(--charcoal)', fontFamily: 'var(--font-display)' }}>GL Summary</h2>
+              <div className="flex items-center gap-3 flex-wrap">
+                <h2 className="text-base font-bold" style={{ color: 'var(--charcoal)', fontFamily: 'var(--font-display)' }}>GL Summary</h2>
+                <label className="flex items-center gap-1.5 text-xs" style={{ color: 'var(--mid-gray)' }}>
+                  Agency
+                  <select value={glSummaryAgency} onChange={e => setGlSummaryAgency(e.target.value)}
+                    aria-label="Filter GL Summary by agency"
+                    className="px-2 py-1 rounded-lg border text-xs font-semibold outline-none bg-white"
+                    style={{ borderColor: glSummaryAgency ? 'var(--teal)' : 'var(--light-gray)', color: glSummaryAgency ? 'var(--deep-teal)' : 'var(--charcoal)' }}>
+                    <option value="">All agencies</option>
+                    {summaryAgencies.map(a => <option key={a} value={a}>{a}</option>)}
+                    <option value={NO_AGENCY}>Not set</option>
+                  </select>
+                </label>
+                {glSummaryAgency && (
+                  <span className="text-[11px]" style={{ color: 'var(--mid-gray)' }}>
+                    {branchWallets.length} letter{branchWallets.length === 1 ? '' : 's'} · {glSummaryAgency === NO_AGENCY ? 'no agency set' : glSummaryAgency}
+                  </span>
+                )}
+              </div>
               {canRecomputeSoa && (
                 <div className="flex flex-col items-end gap-1">
                   <button
