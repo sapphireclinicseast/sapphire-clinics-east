@@ -717,7 +717,13 @@ model DeckingTherapistConfig {
   /// "ONSITE" | "TELETHERAPY" | "HOMECARE". NULL is the general schedule,
   /// used by any service with no days of its own.
   deliveryMode String?
-  patientsPerDay Int?
+  /// How many patients a working day holds, when it is not one an hour.
+  slotsPerDay  Int?
+  /// Fixed slot length in minutes, as an alternative to slotsPerDay.
+  slotMinutes  Int?
+  /// The daily break, which no patient is placed inside.
+  breakStart   String?
+  breakMinutes Int?
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 

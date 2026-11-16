@@ -43,7 +43,10 @@ export interface DeckingConfigOut {
   workDays: string[]
   startTime: string
   endTime: string
-  patientsPerDay: number | null
+  slotsPerDay: number | null
+  slotMinutes: number | null
+  breakStart: string | null
+  breakMinutes: number | null
 }
 
 /** Today in Manila as YYYY-MM-DD — the clinic's day, not the server's. */
@@ -59,19 +62,21 @@ export async function GET(req: NextRequest) {
   const session = await auth()
   if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  // The same staff-id resolution the clinic-schedule route uses: an
-  // interbranch consultant holds one Staff row per branch, and the branch
-  // switcher asks for one of them at a time.
+  // EVERY branch this consultant works in, unioned.
+  //
+  // An interbranch consultant holds one Staff row per branch and is decked
+  // separately in each. Scoping to the branch switcher showed one of those and
+  // silently hid the other, which for somebody who works Mondays at East and
+  // Thursdays at Greenhills is half a week missing with nothing saying so.
+  // The board is per branch; the consultant is one person.
+  //
+  // A ?staffId is still honoured for a caller that genuinely wants one branch,
+  // but ONLY when it is already one of this user's own — the gate is here
+  // rather than in the page, because a page gate is a suggestion.
   const branchStaffIds = session.user.branches?.map(b => b.staffId).filter(Boolean) ?? []
+  const ownIds = [...new Set([...branchStaffIds, session.user.staffId].filter(Boolean))] as string[]
   const requested = (req.nextUrl.searchParams.get('staffId') ?? '').trim()
-  let staffIds: string[]
-  if (requested && (branchStaffIds.includes(requested) || requested === session.user.staffId)) {
-    staffIds = [requested]
-  } else {
-    staffIds = branchStaffIds.length > 0
-      ? branchStaffIds
-      : session.user.staffId ? [session.user.staffId] : []
-  }
+  const staffIds: string[] = requested && ownIds.includes(requested) ? [requested] : ownIds
   // No staff record linked to this account — not an error, just nothing to
   // show. Returning [] lets the page say so instead of rendering a failure.
   if (staffIds.length === 0) {
@@ -86,7 +91,8 @@ export async function GET(req: NextRequest) {
       where: { staffId: { in: staffIds } },
       select: {
         branch: true, department: true, deliveryMode: true,
-        workDays: true, startTime: true, endTime: true, patientsPerDay: true,
+        workDays: true, startTime: true, endTime: true,
+        slotsPerDay: true, slotMinutes: true, breakStart: true, breakMinutes: true,
       },
     }),
     prisma.deckingSlot.findMany({
@@ -156,7 +162,10 @@ export async function GET(req: NextRequest) {
       workDays: Array.isArray(c.workDays) ? (c.workDays as string[]) : [],
       startTime: c.startTime,
       endTime: c.endTime,
-      patientsPerDay: c.patientsPerDay,
+      slotsPerDay: c.slotsPerDay,
+      slotMinutes: c.slotMinutes,
+      breakStart: c.breakStart,
+      breakMinutes: c.breakMinutes,
     })),
     weekly,
     dated,
