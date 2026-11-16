@@ -13,7 +13,7 @@
  */
 
 import { useState, useEffect, useCallback, useMemo, Fragment } from 'react'
-import { Loader2, Mail, MessageSquare, CheckCircle2, Upload, X, Eye, ChevronDown, Trash2, Flag, Pencil, Check, Search } from 'lucide-react'
+import { Loader2, Mail, MessageSquare, CheckCircle2, Upload, X, Eye, ChevronDown, Trash2, Flag, Pencil, Check, Search, Clock } from 'lucide-react'
 import { StatCard } from '@/components/ui/hr-look'
 import { ScanUpload } from '@/components/ScanUpload'
 import { Bir2307Generator, Bir2307Settings } from './Bir2307'
@@ -263,6 +263,7 @@ export default function ServiceInvoiceTab({ branch: branchProp, canWrite }: { br
     }
     return out
   }, [mFrom, mTo])
+  const thisMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
   const matrixRows = withCor.map(c => {
     const keys = keysBy.get(c.id) || new Set<string>()
     // Months before they started (HR Hub "Date Hired") are N/A, not missing —
@@ -272,13 +273,16 @@ export default function ServiceInvoiceTab({ branch: branchProp, canWrite }: { br
     const startMonth = start ? start.slice(0, 7) : null
     const pay = tracking?.payroll[c.id] || {}
     const na = new Set(matrixMonths.filter(m => !!startMonth && m < startMonth && monthCoverage(m, keys) === 'none' && !pay[`${m}-1`] && !pay[`${m}-2`]))
-    const due = matrixMonths.filter(m => !na.has(m))
+    // This month (and any later one) is not due until its payroll is final — the
+    // 2nd cutoff LOCKED/FINAL for this consultant — since nobody can invoice a
+    // month that has not been paid yet (Hannah 11/16: "Yes, exclude it").
+    const pending = new Set(matrixMonths.filter(m => !na.has(m) && m >= thisMonth && !pay[`${m}-2`]))
+    const due = matrixMonths.filter(m => !na.has(m) && !pending.has(m))
     const done = due.reduce((s, m) => { const v = monthCoverage(m, keys); return s + (v === 'full' ? 1 : v === 'none' ? 0 : 0.5) }, 0)
-    return { c, keys, done, due: due.length, start, na, pct: due.length ? Math.round((done / due.length) * 100) : 100 }
+    return { c, keys, done, due: due.length, start, na, pending, pct: due.length ? Math.round((done / due.length) * 100) : 100 }
   })
   const fullyCompliant = matrixRows.filter(r => r.pct === 100).length
   const avgCompliance = matrixRows.length ? Math.round(matrixRows.reduce((t, r) => t + r.pct, 0) / matrixRows.length) : 0
-  const thisMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
   const matrixShown = matrixShow === 'done' ? matrixRows.filter(r => r.pct === 100)
     : matrixShow === 'follow' ? matrixRows.filter(r => r.pct < 100)
     : matrixRows
@@ -717,7 +721,7 @@ export default function ServiceInvoiceTab({ branch: branchProp, canWrite }: { br
                         const current = m === thisMonth
                         return (
                           <th key={m} className="px-1 py-2 text-center whitespace-nowrap" style={{ borderBottom: '1px solid var(--hr-line)', minWidth: 44 }}
-                            title={current ? 'This month — its second cutoff may not be paid yet' : undefined}>
+                            title={current ? 'This month — not counted until its payroll is final' : undefined}>
                             <span className="block text-[11px] font-bold uppercase tracking-[.4px]" style={{ color: current ? 'var(--teal)' : 'var(--mid-gray)' }}>{MON[parseInt(m.slice(5)) - 1]}</span>
                             <span className="block text-[10px] font-medium" style={{ color: 'var(--hr-faint)' }}>’{m.slice(2, 4)}</span>
                           </th>
@@ -727,7 +731,7 @@ export default function ServiceInvoiceTab({ branch: branchProp, canWrite }: { br
                     </tr>
                   </thead>
                   <tbody>
-                    {visibleMatrix.map(({ c, keys, done, due, start, na, pct }) => {
+                    {visibleMatrix.map(({ c, keys, done, due, start, na, pending, pct }) => {
                       const tone = !due ? 'var(--light-gray)' : pct === 100 ? '#059669' : pct > 0 ? '#d97706' : '#dc2626'
                       return (
                         <tr key={c.id} className="group" style={{ borderTop: '1px solid var(--hr-line)' }}>
@@ -747,20 +751,26 @@ export default function ServiceInvoiceTab({ branch: branchProp, canWrite }: { br
                             }
                             const cov = monthCoverage(m, keys)
                             const copy = cov === 'none' ? null : copyFor(c.id, m)
-                            const title = cov === 'full' ? 'Invoiced' : cov === 'first' ? '1st half invoiced, 2nd half not yet' : cov === 'second' ? '2nd half invoiced, 1st half not yet' : 'No service invoice received'
-                            const chip = cov === 'full'
+                            const notDue = pending.has(m)
+                            const monthName = `${MON[parseInt(m.slice(5)) - 1]} ${m.slice(0, 4)}`
+                            const title = (cov === 'full' ? 'Invoiced' : cov === 'first' ? '1st half invoiced, 2nd half not yet' : cov === 'second' ? '2nd half invoiced, 1st half not yet' : 'No service invoice received')
+                              + (notDue ? ` — not counted yet: ${monthName} payroll isn't final` : '')
+                            const chip = notDue && cov === 'none'
+                              ? { bg: '#f1f4ec', fg: 'var(--hr-faint)', body: <Clock size={11} strokeWidth={2.5} /> }
+                              : cov === 'full'
                               ? { bg: '#dcfce7', fg: '#166534', body: <Check size={13} strokeWidth={3} /> }
                               : cov === 'none'
                                 ? { bg: '#fdf2f2', fg: '#e05252', body: <X size={12} strokeWidth={2.5} /> }
                                 : { bg: '#fef3c7', fg: '#92400e', body: <span className="text-[11px] font-bold leading-none">½</span> }
                             const inner = (
-                              <span className="inline-flex items-center justify-center w-[22px] h-[22px] rounded-md" style={{ background: chip.bg, color: chip.fg }}>{chip.body}</span>
+                              <span className="inline-flex items-center justify-center w-[22px] h-[22px] rounded-md"
+                                style={{ background: chip.bg, color: chip.fg, opacity: notDue && cov !== 'none' ? 0.6 : 1 }}>{chip.body}</span>
                             )
                             return (
                               <td key={m} className="px-1 py-2.5 text-center group-hover:bg-[var(--off-white)]">
                                 {copy
                                   ? <a href={copy} target="_blank" rel="noopener noreferrer" title={`${title} — view the copy`} className="inline-flex hover:ring-2 hover:ring-[#a7d3cd] rounded-md">{inner}</a>
-                                  : <span title={title} className="inline-flex">{inner}</span>}
+                                  : <span title={notDue && cov === 'none' ? `Not due yet — ${monthName} payroll isn't final, so it isn't counted` : title} className="inline-flex">{inner}</span>}
                               </td>
                             )
                           })}
@@ -794,6 +804,7 @@ export default function ServiceInvoiceTab({ branch: branchProp, canWrite }: { br
                 { bg: '#dcfce7', fg: '#166534', body: <Check size={11} strokeWidth={3} />, label: 'Invoiced (click to view the copy)' },
                 { bg: '#fef3c7', fg: '#92400e', body: <span className="text-[10px] font-bold">½</span>, label: 'One cutoff of the month invoiced' },
                 { bg: '#fdf2f2', fg: '#e05252', body: <X size={10} strokeWidth={2.5} />, label: 'Not received' },
+                { bg: '#f1f4ec', fg: 'var(--hr-faint)', body: <Clock size={10} strokeWidth={2.5} />, label: 'Not due yet (payroll not final), not counted' },
               ].map(l => (
                 <span key={l.label} className="inline-flex items-center gap-1.5">
                   <span className="inline-flex items-center justify-center w-[18px] h-[18px] rounded" style={{ background: l.bg, color: l.fg }}>{l.body}</span>
