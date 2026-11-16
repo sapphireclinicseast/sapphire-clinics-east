@@ -134,25 +134,37 @@ export function TiktokImportModal({ onClose, onDone }: { onClose: () => void; on
           if (classifiedSkip) return { skip: true }
           if (!item) return null
           const perBefore = qty > 0 ? numAt(r, 'SKU Subtotal Before Discount') / qty : 0
-          const perAfter = qty > 0 ? numAt(r, 'SKU Subtotal After Discount') / qty : 0
+          // The sale is the price after the SELLER's discount. A TikTok platform
+          // voucher lowers what the buyer pays, but TikTok pays Verdana that part
+          // itself — the settlement's "Subtotal after seller discounts" is exactly
+          // SKU Subtotal After Discount + SKU Platform Discount (102 of 102 orders,
+          // Sep–Nov 2026). Booking only what the buyer paid left the voucher as a
+          // credit stuck in TikTok Clearing (₱5,917.93 by 2026-11-16). Hannah
+          // 11/16: count it as sales.
+          const perPaid = qty > 0 ? numAt(r, 'SKU Subtotal After Discount') / qty : 0
+          const perAfter = perPaid + (qty > 0 ? numAt(r, 'SKU Platform Discount') / qty : 0)
           // Declared as sale (full gross) + refund deduction. Full qty carries revenue; the
           // returned units are booked as refundAmount (7160). Inventory deducts qty − returned.
           return {
             inventoryItemId: item.id, name: item.name, unitPrice: numAt(r, 'SKU Unit Original Price'),
             quantity: qty,                     // full ordered units
             lineTotal: perBefore * qty,        // full gross-before-discount
-            _after: perAfter * qty,            // full after-discount
+            _after: perAfter * qty,            // full after the seller's discount (TikTok's voucher is still sales)
+            _paidNet: perPaid * (qty - ret),   // what the buyer paid, net of returns — legacy matching only
             returnedQuantity: ret,
             refundAmount: perAfter * ret,      // after-discount refund for returned units
           }
         })
         if (its.some(x => x === null)) { skipped++; continue }       // unmatched SKU
-        const lines = its.filter((x): x is { inventoryItemId: string; name: string; quantity: number; unitPrice: number; lineTotal: number; _after: number; returnedQuantity: number; refundAmount: number } => !!x && !('skip' in x))
+        const lines = its.filter((x): x is { inventoryItemId: string; name: string; quantity: number; unitPrice: number; lineTotal: number; _after: number; _paidNet: number; returnedQuantity: number; refundAmount: number } => !!x && !('skip' in x))
         if (lines.length === 0) { skipped++; continue }              // all products classified as Skip
         const subtotal = lines.reduce((s, l) => s + l.lineTotal, 0)      // full gross (before discount)
         const fullAfter = lines.reduce((s, l) => s + l._after, 0)        // full after discount
         const totalRefund = lines.reduce((s, l) => s + l.refundAmount, 0)
-        const net = fullAfter - totalRefund                              // actually collected (after discount, less refunds)
+        const net = fullAfter - totalRefund                              // what TikTok settles on (after seller discount, less refunds)
+        // Older hand-keyed (e.g. CASH) encodes carry what the buyer paid, so the
+        // legacy look-up compares against that, not the voucher-inclusive net.
+        const paidNet = lines.reduce((s, l) => s + l._paidNet, 0)
         const txnDate = toIsoTime(rs[0]['Paid Time'] || rs[0]['Created Time']) || new Date().toISOString()
         const orderItemIds = [...new Set(lines.map(l => l.inventoryItemId))].sort()
         const orderNames = [...new Set(lines.map(l => norm(l.name)))].sort()
@@ -166,7 +178,7 @@ export function TiktokImportModal({ onClose, onDone }: { onClose: () => void; on
           // ₱0 non-TikTok Verdana order in the window — the 2026-11-13 batch would
           // have voided 5 genuine Clinic FOC sales as "legacy TikTok encodes".
           if (net <= 0.005) return refM
-          const netM = Math.abs(l.netAmount - net) < 0.5
+          const netM = Math.abs(l.netAmount - paidNet) < 0.5 || Math.abs(l.netAmount - net) < 0.5
           const dateM = withinDays(l.ymd, txnDate, 3)
           const skuM = sameSet(l.itemIds, orderItemIds)
           const nameM = sameSet(l.itemNames, orderNames)
