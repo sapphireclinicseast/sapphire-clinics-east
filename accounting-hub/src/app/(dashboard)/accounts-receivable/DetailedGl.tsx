@@ -783,6 +783,20 @@ export default function DetailedGl({
             {b ? branchLabel(b) || b : 'No branch'}
           </label>
         ))}
+        {/* Agency (Hannah 11/16: "add the agency filter to the Detailed GL totals
+            too"). The same filter as the Agency column's header, so the totals,
+            cycle times, stage pipeline and table all follow it, and the two stay in step. */}
+        <label className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium"
+          style={{ border: `1px solid ${filters.agency ? 'var(--deep-teal, #14532d)' : 'var(--light-gray)'}`, background: filters.agency ? '#f0f7f2' : 'white', color: 'var(--charcoal)' }}>
+          Agency
+          <select value={filters.agency || ''} onChange={e => setFilters(f => ({ ...f, agency: e.target.value }))}
+            aria-label="Filter Detailed GL by agency"
+            className="bg-transparent outline-none text-xs font-semibold cursor-pointer">
+            <option value="">All agencies</option>
+            {agencies.map(a => <option key={a} value={a}>{a}</option>)}
+            <option value="—">Not set</option>
+          </select>
+        </label>
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
         {([['Requested GL', totals.requested], ['Approved GL', totals.approved], ['Amount in SOA', totals.soa]] as [string, number][]).map(([label, v]) => (
