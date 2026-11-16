@@ -14,7 +14,7 @@
 
 import { useState, useEffect, useCallback, useMemo, Fragment } from 'react'
 import { Loader2, Mail, MessageSquare, CheckCircle2, Upload, X, Eye, ChevronDown, Trash2, Flag, Pencil, Check, Search, Clock } from 'lucide-react'
-import { StatCard } from '@/components/ui/hr-look'
+import { StatCard, hrBtn } from '@/components/ui/hr-look'
 import { ScanUpload } from '@/components/ScanUpload'
 import { Bir2307Generator, Bir2307Settings } from './Bir2307'
 import { SiInvoiceDialog } from './SiInvoiceDialog'
@@ -92,6 +92,8 @@ export default function ServiceInvoiceTab({ branch: branchProp, canWrite }: { br
   const [q, setQ] = useState('')
   const [view, setView] = useState<'track' | 'matrix' | 'cor' | 'gen2307' | 'settings2307'>('track')
   const [showNoCor, setShowNoCor] = useState(false)
+  // Tracking & Reminders: which COR holders to list (stat cards and the Show switch).
+  const [trackShow, setTrackShow] = useState<'all' | 'owing' | 'ok' | 'settle'>('all')
   const [noTaxOnly, setNoTaxOnly] = useState(false)
   const [hrSync, setHrSync] = useState<{ reached: boolean; unmatched: string[] } | null>(null)
   const [corTarget, setCorTarget] = useState<Consultant | null>(null)
@@ -248,6 +250,18 @@ export default function ServiceInvoiceTab({ branch: branchProp, canWrite }: { br
   const corRows = noTaxOnly ? filtered.filter(c => c.taxDeduction !== 'FIVE_PERCENT') : filtered
   const noTaxCount = filtered.filter(c => c.taxDeduction !== 'FIVE_PERCENT').length
   const owing = withCor.filter(c => outstandingOf(c.id).length > 0).length
+  /** Finalized payroll gross for the cutoffs not yet invoiced. */
+  const owedOf = (cid: string) => {
+    const pay = tracking?.payroll[cid] || {}
+    return outstandingOf(cid).reduce((t, cp) => t + (pay[cp]?.gross || 0), 0)
+  }
+  const settleOf = (cid: string) => (adjBy.get(cid) || []).filter(a => a.status === 'OPEN' || a.status === 'FLAGGED').length
+  const totalOwed = tracking ? withCor.reduce((t, c) => t + owedOf(c.id), 0) : 0
+  const settleCount = withCor.filter(c => settleOf(c.id) > 0).length
+  const trackRows = trackShow === 'owing' ? withCor.filter(c => outstandingOf(c.id).length > 0)
+    : trackShow === 'ok' ? withCor.filter(c => tracking && outstandingOf(c.id).length === 0)
+    : trackShow === 'settle' ? withCor.filter(c => settleOf(c.id) > 0)
+    : withCor
 
   const toggleRow = (id: string) => setOpenRows(prev => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n })
 
@@ -298,7 +312,6 @@ export default function ServiceInvoiceTab({ branch: branchProp, canWrite }: { br
       {label}
     </button>
   )
-  const iconBtn = 'inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold border disabled:opacity-40 disabled:cursor-not-allowed'
 
   /** A COR holder's tracking row (plain render function, so rows never remount). */
   const trackRow = (c: Consultant) => {
@@ -315,69 +328,73 @@ export default function ServiceInvoiceTab({ branch: branchProp, canWrite }: { br
     const carriedOut = adjs.filter(a => a.status === 'OPEN' && a.targetCutoff && outstanding.includes(a.targetCutoff)).reduce((s, a) => s + a.amount, 0)
     return (
       <Fragment key={c.id}>
-        <tr className="border-t align-top hover:bg-[var(--off-white)]" style={{ borderColor: 'var(--light-gray)' }}>
-          <td className="px-4 py-3">
+        <tr className="align-top group" style={{ borderTop: '1px solid var(--hr-line)' }}>
+          <td className="px-4 py-3 group-hover:bg-[var(--off-white)]"
+            style={{ boxShadow: `inset 3px 0 0 ${pending.length ? '#dc2626' : !tracking ? 'var(--light-gray)' : outstanding.length ? '#d97706' : '#059669'}` }}>
             <button onClick={() => toggleRow(c.id)} className="flex items-center gap-1.5 text-left" title={open ? 'Hide invoices' : 'Show every invoice received'}>
-              <ChevronDown size={14} className="shrink-0" style={{ color: 'var(--mid-gray)', transform: open ? 'none' : 'rotate(-90deg)', transition: 'transform .15s' }} />
-              <span className="font-semibold text-sm" style={{ color: 'var(--charcoal)' }}>{c.name}</span>
+              <ChevronDown size={14} className="shrink-0" style={{ color: 'var(--hr-faint)', transform: open ? 'none' : 'rotate(-90deg)', transition: 'transform .15s' }} />
+              <span className="text-[13px] font-semibold leading-tight" style={{ color: 'var(--charcoal)' }}>{c.name}</span>
             </button>
-            <span className="block text-xs pl-5" style={{ color: 'var(--mid-gray)' }}>
-              {c.department} · {branchCode(c.branch)} ·{' '}
-              <a href={c.corUrl || '#'} target="_blank" rel="noopener noreferrer" className="underline" style={{ color: 'var(--teal)' }}>COR</a>
+            <span className="flex items-center gap-1.5 text-[11px] pl-5 mt-0.5" style={{ color: 'var(--mid-gray)' }}>
+              {c.department} · {branchCode(c.branch)}
+              <a href={c.corUrl || '#'} target="_blank" rel="noopener noreferrer" title="View their BIR 2303 (COR)"
+                className="px-1.5 py-px rounded-full text-[10px] font-bold hover:underline" style={{ background: 'var(--pale-teal)', color: 'var(--deep-teal)' }}>COR</a>
             </span>
           </td>
-          <td className="px-4 py-3 text-xs">
+          <td className="px-4 py-3 text-xs group-hover:bg-[var(--off-white)]">
             {last ? (
               <>
-                <span className="block font-medium" style={{ color: 'var(--charcoal)' }}>{describeCutoffs(last.cutoffs)}</span>
-                <span className="block" style={{ color: 'var(--mid-gray)' }}>
+                <span className="block font-semibold" style={{ color: 'var(--charcoal)' }}>{describeCutoffs(last.cutoffs)}</span>
+                <span className="block text-[11px] mt-0.5" style={{ color: 'var(--mid-gray)' }}>
                   received {shortDate(last.uploadedAt)}
-                  {last.siUrl && <> · <a href={last.siUrl} target="_blank" rel="noopener noreferrer" className="underline" style={{ color: 'var(--teal)' }}>view</a></>}
+                  {last.siUrl && <> · <a href={last.siUrl} target="_blank" rel="noopener noreferrer" className="font-semibold hover:underline" style={{ color: 'var(--teal)' }}>View copy</a></>}
                 </span>
               </>
-            ) : <span style={{ color: 'var(--mid-gray)' }}>None recorded</span>}
+            ) : <span style={{ color: 'var(--hr-faint)' }}>None recorded</span>}
             {pending.length > 0 && (
-              <button onClick={() => toggleRow(c.id)} className="mt-1 inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold"
+              <button onClick={() => toggleRow(c.id)} className="mt-1.5 inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold"
                 style={{ background: '#fee2e2', color: '#991b1b' }} title="An invoice amount differs from payroll — open to see where it goes">
                 <Flag size={11} /> {pending.length} amount{pending.length === 1 ? '' : 's'} to settle
               </button>
             )}
           </td>
-          <td className="px-4 py-3 text-xs">
-            {!tracking ? <span style={{ color: 'var(--mid-gray)' }}>—</span>
+          <td className="px-4 py-3 text-xs group-hover:bg-[var(--off-white)]">
+            {!tracking ? <span style={{ color: 'var(--hr-faint)' }}>—</span>
               : outstanding.length ? (
                 <>
-                  <span className="block font-semibold" style={{ color: '#b45309' }}>₱{peso(owed)}</span>
-                  <span className="block" style={{ color: 'var(--mid-gray)' }} title={outstanding.length > 2 ? describeCutoffs(outstanding) : undefined}>
+                  <span className="block text-[13px] font-bold tabular-nums" style={{ color: '#b45309' }}>₱{peso(owed)}</span>
+                  <span className="block text-[11px] mt-0.5" style={{ color: 'var(--mid-gray)' }} title={outstanding.length > 2 ? describeCutoffs(outstanding) : undefined}>
                     {outstanding.length > 2 ? `${outstanding.length} cutoffs` : describeCutoffs(outstanding)}
                   </span>
                   {Math.abs(carriedOut) >= 0.005 && (
-                    <span className="block" style={{ color: '#1e3a8a' }} title="Carried from an earlier invoice that didn't match payroll">
+                    <span className="block text-[11px]" style={{ color: '#1e3a8a' }} title="Carried from an earlier invoice that didn't match payroll">
                       {carriedOut > 0 ? 'less' : 'plus'} ₱{peso(Math.abs(carriedOut))} carried
                     </span>
                   )}
                 </>
               ) : (
-                <span className="inline-flex items-center gap-1 font-semibold" style={{ color: '#15803d' }}><CheckCircle2 size={13} /> Up to date</span>
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold" style={{ background: '#dcfce7', color: '#166534' }}>
+                  <CheckCircle2 size={12} /> Up to date
+                </span>
               )}
-            {sentNote[c.id] && <span className="block mt-1" style={{ color: '#15803d' }}>{sentNote[c.id]}</span>}
+            {sentNote[c.id] && <span className="block mt-1 text-[11px]" style={{ color: '#15803d' }}>{sentNote[c.id]}</span>}
           </td>
-          <td className="px-4 py-3 text-right whitespace-nowrap">
+          <td className="px-4 py-3 text-right whitespace-nowrap group-hover:bg-[var(--off-white)]">
             {canWrite && (
               <div className="inline-flex items-center gap-1.5">
                 <button onClick={() => setDialog({ c, mode: 'EMAIL' })} disabled={!c.email || !tracking}
-                  title={c.email ? `Email a reminder to ${c.email}` : 'No email on file'} className={iconBtn}
-                  style={{ borderColor: 'var(--light-gray)', color: 'var(--deep-teal)' }}>
+                  title={c.email ? `Email a reminder to ${c.email}` : 'No email on file'} className={hrBtn.ghost}
+                  style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}>
                   <Mail size={13} /> Email
                 </button>
                 <button onClick={() => setDialog({ c, mode: 'SMS' })} disabled={!c.phone || !tracking}
-                  title={c.phone ? `Text a reminder to ${c.phone}` : 'No phone on file'} className={iconBtn}
-                  style={{ borderColor: 'var(--light-gray)', color: 'var(--deep-teal)' }}>
+                  title={c.phone ? `Text a reminder to ${c.phone}` : 'No phone on file'} className={hrBtn.ghost}
+                  style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}>
                   <MessageSquare size={13} /> SMS
                 </button>
                 <button onClick={() => setDialog({ c, mode: 'upload' })} disabled={!tracking}
-                  className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold text-white disabled:opacity-40"
-                  style={{ background: 'var(--deep-teal)' }}>
+                  className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg text-xs font-semibold text-white transition-colors hover:bg-[var(--deep-teal)] disabled:opacity-50"
+                  style={{ background: 'var(--teal)' }}>
                   <Upload size={13} /> Upload SI
                 </button>
               </div>
@@ -386,13 +403,14 @@ export default function ServiceInvoiceTab({ branch: branchProp, canWrite }: { br
         </tr>
         {open && (
           <tr style={{ background: 'var(--off-white)' }}>
-            <td colSpan={4} className="px-10 py-3">
+            <td colSpan={4} className="pl-10 pr-4 py-3">
               {invoices.length === 0 ? (
                 <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>No service invoice recorded yet.</p>
               ) : (
-                <table className="text-xs">
+                <div className="rounded-lg border bg-white px-3 py-2 overflow-x-auto" style={{ borderColor: 'var(--light-gray)' }}>
+                <table className="text-xs w-full">
                   <thead>
-                    <tr className="text-[10px] uppercase tracking-wide" style={{ color: 'var(--mid-gray)' }}>
+                    <tr className="text-[10px] font-bold uppercase tracking-[.4px]" style={{ color: 'var(--mid-gray)' }}>
                       <th className="pr-6 pb-1 text-left font-semibold">Covers</th>
                       <th className="pr-6 pb-1 text-left font-semibold">SI No.</th>
                       <th className="pr-6 pb-1 text-right font-semibold">Invoice</th>
@@ -408,7 +426,7 @@ export default function ServiceInvoiceTab({ branch: branchProp, canWrite }: { br
                       const expected = inv.expectedAmount
                       const diff = inv.invoiceAmount !== null && expected !== null ? Math.round((inv.invoiceAmount - expected) * 100) / 100 : null
                       return (
-                      <tr key={`${inv.siUrl}|${inv.siNumber}|${inv.uploadedAt}`}>
+                      <tr key={`${inv.siUrl}|${inv.siNumber}|${inv.uploadedAt}`} style={{ borderTop: '1px solid var(--hr-line)' }}>
                         <td className="pr-6 py-1 font-medium" style={{ color: 'var(--charcoal)' }}>{describeCutoffs(inv.cutoffs)}</td>
                         <td className="pr-6 py-1 font-mono" style={{ color: 'var(--charcoal)' }}>{inv.siNumber || <span style={{ color: 'var(--mid-gray)' }}>—</span>}</td>
                         <td className="pr-6 py-1 font-mono text-right" style={{ color: 'var(--charcoal)' }}>
@@ -433,7 +451,7 @@ export default function ServiceInvoiceTab({ branch: branchProp, canWrite }: { br
                                 : adj.status === 'APPLIED' ? ' · settled' : adj.status === 'WAIVED' ? ' · dropped' : ' · flagged')}
                             </span>
                           ) : (
-                            <span className="inline-flex items-center gap-1 font-semibold" style={{ color: '#15803d' }}><CheckCircle2 size={12} /> matches</span>
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full font-semibold" style={{ background: '#dcfce7', color: '#166534' }}><CheckCircle2 size={12} /> Matches</span>
                           )}
                         </td>
                         <td className="pr-6 py-1" style={{ color: 'var(--mid-gray)' }}>received {shortDate(inv.uploadedAt)}</td>
@@ -462,6 +480,7 @@ export default function ServiceInvoiceTab({ branch: branchProp, canWrite }: { br
                     })}
                   </tbody>
                 </table>
+                </div>
               )}
               {pending.length > 0 && (
                 <div className="mt-3 space-y-1.5">
@@ -512,27 +531,31 @@ export default function ServiceInvoiceTab({ branch: branchProp, canWrite }: { br
 
   /** A consultant without a COR: only the COR / No-2303 actions apply. */
   const noCorRow = (c: Consultant) => (
-    <tr key={c.id} className="border-t" style={{ borderColor: 'var(--light-gray)', opacity: c.no2303At ? 0.7 : 1 }}>
-      <td className="px-4 py-2.5">
-        <span className="block font-semibold text-sm" style={{ color: 'var(--charcoal)' }}>{c.name}</span>
-        <span className="block text-xs" style={{ color: 'var(--mid-gray)' }}>{c.department} · {branchCode(c.branch)}</span>
+    <tr key={c.id} style={{ borderTop: '1px solid var(--hr-line)', opacity: c.no2303At ? 0.75 : 1 }}>
+      <td className="px-4 py-2.5" style={{ boxShadow: `inset 3px 0 0 ${c.no2303At ? 'var(--light-gray)' : '#94a3b8'}` }}>
+        <span className="block text-[13px] font-semibold leading-tight" style={{ color: 'var(--charcoal)' }}>{c.name}</span>
+        <span className="block text-[11px] mt-0.5" style={{ color: 'var(--mid-gray)' }}>{c.department} · {branchCode(c.branch)}</span>
       </td>
-      <td className="px-4 py-2.5 text-xs" style={{ color: 'var(--mid-gray)' }}>
+      <td className="px-4 py-2.5 text-xs">
         {c.no2303At
-          ? <span title={`Marked ${String(c.no2303At).slice(0, 10)}`}>No 2303 — not BIR-registered, no invoice to ask for</span>
-          : 'No COR on file'}
+          ? <span className="inline-flex items-center gap-1.5" title={`Marked ${String(c.no2303At).slice(0, 10)}`}>
+              <span className="px-2 py-0.5 rounded-full text-[11px] font-semibold" style={{ background: '#f1f5f9', color: '#64748b' }}>No 2303</span>
+              <span style={{ color: 'var(--mid-gray)' }}>not BIR-registered, no invoice to ask for</span>
+            </span>
+          : <span className="px-2 py-0.5 rounded-full text-[11px] font-semibold" style={{ background: '#fee2e2', color: '#991b1b' }}>No COR on file</span>}
       </td>
       <td className="px-4 py-2.5 text-right whitespace-nowrap">
         {canWrite && (
           <div className="inline-flex items-center gap-1.5">
             {c.no2303At ? (
-              <button onClick={() => setNo2303(c, false)} className={iconBtn} style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}
+              <button onClick={() => setNo2303(c, false)} className={hrBtn.ghost} style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}
                 title="Ask for a Service Invoice again">Undo No 2303</button>
             ) : (
-              <button onClick={() => setNo2303(c, true)} className={iconBtn} style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}
+              <button onClick={() => setNo2303(c, true)} className={hrBtn.ghost} style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}
                 title="They have no BIR 2303 (not registered) — stop asking for a Service Invoice. Undoable.">No 2303</button>
             )}
-            <button onClick={() => setCorTarget(c)} className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold text-white" style={{ background: 'var(--teal)' }}>
+            <button onClick={() => setCorTarget(c)}
+              className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg text-xs font-semibold text-white transition-colors hover:bg-[var(--deep-teal)]" style={{ background: 'var(--teal)' }}>
               <Upload size={13} /> Upload COR
             </button>
           </div>
@@ -817,15 +840,23 @@ export default function ServiceInvoiceTab({ branch: branchProp, canWrite }: { br
           </div>
         </>
       ) : (
+        // Tracking & Reminders in the same HR Hub look as Compliance by Person
+        // (Hannah 11/16: "Make the Tracking & Reminders view look like this too").
         <>
-          <div className="flex items-center gap-3 flex-wrap">
-            <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search consultant…"
-              className="px-3 py-2 rounded-xl border text-sm flex-1 min-w-[200px] max-w-md bg-white" style={{ borderColor: 'var(--light-gray)' }} />
-            <label className="inline-flex items-center gap-2 text-sm cursor-pointer select-none" style={{ color: 'var(--charcoal)' }}>
-              <input type="checkbox" checked={showNoCor} onChange={e => setShowNoCor(e.target.checked)} className="w-4 h-4" style={{ accentColor: 'var(--teal)' }} />
-              Show consultants without COR
-              {withoutCor.length + no2303.length > 0 && <span style={{ color: 'var(--mid-gray)' }}>({withoutCor.length + no2303.length})</span>}
-            </label>
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+            <StatCard label="With COR" value={String(withCor.length)} sub="Asked for a service invoice"
+              tone={withCor.length ? 'blue' : 'zero'} loading={loading}
+              onClick={() => setTrackShow('all')} title="Show everyone with a COR" />
+            <StatCard label="Not yet invoiced" value={tracking ? String(owing) : '—'}
+              sub={tracking ? (owing ? `₱${peso(totalOwed)} of finalized payroll` : 'Nothing outstanding') : 'Loading payroll…'}
+              tone={owing ? 'amber' : 'zero'} active={trackShow === 'owing'} loading={loading}
+              onClick={() => setTrackShow(v => (v === 'owing' ? 'all' : 'owing'))} title="Show only consultants with cutoffs not yet invoiced" />
+            <StatCard label="Up to date" value={tracking ? String(withCor.length - owing) : '—'} sub="Every finalized cutoff invoiced"
+              tone={tracking && withCor.length - owing ? 'green' : 'zero'} active={trackShow === 'ok'} loading={loading}
+              onClick={() => setTrackShow(v => (v === 'ok' ? 'all' : 'ok'))} title="Show only consultants who are up to date" />
+            <StatCard label="Amounts to settle" value={String(settleCount)} sub="Invoice differs from payroll"
+              tone={settleCount ? 'red' : 'zero'} active={trackShow === 'settle'} loading={loading}
+              onClick={() => setTrackShow(v => (v === 'settle' ? 'all' : 'settle'))} title="Show only consultants with an invoice amount to settle" />
           </div>
           {trackError && (
             <p className="text-xs" style={{ color: '#b91c1c' }}>
@@ -833,55 +864,76 @@ export default function ServiceInvoiceTab({ branch: branchProp, canWrite }: { br
             </p>
           )}
 
-          {loading ? (
-            <div className="py-12 text-center"><Loader2 size={18} className="animate-spin mx-auto" style={{ color: 'var(--teal)' }} /></div>
-          ) : (
-            <>
-              <div className="rounded-2xl border bg-white overflow-x-auto" style={{ borderColor: 'var(--light-gray)' }}>
-                <div className="px-4 py-3 flex items-baseline justify-between gap-3 flex-wrap border-b" style={{ borderColor: 'var(--light-gray)' }}>
-                  <p className="text-sm font-bold" style={{ color: 'var(--deep-teal)' }}>
-                    COR on file ({withCor.length})
-                    {tracking && withCor.length > 0 && <span className="ml-2 font-normal text-xs" style={{ color: owing ? '#b45309' : '#15803d' }}>{owing ? `${owing} with cutoffs not yet invoiced` : 'all up to date'}</span>}
-                  </p>
-                  <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>Figures from finalized payroll · “not yet invoiced” looks back 12 months</p>
-                </div>
+          <div className="rounded-lg border bg-white overflow-hidden" style={{ borderColor: 'var(--light-gray)' }}>
+            {/* Toolbar */}
+            <div className="flex items-center gap-2 flex-wrap px-3 py-2.5 border-b" style={{ background: 'var(--hr-head)', borderColor: 'var(--hr-line)' }}>
+              <div className="relative flex-1 min-w-[200px]">
+                <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2" style={{ color: 'var(--hr-faint)' }} />
+                <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search consultant or department…"
+                  className="w-full h-8 pl-8 pr-3 rounded-lg border text-xs bg-white outline-none focus:border-[var(--teal)]" style={{ borderColor: 'var(--light-gray)' }} />
+              </div>
+              <div className="flex rounded-lg border overflow-hidden" style={{ borderColor: 'var(--light-gray)' }}>
+                {([['all', 'All'], ['owing', 'Not yet invoiced'], ['ok', 'Up to date'], ...(settleCount ? [['settle', 'To settle']] : [])] as [typeof trackShow, string][]).map(([v, label]) => (
+                  <button key={v} onClick={() => setTrackShow(v)} className="h-8 px-3 text-xs font-semibold"
+                    style={trackShow === v ? { background: 'var(--teal)', color: '#fff' } : { background: '#fff', color: 'var(--mid-gray)' }}>
+                    {label}
+                  </button>
+                ))}
+              </div>
+              <button onClick={() => setShowNoCor(v => !v)} aria-pressed={showNoCor}
+                className="h-8 px-3 rounded-lg border text-xs font-semibold inline-flex items-center gap-1.5"
+                style={showNoCor ? { background: 'var(--pale-teal)', borderColor: 'var(--teal)', color: 'var(--deep-teal)' } : { background: '#fff', borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}
+                title="Also list consultants with no COR on file">
+                Without COR{withoutCor.length + no2303.length > 0 && <span className="tabular-nums">({withoutCor.length + no2303.length})</span>}
+              </button>
+              <span className="text-[11px] ml-auto" style={{ color: 'var(--hr-faint)' }}>Finalized payroll · looks back 12 months</span>
+            </div>
+
+            {loading ? (
+              <div className="py-12 text-center"><Loader2 size={18} className="animate-spin mx-auto" style={{ color: 'var(--teal)' }} /></div>
+            ) : (
+              <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
-                    <tr className="text-xs" style={{ color: 'var(--mid-gray)' }}>
-                      <th className="px-4 py-2 text-left font-semibold">Consultant</th>
-                      <th className="px-4 py-2 text-left font-semibold">Last invoice</th>
-                      <th className="px-4 py-2 text-left font-semibold">Not yet invoiced</th>
-                      <th className="px-4 py-2" />
+                    <tr style={{ background: 'var(--hr-head)' }}>
+                      {['Consultant', 'Last invoice', 'Not yet invoiced', ''].map((h, i) => (
+                        <th key={i} className={`px-4 py-2 text-[11px] font-bold uppercase tracking-[.4px] ${i === 3 ? 'text-right' : 'text-left'}`}
+                          style={{ color: 'var(--mid-gray)', borderBottom: '1px solid var(--hr-line)' }}>{h}</th>
+                      ))}
                     </tr>
                   </thead>
                   <tbody>
-                    {withCor.map(trackRow)}
-                    {withCor.length === 0 && (
-                      <tr><td colSpan={4} className="px-4 py-8 text-center text-xs" style={{ color: 'var(--mid-gray)' }}>
-                        {q.trim() ? 'No consultant with a COR matches.' : 'No consultant has a COR on file yet. CORs uploaded in the HR Hub show here automatically.'}
+                    {trackRows.map(trackRow)}
+                    {trackRows.length === 0 && (
+                      <tr><td colSpan={4} className="px-4 py-10 text-center text-xs" style={{ color: 'var(--mid-gray)' }}>
+                        {withCor.length === 0
+                          ? (q.trim() ? 'No consultant with a COR matches.' : 'No consultant has a COR on file yet. CORs uploaded in the HR Hub show here automatically.')
+                          : 'No consultant matches this view.'}
                       </td></tr>
                     )}
                   </tbody>
                 </table>
               </div>
+            )}
+          </div>
 
-              {showNoCor && (
-                <div className="rounded-2xl border bg-white overflow-x-auto" style={{ borderColor: 'var(--light-gray)' }}>
-                  <div className="px-4 py-3 border-b" style={{ borderColor: 'var(--light-gray)' }}>
-                    <p className="text-sm font-bold" style={{ color: 'var(--mid-gray)' }}>Without COR ({withoutCor.length + no2303.length})</p>
-                    <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>Upload their COR once they register; they then move to the list above.</p>
-                  </div>
-                  <table className="w-full text-sm">
-                    <tbody>
-                      {[...withoutCor, ...no2303].map(noCorRow)}
-                      {withoutCor.length + no2303.length === 0 && (
-                        <tr><td className="px-4 py-6 text-center text-xs" style={{ color: 'var(--mid-gray)' }}>Every consultant has a COR on file.</td></tr>
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </>
+          {showNoCor && !loading && (
+            <div className="rounded-lg border bg-white overflow-hidden" style={{ borderColor: 'var(--light-gray)' }}>
+              <div className="px-4 py-2.5 border-b flex items-baseline justify-between gap-3 flex-wrap" style={{ background: 'var(--hr-head)', borderColor: 'var(--hr-line)' }}>
+                <p className="text-[11px] font-bold uppercase tracking-[.4px]" style={{ color: 'var(--mid-gray)' }}>Without COR ({withoutCor.length + no2303.length})</p>
+                <p className="text-[11px]" style={{ color: 'var(--hr-faint)' }}>Upload their COR once they register; they then move to the list above.</p>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <tbody>
+                    {[...withoutCor, ...no2303].map(noCorRow)}
+                    {withoutCor.length + no2303.length === 0 && (
+                      <tr><td className="px-4 py-6 text-center text-xs" style={{ color: 'var(--mid-gray)' }}>Every consultant has a COR on file.</td></tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
           )}
         </>
       )}
