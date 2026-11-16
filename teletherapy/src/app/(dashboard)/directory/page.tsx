@@ -3,11 +3,19 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useSession } from 'next-auth/react'
 import {
-  DashCard, EmptyState, PageHeader, PillTabs, Skeleton, Tag,
-  BTN_DANGER_GHOST, BTN_PRIMARY, BTN_SECONDARY, BTN_SM, CARD_STYLE, CONTROL, CONTROL_STYLE, DANGER, FOCUS,
-  LABEL, LABEL_STYLE, PAGE, PRIMARY_STYLE, SECONDARY_STYLE, SUBTLE_BG, TEXTAREA, TH, TH_STYLE,
+  Tag,
+  BTN_PRIMARY, BTN_SECONDARY, CONTROL, CONTROL_STYLE, DANGER, FOCUS,
+  LABEL, LABEL_STYLE, PAGE, PRIMARY_STYLE, SECONDARY_STYLE, TEXTAREA,
 } from '@/components/hub/ui'
-import { Contact, Plus, Trash2, Loader2, X, Mail, Lock, Pencil, Globe, Building2, Save, ExternalLink, Search, ChevronUp, ChevronDown, ChevronsUpDown, MessageCircle, Phone } from 'lucide-react'
+import { Contact, Plus, Trash2, Loader2, X, Mail, Lock, Pencil, Globe, Building2, Save, ExternalLink, Search, ChevronUp, ChevronDown, ChevronsUpDown, MessageCircle, Phone, Copy, Check } from 'lucide-react'
+
+/* Accounting Hub list look (see accounting-hub official-documents). */
+const C = {
+  line: '#DDE6CC', rowLine: '#E9EFDC', head: '#f8faf6', bar: '#fcfdfa',
+  text: '#233038', muted: '#55616A', faint: '#8A9AA0', teal: '#4A8073', deep: '#3C6A5F', pale: '#EDF3D9',
+}
+const TH = 'text-left px-3 py-2.5 text-[11px] font-bold uppercase tracking-[.4px] whitespace-nowrap'
+const ICON_BTN = 'w-7 h-7 inline-flex items-center justify-center rounded-lg transition-colors'
 
 type SortState = { col: string; dir: 'asc' | 'desc' }
 
@@ -16,8 +24,8 @@ function SortableTh({ label, col, sort, onToggle, className }: { label: string; 
   const active = sort.col === col
   return (
     <th scope="col" aria-sort={active ? (sort.dir === 'asc' ? 'ascending' : 'descending') : 'none'}
-      className={`${TH} !px-5 ${className ?? ''}`} style={{ ...TH_STYLE, ...(active ? { color: 'var(--deep-teal)' } : null) }}>
-      <button type="button" onClick={() => onToggle(col)} className={`inline-flex items-center gap-1 uppercase tracking-wider rounded hover:text-[var(--deep-teal)] ${FOCUS}`}>
+      className={`${TH} ${className ?? ''}`} style={active ? { color: C.deep } : undefined}>
+      <button type="button" onClick={() => onToggle(col)} className={`inline-flex items-center gap-1 uppercase tracking-[.4px] rounded hover:text-[#3C6A5F] ${FOCUS}`}>
         {label}
         {active ? (sort.dir === 'asc' ? <ChevronUp size={13} /> : <ChevronDown size={13} />) : <ChevronsUpDown size={13} className="opacity-30" />}
       </button>
@@ -76,7 +84,7 @@ const sortBranches = (bs: string[]) => [...bs].sort((a, b) => BRANCH_ORDER.index
 // Reusable "Visible To" cell content.
 function VisibleTo({ visibleBranches }: { visibleBranches?: string[] }) {
   const list = visibleBranches ?? []
-  if (list.length === 0) return <span className="text-[12px] text-[var(--mid-gray)]">Everyone</span>
+  if (list.length === 0) return <span className="text-[12px]" style={{ color: C.muted }}>Everyone</span>
   return (
     <div className="flex flex-wrap gap-1.5 items-center">
       <Lock size={12} className="text-[var(--mid-gray)] shrink-0" />
@@ -118,6 +126,11 @@ export default function DirectoryPage() {
   const [tab, setTab] = useState<Tab>('branch')
   const [toast, setToast] = useState<string | null>(null)
   function flash(m: string) { setToast(m); setTimeout(() => setToast(null), 2800) }
+  const [copied, setCopied] = useState<string | null>(null)
+  async function copyEmail(id: string, value: string) {
+    try { await navigator.clipboard.writeText(value); setCopied(id); setTimeout(() => setCopied((c) => (c === id ? null : c)), 1500) }
+    catch { flash('Could not copy') }
+  }
 
   // ── Branch Information ──────────────────────────────────────────
   const [branchInfo, setBranchInfo] = useState<BranchInfoItem[]>([])
@@ -298,94 +311,200 @@ export default function DirectoryPage() {
     return rows
   }, [websites, webQ, webSort])
 
+  const emailForm = showEmailForm && (
+    <div ref={emailFormRef} className="rounded-lg border bg-white overflow-hidden" style={{ borderColor: C.line, boxShadow: `inset 4px 0 0 ${C.teal}` }}>
+      <div className="flex items-center justify-between gap-3 px-5 py-3 border-b" style={{ borderColor: C.line, background: C.bar }}>
+        <h2 className="text-[15px] font-bold" style={{ fontFamily: 'var(--font-display)', color: C.text }}>{editEmailId ? 'Edit email' : 'Add email'}</h2>
+        <button type="button" onClick={resetEmailForm} aria-label="Close form" className={`p-1 rounded-md hover:bg-[#EDF3D9] ${FOCUS}`}><X size={16} style={{ color: C.muted }} /></button>
+      </div>
+      <div className="p-5">
+        <label className={`${LABEL} !mb-2`} style={LABEL_STYLE}>Department(s)</label>
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mb-4">
+          {DEPT_ORDER.map((d) => {
+            const on = depts.includes(d)
+            return (
+              <button key={d} type="button" onClick={() => setDepts((p) => p.includes(d) ? p.filter((x) => x !== d) : [...p, d])}
+                className="flex items-center gap-2 px-3 py-2 rounded-lg border text-left text-[13px] transition-colors"
+                style={on ? { background: 'var(--sage-tint)', borderColor: 'var(--moss)', color: 'var(--deep-teal)' } : { background: '#fff', borderColor: C.line, color: C.text }}>
+                <span className="w-4 h-4 rounded flex items-center justify-center shrink-0 text-white text-[11px] font-bold" style={{ background: on ? 'var(--moss)' : 'transparent', border: on ? 'none' : `1.5px solid ${C.line}` }}>{on ? '✓' : ''}</span>
+                {DEPT_LABELS[d] ?? d}
+              </button>
+            )
+          })}
+        </div>
+        <label className={`${LABEL} !mb-2`} style={LABEL_STYLE}>Branch(es)</label>
+        <div className="mb-4"><BranchPicker selected={branchSel} onToggle={(b) => setBranchSel((p) => p.includes(b) ? p.filter((x) => x !== b) : [...p, b])} accent="gold" /></div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
+          <div>
+            <label className={LABEL} style={LABEL_STYLE}>Email</label>
+            <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="contact@sapphireclinicseast.org" className={`${CONTROL} w-full`} style={CONTROL_STYLE} />
+          </div>
+          <div>
+            <label className={LABEL} style={LABEL_STYLE}>Description</label>
+            <input value={emailDesc} onChange={(e) => setEmailDesc(e.target.value)} placeholder="e.g. OT booking & inquiries" className={`${CONTROL} w-full`} style={CONTROL_STYLE} />
+          </div>
+        </div>
+        <label className={`${LABEL} !mb-2`} style={LABEL_STYLE}>Who can view this email?</label>
+        <div className="flex flex-col gap-2">
+          <label className="flex items-center gap-2 text-[13px] cursor-pointer" style={{ color: C.text }}><input type="radio" checked={!restrictView} onChange={() => { setRestrictView(false); setViewSel([]) }} /> Everyone</label>
+          <label className="flex items-center gap-2 text-[13px] cursor-pointer" style={{ color: C.text }}><input type="radio" checked={restrictView} onChange={() => setRestrictView(true)} /> Only staff from specific branches</label>
+          {restrictView && <div className="sm:pl-6"><BranchPicker selected={viewSel} onToggle={(b) => setViewSel((p) => p.includes(b) ? p.filter((x) => x !== b) : [...p, b])} /></div>}
+        </div>
+      </div>
+      <div className="flex flex-wrap gap-2 px-5 py-3 border-t" style={{ borderColor: C.line, background: C.bar }}>
+        <button type="button" onClick={saveEmail} disabled={savingEmail} className={BTN_PRIMARY} style={PRIMARY_STYLE}>
+          {savingEmail ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />} {editEmailId ? 'Save changes' : 'Add email'}
+        </button>
+        <button type="button" onClick={resetEmailForm} className={BTN_SECONDARY} style={SECONDARY_STYLE}>Cancel</button>
+      </div>
+    </div>
+  )
+
+  const webForm = showWebForm && (
+    <div ref={webFormRef} className="rounded-lg border bg-white overflow-hidden" style={{ borderColor: C.line, boxShadow: `inset 4px 0 0 ${C.teal}` }}>
+      <div className="flex items-center justify-between gap-3 px-5 py-3 border-b" style={{ borderColor: C.line, background: C.bar }}>
+        <h2 className="text-[15px] font-bold" style={{ fontFamily: 'var(--font-display)', color: C.text }}>{editWebId ? 'Edit website' : 'Add website'}</h2>
+        <button type="button" onClick={resetWebForm} aria-label="Close form" className={`p-1 rounded-md hover:bg-[#EDF3D9] ${FOCUS}`}><X size={16} style={{ color: C.muted }} /></button>
+      </div>
+      <div className="p-5">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
+          <div>
+            <label className={LABEL} style={LABEL_STYLE}>Link</label>
+            <input value={wLink} onChange={(e) => setWLink(e.target.value)} placeholder="https://example.com" className={`${CONTROL} w-full`} style={CONTROL_STYLE} />
+          </div>
+          <div>
+            <label className={LABEL} style={LABEL_STYLE}>Description</label>
+            <input value={wDesc} onChange={(e) => setWDesc(e.target.value)} placeholder="e.g. PhilHealth portal" className={`${CONTROL} w-full`} style={CONTROL_STYLE} />
+          </div>
+        </div>
+        <label className={`${LABEL} !mb-2`} style={LABEL_STYLE}>Who can view this link?</label>
+        <div className="flex flex-col gap-2">
+          <label className="flex items-center gap-2 text-[13px] cursor-pointer" style={{ color: C.text }}><input type="radio" checked={!wRestrict} onChange={() => { setWRestrict(false); setWViewSel([]) }} /> Everyone</label>
+          <label className="flex items-center gap-2 text-[13px] cursor-pointer" style={{ color: C.text }}><input type="radio" checked={wRestrict} onChange={() => setWRestrict(true)} /> Only staff from specific branches</label>
+          {wRestrict && <div className="sm:pl-6"><BranchPicker selected={wViewSel} onToggle={(b) => setWViewSel((p) => p.includes(b) ? p.filter((x) => x !== b) : [...p, b])} /></div>}
+        </div>
+      </div>
+      <div className="flex flex-wrap gap-2 px-5 py-3 border-t" style={{ borderColor: C.line, background: C.bar }}>
+        <button type="button" onClick={saveWeb} disabled={savingWeb} className={BTN_PRIMARY} style={PRIMARY_STYLE}>
+          {savingWeb ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />} {editWebId ? 'Save changes' : 'Add website'}
+        </button>
+        <button type="button" onClick={resetWebForm} className={BTN_SECONDARY} style={SECONDARY_STYLE}>Cancel</button>
+      </div>
+    </div>
+  )
+
+  /* Toolbar row inside a table card: search on the left, count, Add on the right. */
+  const toolbar = (q: string, setQ: (v: string) => void, placeholder: string, shown: number, total: number, onAdd: (() => void) | null, addLabel: string) => (
+    <div className="flex flex-wrap items-center gap-2 px-4 py-2.5 border-b" style={{ background: C.bar, borderColor: C.line }}>
+      <div className="relative flex-1 min-w-[200px] max-w-md">
+        <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: C.faint }} aria-hidden />
+        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder={placeholder} aria-label={placeholder}
+          className="w-full h-8 pl-8 pr-3 rounded-lg border text-xs bg-white focus:outline-none focus:border-[#4A8073]" style={{ borderColor: C.line, color: C.text }} />
+      </div>
+      <span className="text-xs" style={{ color: C.muted }}>{q.trim() ? `${shown} of ${total} shown` : `${total} total`}</span>
+      {onAdd && (
+        <button type="button" onClick={onAdd} className={`ml-auto inline-flex items-center gap-1.5 h-8 px-3 rounded-lg text-xs font-semibold text-white transition-opacity hover:opacity-90 ${FOCUS}`} style={{ background: C.teal }}>
+          <Plus size={14} aria-hidden /> {addLabel}
+        </button>
+      )}
+    </div>
+  )
+
   return (
-    <div className={`${PAGE} !max-w-[1040px]`}>
+    <div className={`${PAGE} !max-w-[1100px]`}>
       {toast && <div className="toast" role="status">{toast}</div>}
 
-      <PageHeader
-        eyebrow="Resources"
-        title="Directory"
-        description="Branch information, emails and websites across the clinic."
-      />
+      {/* Header — Accounting Hub style */}
+      <div className="min-w-0">
+        <h1 className="text-2xl font-bold leading-tight flex items-center gap-2" style={{ fontFamily: 'var(--font-display)', color: C.text }}>
+          <Contact size={22} style={{ color: C.teal }} aria-hidden /> Directory
+        </h1>
+        <p className="mt-1 text-[13px] max-w-3xl" style={{ color: C.muted }}>Branch information, emails, websites and the online HR forms.</p>
+      </div>
 
-      {/* Online Forms — scannable QR cards (HR fillable forms) */}
-      <DashCard
-        title="Online forms — scan or click"
-        icon={<Contact size={16} />}
-        description="These forms have fillable online versions. Scan the QR with your phone, or tap a card to open it."
-      >
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+      {/* Online forms — compact QR cards */}
+      <div className="rounded-lg border bg-white overflow-hidden" style={{ borderColor: C.line }}>
+        <div className="px-4 py-2.5 border-b flex flex-wrap items-baseline gap-x-3 gap-y-0.5" style={{ background: C.bar, borderColor: C.line }}>
+          <h2 className="text-[13px] font-bold" style={{ fontFamily: 'var(--font-display)', color: C.text }}>Online forms</h2>
+          <p className="text-xs" style={{ color: C.muted }}>Scan the QR with your phone, or click to open.</p>
+        </div>
+        <div className="p-3 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2.5">
           {FORM_QRS.map((f) => (
             <a key={f.id} href={`${HR_BASE}${f.path}`} target="_blank" rel="noopener noreferrer"
-              className={`rounded-xl p-3 flex flex-col items-center text-center transition-[border-color,box-shadow] hover:border-[var(--teal)] hover:shadow-[0_6px_18px_-10px_rgba(36,73,82,0.35)] ${FOCUS}`}
-              style={{ background: '#fff', border: '1px solid var(--light-gray)' }}>
+              className={`rounded-lg border p-2.5 flex flex-col items-center text-center transition-colors hover:border-[#4A8073] hover:bg-[#fafcf6] ${FOCUS}`}
+              style={{ borderColor: C.line, background: '#fff' }}>
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={`/forms-qr/${f.id}.svg`} alt={`${f.code} ${f.name} QR code`} width={120} height={120} className="w-full max-w-[112px]" style={{ aspectRatio: '1 / 1' }} />
-              <span className="mt-2"><Tag tone="warn">{f.code}</Tag></span>
-              <span className="mt-1 text-[12.5px] font-semibold leading-tight" style={{ color: 'var(--charcoal)', fontFamily: 'var(--font-display)' }}>{f.name}</span>
-              <span className="mt-1 inline-flex items-center gap-1 text-[10.5px]" style={{ color: 'var(--teal)' }}><ExternalLink size={10} /> Open form</span>
+              <img src={`/forms-qr/${f.id}.svg`} alt={`${f.code} ${f.name} QR code`} width={96} height={96} className="w-full max-w-[96px]" style={{ aspectRatio: '1 / 1' }} />
+              <span className="mt-1.5 font-mono text-[10.5px] font-bold" style={{ color: '#B7791F' }}>{f.code}</span>
+              <span className="text-[12px] font-semibold leading-tight" style={{ color: C.text }}>{f.name}</span>
             </a>
           ))}
         </div>
-      </DashCard>
+      </div>
 
-      {/* Subtabs */}
-      <PillTabs
-        label="Directory section"
-        value={tab}
-        onChange={(id) => setTab(id as Tab)}
-        tabs={tabs.map((t) => ({
-          id: t.key,
-          label: <span className="inline-flex items-center gap-1.5"><t.icon size={13} /> {t.label}</span>,
-          count: t.key === 'emails' ? entries.length : t.key === 'websites' ? websites.length : undefined,
-        }))}
-      />
+      {/* Tabs — underline style with counts */}
+      <div className="border-b-2" style={{ borderColor: C.line }}>
+        <div className="flex items-end gap-1 -mb-[2px] max-w-full overflow-x-auto" role="tablist" aria-label="Directory section">
+          {tabs.map((t) => {
+            const on = tab === t.key
+            const n = t.key === 'emails' ? entries.length : t.key === 'websites' ? websites.length : null
+            return (
+              <button key={t.key} type="button" role="tab" aria-selected={on} onClick={() => setTab(t.key)}
+                className={`px-3.5 py-2.5 text-[13px] font-semibold border-b-2 whitespace-nowrap transition-colors hover:text-[#4A8073] flex items-center gap-1.5 ${FOCUS}`}
+                style={{ fontFamily: 'var(--font-display)', borderColor: on ? C.teal : 'transparent', color: on ? C.teal : C.muted }}>
+                <t.icon size={13} aria-hidden /> {t.label}
+                {!loading && n !== null && !!n && <span className="px-1.5 rounded-full text-[11px] font-bold" style={{ background: on ? C.pale : '#f1f5f2', color: on ? C.deep : C.muted }}>{n}</span>}
+              </button>
+            )
+          })}
+        </div>
+      </div>
 
       {loading ? (
-        <div className="space-y-3" role="status" aria-label="Loading directory">
-          {[0, 1, 2].map((i) => <Skeleton key={i} className="h-32 rounded-xl" />)}
+        <div className="rounded-lg border bg-white p-4 space-y-2" style={{ borderColor: C.line }} role="status" aria-label="Loading directory">
+          {[0, 1, 2, 3].map((i) => <div key={i} className="h-7 rounded animate-pulse" style={{ background: '#f1f4ec' }} />)}
         </div>
       ) : (
         <>
           {/* ── BRANCH INFORMATION ── */}
           {tab === 'branch' && (
-            <div className="space-y-4">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
               {BRANCH_ORDER.map((b) => (
-                <section key={b} className="rounded-xl" style={CARD_STYLE}>
-                  <header className="px-4 sm:px-5 pt-4 pb-3 flex items-center justify-between gap-3" style={{ borderBottom: '1px solid var(--light-gray)' }}>
-                    <h2 className="flex items-center gap-2 text-[14px] font-bold" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>
-                      <Building2 size={16} style={{ color: 'var(--teal)' }} />
-                      {BRANCH_LABELS[b]}
+                <section key={b} className="rounded-lg border bg-white overflow-hidden flex flex-col" style={{ borderColor: C.line, boxShadow: `inset 4px 0 0 ${C.teal}` }}>
+                  <header className="px-4 py-2.5 flex items-center justify-between gap-3 border-b" style={{ borderColor: C.line, background: C.bar }}>
+                    <h2 className="flex items-center gap-2 text-[13.5px] font-bold" style={{ fontFamily: 'var(--font-display)', color: C.text }}>
+                      <Building2 size={15} style={{ color: C.teal }} aria-hidden /> {BRANCH_LABELS[b]}
                     </h2>
                     {isAdmin && (
-                      <button type="button" onClick={() => saveBranch(b)} disabled={savingBranch === b} className={BTN_SM} style={{ ...SECONDARY_STYLE, color: 'var(--deep-teal)' }}>
-                        {savingBranch === b ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />} Save
+                      <button type="button" onClick={() => saveBranch(b)} disabled={savingBranch === b}
+                        className={`inline-flex items-center gap-1.5 h-7 px-2.5 rounded-lg border bg-white text-[11.5px] font-semibold transition-colors hover:bg-[#EDF3D9] disabled:opacity-50 ${FOCUS}`} style={{ borderColor: C.line, color: C.deep }}>
+                        {savingBranch === b ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />} Save
                       </button>
                     )}
                   </header>
-                  <div className="p-4 sm:p-5">
+                  <div className="p-4 flex-1">
                     {isAdmin ? (
                       <textarea value={branchDraft[b] ?? ''} onChange={(e) => setBranchDraft((p) => ({ ...p, [b]: e.target.value }))}
                         rows={5} placeholder={`Information for ${BRANCH_LABELS[b]} branch…`} aria-label={`${BRANCH_LABELS[b]} branch information`}
                         className={`${TEXTAREA} resize-y`} style={{ ...CONTROL_STYLE, minHeight: 90 }} />
                     ) : (
-                      <p className="text-[13.5px] whitespace-pre-wrap leading-relaxed" style={{ color: 'var(--charcoal)' }}>
-                        {(branchInfo.find((x) => x.branch === b)?.info || '').trim() || <span className="italic" style={{ color: 'var(--mid-gray)' }}>No information yet.</span>}
+                      <p className="text-[13px] whitespace-pre-wrap leading-relaxed" style={{ color: C.text }}>
+                        {(branchInfo.find((x) => x.branch === b)?.info || '').trim() || <span className="italic" style={{ color: C.muted }}>No information yet.</span>}
                       </p>
                     )}
                   </div>
                   {BRANCH_CONTACTS[b] && (
-                    <div className="px-4 sm:px-5 py-3 flex flex-wrap items-center gap-2 rounded-b-xl" style={{ borderTop: '1px solid var(--light-gray)', background: SUBTLE_BG }}>
-                      <span className="text-[11px] font-semibold uppercase tracking-wider mr-1" style={{ color: 'var(--mid-gray)', fontFamily: 'var(--font-display)' }}>Chat with this branch</span>
+                    <div className="px-4 py-2.5 flex flex-wrap items-center gap-2 border-t" style={{ borderColor: C.line, background: C.bar }}>
+                      <span className="text-[11px] font-bold uppercase tracking-[.4px] mr-1" style={{ color: C.muted }}>Chat</span>
                       <a href={BRANCH_CONTACTS[b].messenger} target="_blank" rel="noopener noreferrer"
-                        className={`${BTN_SM} text-white`} style={{ background: '#0084FF' }}>
-                        <MessageCircle size={13} /> Messenger
+                        className={`inline-flex items-center gap-1.5 h-7 px-2.5 rounded-lg text-[11.5px] font-semibold text-white ${FOCUS}`} style={{ background: '#0084FF' }}>
+                        <MessageCircle size={12} aria-hidden /> Messenger
                       </a>
                       <a href={`viber://chat?number=${encodeURIComponent(BRANCH_CONTACTS[b].viberNumber)}`}
-                        className={`${BTN_SM} text-white`} style={{ background: '#7360F2' }}>
-                        <Phone size={13} /> Viber
+                        className={`inline-flex items-center gap-1.5 h-7 px-2.5 rounded-lg text-[11.5px] font-semibold text-white ${FOCUS}`} style={{ background: '#7360F2' }}>
+                        <Phone size={12} aria-hidden /> Viber
                       </a>
-                      <span className="text-[12px] tabular-nums" style={{ color: 'var(--mid-gray)' }}>{BRANCH_CONTACTS[b].viberDisplay}</span>
+                      <span className="text-xs font-mono" style={{ color: C.muted }}>{BRANCH_CONTACTS[b].viberDisplay}</span>
                     </div>
                   )}
                 </section>
@@ -395,106 +514,58 @@ export default function DirectoryPage() {
 
           {/* ── EMAILS ── */}
           {tab === 'emails' && (
-            <div>
-              {isAdmin && (
-                <div className="mb-4">
-                  {!showEmailForm ? (
-                    <button type="button" onClick={() => { resetEmailForm(); setShowEmailForm(true) }} className={BTN_PRIMARY} style={PRIMARY_STYLE}>
-                      <Plus size={15} /> Add Email
-                    </button>
-                  ) : (
-                    <div ref={emailFormRef} className="rounded-xl p-4 sm:p-5" style={CARD_STYLE}>
-                      <div className="flex items-center justify-between mb-4">
-                        <h2 className="font-bold text-[15px]" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>{editEmailId ? 'Edit Email' : 'New Email'}</h2>
-                        <button type="button" onClick={resetEmailForm} className={`w-8 h-8 rounded-lg flex items-center justify-center hover:bg-[var(--off-white)] ${FOCUS}`} style={{ color: 'var(--mid-gray)' }} aria-label="Close form"><X size={17} /></button>
-                      </div>
-                      <label className={`${LABEL} !mb-2`} style={LABEL_STYLE}>Department(s)</label>
-                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mb-4">
-                        {DEPT_ORDER.map((d) => {
-                          const on = depts.includes(d)
-                          return (
-                            <button key={d} type="button" onClick={() => setDepts((p) => p.includes(d) ? p.filter((x) => x !== d) : [...p, d])}
-                              className="flex items-center gap-2 px-3 py-2 rounded-lg border text-left text-[13px] transition-colors"
-                              style={on ? { background: 'var(--sage-tint)', borderColor: 'var(--moss)', color: 'var(--deep-teal)' } : { background: '#fff', borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}>
-                              <span className="w-4 h-4 rounded flex items-center justify-center shrink-0 text-white text-[11px] font-bold" style={{ background: on ? 'var(--moss)' : 'transparent', border: on ? 'none' : '1.5px solid var(--light-gray)' }}>{on ? '✓' : ''}</span>
-                              {DEPT_LABELS[d] ?? d}
-                            </button>
-                          )
-                        })}
-                      </div>
-                      <label className={`${LABEL} !mb-2`} style={LABEL_STYLE}>Branch(es)</label>
-                      <div className="mb-4"><BranchPicker selected={branchSel} onToggle={(b) => setBranchSel((p) => p.includes(b) ? p.filter((x) => x !== b) : [...p, b])} accent="gold" /></div>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
-                        <div>
-                          <label className={LABEL} style={LABEL_STYLE}>Email</label>
-                          <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="contact@sapphireclinicseast.org" className={`${CONTROL} w-full`} style={CONTROL_STYLE} />
-                        </div>
-                        <div>
-                          <label className={LABEL} style={LABEL_STYLE}>Description</label>
-                          <input value={emailDesc} onChange={(e) => setEmailDesc(e.target.value)} placeholder="e.g. OT booking & inquiries" className={`${CONTROL} w-full`} style={CONTROL_STYLE} />
-                        </div>
-                      </div>
-                      <label className={`${LABEL} !mb-2`} style={LABEL_STYLE}>Who can view this email?</label>
-                      <div className="flex flex-col gap-2 mb-4">
-                        <label className="flex items-center gap-2 text-[13px] cursor-pointer text-[var(--charcoal)]"><input type="radio" checked={!restrictView} onChange={() => { setRestrictView(false); setViewSel([]) }} /> Everyone</label>
-                        <label className="flex items-center gap-2 text-[13px] cursor-pointer text-[var(--charcoal)]"><input type="radio" checked={restrictView} onChange={() => setRestrictView(true)} /> Only staff from specific branches</label>
-                        {restrictView && <div className="sm:pl-6"><BranchPicker selected={viewSel} onToggle={(b) => setViewSel((p) => p.includes(b) ? p.filter((x) => x !== b) : [...p, b])} /></div>}
-                      </div>
-                      <div className="flex gap-2">
-                        <button type="button" onClick={saveEmail} disabled={savingEmail} className={BTN_PRIMARY} style={PRIMARY_STYLE}>
-                          {savingEmail ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />} {editEmailId ? 'Save Changes' : 'Add Email'}
-                        </button>
-                        <button type="button" onClick={resetEmailForm} className={BTN_SECONDARY} style={SECONDARY_STYLE}>Cancel</button>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {entries.length > 0 && (
-                <div className="relative mb-3 sm:max-w-xs">
-                  <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: 'var(--mid-gray)' }} />
-                  <input value={emailQ} onChange={(e) => setEmailQ(e.target.value)} placeholder="Filter emails…" className={`${CONTROL} w-full pl-9`} style={CONTROL_STYLE} />
-                </div>
-              )}
-              <div className="rounded-xl overflow-hidden" style={CARD_STYLE}>
+            <div className="space-y-3">
+              {emailForm}
+              <div className="rounded-lg border bg-white overflow-hidden" style={{ borderColor: C.line }}>
+                {toolbar(emailQ, setEmailQ, 'Search department, branch, email…', visibleEmails.length, entries.length,
+                  isAdmin && !showEmailForm ? () => { resetEmailForm(); setShowEmailForm(true) } : null, 'Add email')}
                 {entries.length === 0 ? (
-                  <EmptyState icon="file" title="No emails yet." />
+                  <p className="px-6 py-12 text-[13px] text-center" style={{ color: C.muted }}>No emails yet.</p>
                 ) : (
                   <div className="overflow-x-auto">
-                    <table className="w-full min-w-[600px] text-left border-collapse">
+                    <table className="w-full min-w-[640px] text-xs">
                       <thead>
-                        <tr>
+                        <tr style={{ background: C.head, color: C.muted }}>
                           <SortableTh label="Department" col="dept" sort={emailSort} onToggle={(c) => toggleSort(setEmailSort, c)} />
                           <SortableTh label="Branch" col="branch" sort={emailSort} onToggle={(c) => toggleSort(setEmailSort, c)} />
                           <SortableTh label="Email" col="email" sort={emailSort} onToggle={(c) => toggleSort(setEmailSort, c)} />
                           <SortableTh label="Description" col="desc" sort={emailSort} onToggle={(c) => toggleSort(setEmailSort, c)} />
-                          {isAdmin && <th scope="col" className={`${TH} !px-5`} style={TH_STYLE}>Visible To</th>}
-                          {isAdmin && <th scope="col" className={`${TH} !px-5 w-24`} style={TH_STYLE}><span className="sr-only">Actions</span></th>}
+                          {isAdmin && <th scope="col" className={TH}>Visible to</th>}
+                          {isAdmin && <th scope="col" className={`${TH} w-20`}><span className="sr-only">Actions</span></th>}
                         </tr>
                       </thead>
                       <tbody>
                         {visibleEmails.length === 0 && (
-                          <tr><td colSpan={isAdmin ? 6 : 4} className="px-5 py-10 text-center text-[13px] text-[var(--mid-gray)]">No emails match “{emailQ}”.</td></tr>
+                          <tr><td colSpan={isAdmin ? 6 : 4} className="px-6 py-10 text-center text-[13px]" style={{ color: C.muted }}>No emails match “{emailQ}”.</td></tr>
                         )}
                         {visibleEmails.map((e) => (
-                          <tr key={e.id} className="align-top transition-colors hover:bg-[#F8FAF2]" style={{ borderTop: '1px solid var(--light-gray)' }}>
-                            <td className="px-5 py-3"><div className="flex flex-wrap gap-1.5">{sortDepts(e.departments).map((d) => <Tag key={d} tone="brand">{DEPT_LABELS[d] ?? d}</Tag>)}</div></td>
-                            <td className="px-5 py-3"><div className="flex flex-wrap gap-1.5">{sortBranches(e.branches ?? []).map((b) => <Tag key={b} tone="warn">{BRANCH_LABELS[b] ?? b}</Tag>)}</div></td>
-                            <td className="px-5 py-3">
+                          <tr key={e.id} className="border-t align-top transition-colors hover:bg-[#fafcf6]" style={{ borderColor: C.rowLine }}>
+                            <td className="px-3 py-2.5"><div className="flex flex-wrap gap-1">{sortDepts(e.departments).map((d) => <Tag key={d} tone="brand">{DEPT_LABELS[d] ?? d}</Tag>)}</div></td>
+                            <td className="px-3 py-2.5"><div className="flex flex-wrap gap-1">{sortBranches(e.branches ?? []).map((b) => (
+                              <span key={b} className="inline-flex px-2 py-0.5 rounded-full text-[11px] font-semibold" style={{ background: C.pale, color: C.deep }}>{BRANCH_LABELS[b] ?? b}</span>
+                            ))}</div></td>
+                            <td className="px-3 py-2.5">
                               {e.emailHidden ? (
-                                <span className="text-[13px] text-[var(--mid-gray)] inline-flex items-center gap-1.5"><Lock size={13} /> Restricted</span>
+                                <span className="inline-flex items-center gap-1.5" style={{ color: C.muted }}><Lock size={12} aria-hidden /> Restricted</span>
                               ) : (
-                                <a href={`mailto:${e.email}`} className="text-[13px] font-medium text-[var(--teal)] hover:underline inline-flex items-center gap-1.5"><Mail size={13} className="shrink-0" />{e.email}</a>
+                                <span className="inline-flex items-center gap-1">
+                                  <a href={`mailto:${e.email}`} className="font-medium hover:underline underline-offset-2 inline-flex items-center gap-1.5" style={{ color: C.teal }}><Mail size={12} className="shrink-0" aria-hidden />{e.email}</a>
+                                  {e.email && (
+                                    <button type="button" onClick={() => copyEmail(e.id, e.email as string)} className={`${ICON_BTN} hover:bg-[#EDF3D9] ${FOCUS}`}
+                                      style={{ color: copied === e.id ? C.teal : C.faint }} title={copied === e.id ? 'Copied' : 'Copy email'} aria-label={`Copy ${e.email}`}>
+                                      {copied === e.id ? <Check size={12} /> : <Copy size={12} />}
+                                    </button>
+                                  )}
+                                </span>
                               )}
                             </td>
-                            <td className="px-5 py-3 text-[13px] text-[var(--charcoal)]">{e.description || <span className="text-[var(--mid-gray)]">—</span>}</td>
-                            {isAdmin && <td className="px-5 py-3"><VisibleTo visibleBranches={e.visibleBranches} /></td>}
+                            <td className="px-3 py-2.5" style={{ color: C.text }}>{e.description || <span style={{ color: C.faint }}>—</span>}</td>
+                            {isAdmin && <td className="px-3 py-2.5"><VisibleTo visibleBranches={e.visibleBranches} /></td>}
                             {isAdmin && (
-                              <td className="px-5 py-3">
-                                <div className="flex items-center gap-1">
-                                  <button type="button" onClick={() => startEditEmail(e)} className={`w-8 h-8 rounded-md flex items-center justify-center hover:bg-[var(--pale-teal)] ${FOCUS}`} style={{ color: 'var(--teal)' }} title="Edit" aria-label={`Edit ${e.email ?? 'email'}`}><Pencil size={14} /></button>
-                                  <button type="button" onClick={() => removeEmail(e.id)} className={`${BTN_DANGER_GHOST} !w-8 !px-0`} style={{ color: DANGER }} title="Remove" aria-label={`Remove ${e.email ?? 'email'}`}><Trash2 size={14} /></button>
+                              <td className="px-3 py-2.5">
+                                <div className="flex justify-end gap-1">
+                                  <button type="button" onClick={() => startEditEmail(e)} className={`${ICON_BTN} hover:bg-[#EDF3D9] ${FOCUS}`} style={{ color: C.teal }} title="Edit" aria-label={`Edit ${e.email ?? 'email'}`}><Pencil size={13} /></button>
+                                  <button type="button" onClick={() => removeEmail(e.id)} className={`${ICON_BTN} hover:bg-red-50 ${FOCUS}`} style={{ color: DANGER }} title="Remove" aria-label={`Remove ${e.email ?? 'email'}`}><Trash2 size={13} /></button>
                                 </div>
                               </td>
                             )}
@@ -510,86 +581,44 @@ export default function DirectoryPage() {
 
           {/* ── WEBSITES ── */}
           {tab === 'websites' && (
-            <div>
-              {isAdmin && (
-                <div className="mb-4">
-                  {!showWebForm ? (
-                    <button type="button" onClick={() => { resetWebForm(); setShowWebForm(true) }} className={BTN_PRIMARY} style={PRIMARY_STYLE}>
-                      <Plus size={15} /> Add Website
-                    </button>
-                  ) : (
-                    <div ref={webFormRef} className="rounded-xl p-4 sm:p-5" style={CARD_STYLE}>
-                      <div className="flex items-center justify-between mb-4">
-                        <h2 className="font-bold text-[15px]" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>{editWebId ? 'Edit Website' : 'New Website'}</h2>
-                        <button type="button" onClick={resetWebForm} className={`w-8 h-8 rounded-lg flex items-center justify-center hover:bg-[var(--off-white)] ${FOCUS}`} style={{ color: 'var(--mid-gray)' }} aria-label="Close form"><X size={17} /></button>
-                      </div>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
-                        <div>
-                          <label className={LABEL} style={LABEL_STYLE}>Link</label>
-                          <input value={wLink} onChange={(e) => setWLink(e.target.value)} placeholder="https://example.com" className={`${CONTROL} w-full`} style={CONTROL_STYLE} />
-                        </div>
-                        <div>
-                          <label className={LABEL} style={LABEL_STYLE}>Description</label>
-                          <input value={wDesc} onChange={(e) => setWDesc(e.target.value)} placeholder="e.g. PhilHealth portal" className={`${CONTROL} w-full`} style={CONTROL_STYLE} />
-                        </div>
-                      </div>
-                      <label className={`${LABEL} !mb-2`} style={LABEL_STYLE}>Who can view this link?</label>
-                      <div className="flex flex-col gap-2 mb-4">
-                        <label className="flex items-center gap-2 text-[13px] cursor-pointer text-[var(--charcoal)]"><input type="radio" checked={!wRestrict} onChange={() => { setWRestrict(false); setWViewSel([]) }} /> Everyone</label>
-                        <label className="flex items-center gap-2 text-[13px] cursor-pointer text-[var(--charcoal)]"><input type="radio" checked={wRestrict} onChange={() => setWRestrict(true)} /> Only staff from specific branches</label>
-                        {wRestrict && <div className="sm:pl-6"><BranchPicker selected={wViewSel} onToggle={(b) => setWViewSel((p) => p.includes(b) ? p.filter((x) => x !== b) : [...p, b])} /></div>}
-                      </div>
-                      <div className="flex gap-2">
-                        <button type="button" onClick={saveWeb} disabled={savingWeb} className={BTN_PRIMARY} style={PRIMARY_STYLE}>
-                          {savingWeb ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />} {editWebId ? 'Save Changes' : 'Add Website'}
-                        </button>
-                        <button type="button" onClick={resetWebForm} className={BTN_SECONDARY} style={SECONDARY_STYLE}>Cancel</button>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {websites.length > 0 && (
-                <div className="relative mb-3 sm:max-w-xs">
-                  <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: 'var(--mid-gray)' }} />
-                  <input value={webQ} onChange={(e) => setWebQ(e.target.value)} placeholder="Filter websites…" className={`${CONTROL} w-full pl-9`} style={CONTROL_STYLE} />
-                </div>
-              )}
-              <div className="rounded-xl overflow-hidden" style={CARD_STYLE}>
+            <div className="space-y-3">
+              {webForm}
+              <div className="rounded-lg border bg-white overflow-hidden" style={{ borderColor: C.line }}>
+                {toolbar(webQ, setWebQ, 'Search link or description…', visibleWebsites.length, websites.length,
+                  isAdmin && !showWebForm ? () => { resetWebForm(); setShowWebForm(true) } : null, 'Add website')}
                 {websites.length === 0 ? (
-                  <EmptyState icon="external" title="No websites yet." />
+                  <p className="px-6 py-12 text-[13px] text-center" style={{ color: C.muted }}>No websites yet.</p>
                 ) : (
                   <div className="overflow-x-auto">
-                    <table className="w-full min-w-[600px] text-left border-collapse">
+                    <table className="w-full min-w-[600px] text-xs">
                       <thead>
-                        <tr>
+                        <tr style={{ background: C.head, color: C.muted }}>
                           <SortableTh label="Link" col="link" sort={webSort} onToggle={(c) => toggleSort(setWebSort, c)} />
                           <SortableTh label="Description" col="desc" sort={webSort} onToggle={(c) => toggleSort(setWebSort, c)} />
-                          {isAdmin && <th scope="col" className={`${TH} !px-5`} style={TH_STYLE}>Visible To</th>}
-                          {isAdmin && <th scope="col" className={`${TH} !px-5 w-24`} style={TH_STYLE}><span className="sr-only">Actions</span></th>}
+                          {isAdmin && <th scope="col" className={TH}>Visible to</th>}
+                          {isAdmin && <th scope="col" className={`${TH} w-20`}><span className="sr-only">Actions</span></th>}
                         </tr>
                       </thead>
                       <tbody>
                         {visibleWebsites.length === 0 && (
-                          <tr><td colSpan={isAdmin ? 4 : 2} className="px-5 py-10 text-center text-[13px] text-[var(--mid-gray)]">No websites match “{webQ}”.</td></tr>
+                          <tr><td colSpan={isAdmin ? 4 : 2} className="px-6 py-10 text-center text-[13px]" style={{ color: C.muted }}>No websites match “{webQ}”.</td></tr>
                         )}
                         {visibleWebsites.map((w) => (
-                          <tr key={w.id} className="align-top transition-colors hover:bg-[#F8FAF2]" style={{ borderTop: '1px solid var(--light-gray)' }}>
-                            <td className="px-5 py-3">
+                          <tr key={w.id} className="border-t align-top transition-colors hover:bg-[#fafcf6]" style={{ borderColor: C.rowLine }}>
+                            <td className="px-3 py-2.5">
                               {w.linkHidden ? (
-                                <span className="text-[13px] text-[var(--mid-gray)] inline-flex items-center gap-1.5"><Lock size={13} /> Restricted</span>
+                                <span className="inline-flex items-center gap-1.5" style={{ color: C.muted }}><Lock size={12} aria-hidden /> Restricted</span>
                               ) : (
-                                <a href={w.link ?? '#'} target="_blank" rel="noopener noreferrer" className="text-[13px] font-medium text-[var(--teal)] hover:underline inline-flex items-center gap-1.5 break-all"><ExternalLink size={13} className="shrink-0" />{w.link}</a>
+                                <a href={w.link ?? '#'} target="_blank" rel="noopener noreferrer" className="font-medium hover:underline underline-offset-2 inline-flex items-center gap-1.5 break-all" style={{ color: C.teal }}><ExternalLink size={12} className="shrink-0" aria-hidden />{w.link}</a>
                               )}
                             </td>
-                            <td className="px-5 py-3 text-[13px] text-[var(--charcoal)]">{w.description || <span className="text-[var(--mid-gray)]">—</span>}</td>
-                            {isAdmin && <td className="px-5 py-3"><VisibleTo visibleBranches={w.visibleBranches} /></td>}
+                            <td className="px-3 py-2.5" style={{ color: C.text }}>{w.description || <span style={{ color: C.faint }}>—</span>}</td>
+                            {isAdmin && <td className="px-3 py-2.5"><VisibleTo visibleBranches={w.visibleBranches} /></td>}
                             {isAdmin && (
-                              <td className="px-5 py-3">
-                                <div className="flex items-center gap-1">
-                                  <button type="button" onClick={() => startEditWeb(w)} className={`w-8 h-8 rounded-md flex items-center justify-center hover:bg-[var(--pale-teal)] ${FOCUS}`} style={{ color: 'var(--teal)' }} title="Edit" aria-label={`Edit ${w.link ?? 'website'}`}><Pencil size={14} /></button>
-                                  <button type="button" onClick={() => removeWeb(w.id)} className={`${BTN_DANGER_GHOST} !w-8 !px-0`} style={{ color: DANGER }} title="Remove" aria-label={`Remove ${w.link ?? 'website'}`}><Trash2 size={14} /></button>
+                              <td className="px-3 py-2.5">
+                                <div className="flex justify-end gap-1">
+                                  <button type="button" onClick={() => startEditWeb(w)} className={`${ICON_BTN} hover:bg-[#EDF3D9] ${FOCUS}`} style={{ color: C.teal }} title="Edit" aria-label={`Edit ${w.link ?? 'website'}`}><Pencil size={13} /></button>
+                                  <button type="button" onClick={() => removeWeb(w.id)} className={`${ICON_BTN} hover:bg-red-50 ${FOCUS}`} style={{ color: DANGER }} title="Remove" aria-label={`Remove ${w.link ?? 'website'}`}><Trash2 size={13} /></button>
                                 </div>
                               </td>
                             )}
