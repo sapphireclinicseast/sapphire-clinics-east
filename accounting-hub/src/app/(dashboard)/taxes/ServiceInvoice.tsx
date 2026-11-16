@@ -13,7 +13,8 @@
  */
 
 import { useState, useEffect, useCallback, useMemo, Fragment } from 'react'
-import { Loader2, Mail, MessageSquare, CheckCircle2, Upload, X, Eye, ChevronDown, Trash2, Flag, Pencil } from 'lucide-react'
+import { Loader2, Mail, MessageSquare, CheckCircle2, Upload, X, Eye, ChevronDown, Trash2, Flag, Pencil, Check, Search } from 'lucide-react'
+import { StatCard } from '@/components/ui/hr-look'
 import { ScanUpload } from '@/components/ScanUpload'
 import { Bir2307Generator, Bir2307Settings } from './Bir2307'
 import { SiInvoiceDialog } from './SiInvoiceDialog'
@@ -29,6 +30,13 @@ import {
 // (same ones on control numbers and PCVs) without touching the stored values.
 const BRANCH_DISPLAY: Record<string, string> = { SBEA: 'AHEA', SBGH: 'AHGH', VERDANA: 'VER', AHI: 'AHI' }
 const branchCode = (b: string) => BRANCH_DISPLAY[b] || b
+/** HR Hub start date ("YYYY-MM-DD" or "YYYY-MM") as "Jul 15, 2026" / "Jul 2026". */
+const fmtStart = (v: string) => {
+  const [y, m, d] = v.split('-').map(Number)
+  if (!y || !m) return v
+  const mon = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][m - 1]
+  return d ? `${mon} ${d}, ${y}` : `${mon} ${y}`
+}
 
 interface Consultant {
   id: string
@@ -95,6 +103,9 @@ export default function ServiceInvoiceTab({ branch: branchProp, canWrite }: { br
 
   // Compliance-matrix period (defaults: January of this year → this month).
   const [mFrom, setMFrom] = useState(`${now.getFullYear()}-01`)
+  // Compliance by Person: which consultants to show, and how to order them.
+  const [matrixShow, setMatrixShow] = useState<'all' | 'follow' | 'done'>('all')
+  const [matrixSort, setMatrixSort] = useState<'name' | 'pct'>('name')
   const [mTo, setMTo] = useState(`${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`)
 
   // Payroll per cutoff + every recorded invoice, in one call.
@@ -266,6 +277,14 @@ export default function ServiceInvoiceTab({ branch: branchProp, canWrite }: { br
     return { c, keys, done, due: due.length, start, na, pct: due.length ? Math.round((done / due.length) * 100) : 100 }
   })
   const fullyCompliant = matrixRows.filter(r => r.pct === 100).length
+  const avgCompliance = matrixRows.length ? Math.round(matrixRows.reduce((t, r) => t + r.pct, 0) / matrixRows.length) : 0
+  const thisMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+  const matrixShown = matrixShow === 'done' ? matrixRows.filter(r => r.pct === 100)
+    : matrixShow === 'follow' ? matrixRows.filter(r => r.pct < 100)
+    : matrixRows
+  const visibleMatrix = matrixSort === 'pct'
+    ? [...matrixShown].sort((a, b) => a.pct - b.pct || a.c.name.localeCompare(b.c.name))
+    : matrixShown
   /** The copy covering a month, if one was uploaded. */
   const copyFor = (cid: string, month: string) => (invoicesBy.get(cid) || []).find(inv => inv.siUrl && inv.cutoffs.some(cp => cp.startsWith(month)))?.siUrl || null
 
@@ -634,92 +653,157 @@ export default function ServiceInvoiceTab({ branch: branchProp, canWrite }: { br
           )}
         </>
       ) : view === 'matrix' ? (
+        // Compliance by Person, in the HR Hub look (Hannah 11/16: "this view looks
+        // shitty. improve it"): stat cards that filter, one white card with a
+        // toolbar, soft chips instead of solid red/green blocks.
         <>
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-xs font-semibold" style={{ color: 'var(--mid-gray)' }}>Period</span>
-            <input type="month" value={mFrom} onChange={e => setMFrom(e.target.value)} className="px-3 py-2 rounded-xl border text-xs" style={{ borderColor: 'var(--light-gray)' }} />
-            <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>to</span>
-            <input type="month" value={mTo} onChange={e => setMTo(e.target.value)} className="px-3 py-2 rounded-xl border text-xs" style={{ borderColor: 'var(--light-gray)' }} />
-            <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search consultant…"
-              className="px-3 py-2 rounded-xl border text-xs flex-1 min-w-[160px]" style={{ borderColor: 'var(--light-gray)' }} />
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+            <StatCard label="Consultants with COR" value={String(matrixRows.length)} sub="Tracked in this period"
+              tone={matrixRows.length ? 'blue' : 'zero'}
+              onClick={() => setMatrixShow('all')} title="Show everyone" />
+            <StatCard label="Fully invoiced" value={String(fullyCompliant)} sub="Every due month invoiced"
+              tone={fullyCompliant ? 'green' : 'zero'} active={matrixShow === 'done'}
+              onClick={() => setMatrixShow(s => (s === 'done' ? 'all' : 'done'))} title="Show only consultants with every due month invoiced" />
+            <StatCard label="Needs follow-up" value={String(matrixRows.length - fullyCompliant)} sub="At least one month missing"
+              tone={matrixRows.length - fullyCompliant ? 'red' : 'zero'} active={matrixShow === 'follow'}
+              onClick={() => setMatrixShow(s => (s === 'follow' ? 'all' : 'follow'))} title="Show only consultants with a month still missing" />
+            <StatCard label="Avg compliance" value={`${avgCompliance}%`} sub="Share of due months invoiced"
+              tone={!matrixRows.length ? 'zero' : avgCompliance >= 90 ? 'green' : avgCompliance >= 50 ? 'amber' : 'red'} />
           </div>
-          <div className="flex gap-3 flex-wrap">
-            {[
-              { n: matrixRows.length, label: 'Consultants with COR', color: 'var(--charcoal)' },
-              { n: fullyCompliant, label: 'Fully invoiced', color: '#16a34a' },
-              { n: matrixRows.length - fullyCompliant, label: 'Needs follow-up', color: '#dc2626' },
-              { n: `${matrixRows.length ? Math.round(matrixRows.reduce((s, r) => s + r.pct, 0) / matrixRows.length) : 0}%`, label: 'Avg compliance', color: 'var(--deep-teal)' },
-            ].map(card => (
-              <div key={card.label} className="rounded-2xl border px-5 py-3 min-w-[150px] bg-white" style={{ borderColor: 'var(--light-gray)' }}>
-                <div className="text-2xl font-bold" style={{ color: card.color }}>{card.n}</div>
-                <div className="text-xs" style={{ color: 'var(--mid-gray)' }}>{card.label}</div>
+
+          <div className="rounded-lg border bg-white overflow-hidden" style={{ borderColor: 'var(--light-gray)' }}>
+            {/* Toolbar */}
+            <div className="flex items-center gap-2 flex-wrap px-3 py-2.5 border-b" style={{ background: 'var(--hr-head)', borderColor: 'var(--hr-line)' }}>
+              <span className="text-[11px] font-bold uppercase tracking-[.4px]" style={{ color: 'var(--mid-gray)' }}>Period</span>
+              <input type="month" value={mFrom} onChange={e => setMFrom(e.target.value)} aria-label="From month"
+                className="h-8 px-2 rounded-lg border text-xs bg-white" style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }} />
+              <span className="text-xs" style={{ color: 'var(--hr-faint)' }}>to</span>
+              <input type="month" value={mTo} onChange={e => setMTo(e.target.value)} aria-label="To month"
+                className="h-8 px-2 rounded-lg border text-xs bg-white" style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }} />
+              <div className="relative flex-1 min-w-[180px]">
+                <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2" style={{ color: 'var(--hr-faint)' }} />
+                <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search consultant or department…"
+                  className="w-full h-8 pl-8 pr-3 rounded-lg border text-xs bg-white outline-none focus:border-[var(--teal)]" style={{ borderColor: 'var(--light-gray)' }} />
               </div>
-            ))}
-          </div>
-          {trackError && !tracking ? (
-            <p className="text-xs" style={{ color: '#b91c1c' }}>
-              {trackError}. <button className="underline" onClick={() => loadTracking()}>Try again</button>
-            </p>
-          ) : loading || !tracking ? (
-            <div className="py-12 text-center"><Loader2 size={18} className="animate-spin mx-auto" style={{ color: 'var(--teal)' }} /></div>
-          ) : (
-            <div className="overflow-x-auto rounded-2xl border bg-white" style={{ borderColor: 'var(--light-gray)' }}>
-              <table className="text-xs border-collapse w-full">
-                <thead>
-                  <tr style={{ background: 'var(--charcoal)' }}>
-                    <th className="px-4 py-2.5 text-left text-white sticky left-0" style={{ background: 'var(--charcoal)', minWidth: 190 }}>Name</th>
-                    <th className="px-3 py-2.5 text-left text-white">Dept</th>
-                    {matrixMonths.map(m => (
-                      <th key={m} className="px-2 py-2.5 text-center text-white whitespace-nowrap">{MON[parseInt(m.slice(5)) - 1]} ’{m.slice(2, 4)}</th>
-                    ))}
-                    <th className="px-3 py-2.5 text-right text-white">% Done</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {matrixRows.map(({ c, keys, done, due, start, na, pct }) => (
-                    <tr key={c.id} className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
-                      <td className="px-4 py-2 font-semibold sticky left-0 bg-white" style={{ color: 'var(--charcoal)' }}>
-                        {c.name}
-                        {start && <span className="block text-[10px] font-normal" style={{ color: 'var(--mid-gray)' }}>started {start}</span>}
-                      </td>
-                      <td className="px-3 py-2" style={{ color: 'var(--mid-gray)' }}>{c.department}</td>
+              <div className="flex rounded-lg border overflow-hidden" style={{ borderColor: 'var(--light-gray)' }}>
+                {([['all', 'All'], ['follow', 'Needs follow-up'], ['done', 'Fully invoiced']] as const).map(([v, label]) => (
+                  <button key={v} onClick={() => setMatrixShow(v)} className="h-8 px-3 text-xs font-semibold"
+                    style={matrixShow === v ? { background: 'var(--teal)', color: '#fff' } : { background: '#fff', color: 'var(--mid-gray)' }}>
+                    {label}
+                  </button>
+                ))}
+              </div>
+              <select value={matrixSort} onChange={e => setMatrixSort(e.target.value as 'name' | 'pct')} aria-label="Sort"
+                className="h-8 px-2 rounded-lg border text-xs font-semibold bg-white" style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}>
+                <option value="name">Name A–Z</option>
+                <option value="pct">Lowest % first</option>
+              </select>
+            </div>
+
+            {trackError && !tracking ? (
+              <p className="px-4 py-6 text-xs" style={{ color: '#b91c1c' }}>
+                {trackError}. <button className="underline" onClick={() => loadTracking()}>Try again</button>
+              </p>
+            ) : loading || !tracking ? (
+              <div className="py-12 text-center"><Loader2 size={18} className="animate-spin mx-auto" style={{ color: 'var(--teal)' }} /></div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="text-xs border-collapse w-full">
+                  <thead>
+                    <tr style={{ background: 'var(--hr-head)' }}>
+                      <th className="px-4 py-2 text-left text-[11px] font-bold uppercase tracking-[.4px] sticky left-0 z-10"
+                        style={{ background: 'var(--hr-head)', color: 'var(--mid-gray)', minWidth: 230, borderBottom: '1px solid var(--hr-line)' }}>Consultant</th>
                       {matrixMonths.map(m => {
-                        if (na.has(m)) {
-                          return (
-                            <td key={m} className="px-2 py-2 text-center text-[10px] font-semibold" style={{ background: '#f3f4f6', color: '#9ca3af' }}
-                              title={`Not with us yet — started ${start} (HR Hub)`}>N/A</td>
-                          )
-                        }
-                        const cov = monthCoverage(m, keys)
-                        const copy = cov === 'none' ? null : copyFor(c.id, m)
-                        const mark = cov === 'full' ? '✓' : cov === 'none' ? '✗' : '½'
-                        const color = cov === 'full' ? '#16a34a' : cov === 'none' ? '#dc2626' : '#b45309'
-                        const title = cov === 'full' ? 'Invoiced' : cov === 'first' ? '1st half invoiced, 2nd half not yet' : cov === 'second' ? '2nd half invoiced, 1st half not yet' : 'No service invoice received'
+                        const current = m === thisMonth
                         return (
-                          <td key={m} className="px-2 py-2 text-center" style={{ background: cov === 'full' ? '#f0fdf4' : cov === 'none' ? '#fef2f2' : '#fffbeb' }}>
-                            {copy
-                              ? <a href={copy} target="_blank" rel="noopener noreferrer" title={`${title} — view the copy`} style={{ color, fontWeight: 700 }}>{mark}</a>
-                              : <span title={title} style={{ color, fontWeight: 700 }}>{mark}</span>}
-                          </td>
+                          <th key={m} className="px-1 py-2 text-center whitespace-nowrap" style={{ borderBottom: '1px solid var(--hr-line)', minWidth: 44 }}
+                            title={current ? 'This month — its second cutoff may not be paid yet' : undefined}>
+                            <span className="block text-[11px] font-bold uppercase tracking-[.4px]" style={{ color: current ? 'var(--teal)' : 'var(--mid-gray)' }}>{MON[parseInt(m.slice(5)) - 1]}</span>
+                            <span className="block text-[10px] font-medium" style={{ color: 'var(--hr-faint)' }}>’{m.slice(2, 4)}</span>
+                          </th>
                         )
                       })}
-                      <td className="px-3 py-2 text-right font-mono" style={{ color: pct === 100 ? '#16a34a' : pct > 0 ? '#b45309' : '#dc2626' }}>
-                        {due ? <>{pct}% <span style={{ color: 'var(--mid-gray)' }}>({done}/{due})</span></> : <span style={{ color: 'var(--mid-gray)' }}>N/A</span>}
-                      </td>
+                      <th className="px-4 py-2 text-left text-[11px] font-bold uppercase tracking-[.4px]" style={{ color: 'var(--mid-gray)', minWidth: 170, borderBottom: '1px solid var(--hr-line)' }}>Done</th>
                     </tr>
-                  ))}
-                  {matrixRows.length === 0 && (
-                    <tr><td colSpan={3 + matrixMonths.length} className="px-4 py-8 text-center" style={{ color: 'var(--mid-gray)' }}>
-                      No consultant has a COR on file yet.
-                    </td></tr>
-                  )}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {visibleMatrix.map(({ c, keys, done, due, start, na, pct }) => {
+                      const tone = !due ? 'var(--light-gray)' : pct === 100 ? '#059669' : pct > 0 ? '#d97706' : '#dc2626'
+                      return (
+                        <tr key={c.id} className="group" style={{ borderTop: '1px solid var(--hr-line)' }}>
+                          <td className="px-4 py-2.5 sticky left-0 z-10 bg-white group-hover:bg-[var(--off-white)]" style={{ boxShadow: `inset 3px 0 0 ${tone}` }}>
+                            <span className="block text-[13px] font-semibold leading-tight" style={{ color: 'var(--charcoal)' }}>{c.name}</span>
+                            <span className="block text-[11px] mt-0.5" style={{ color: 'var(--mid-gray)' }}>
+                              {[c.department, branchCode(c.branch), start ? `started ${fmtStart(start)}` : null].filter(Boolean).join(' · ')}
+                            </span>
+                          </td>
+                          {matrixMonths.map(m => {
+                            if (na.has(m)) {
+                              return (
+                                <td key={m} className="px-1 py-2.5 text-center group-hover:bg-[var(--off-white)]" title={`Not with us yet — started ${start} (HR Hub)`}>
+                                  <span className="text-[11px]" style={{ color: '#c9d3cf' }}>—</span>
+                                </td>
+                              )
+                            }
+                            const cov = monthCoverage(m, keys)
+                            const copy = cov === 'none' ? null : copyFor(c.id, m)
+                            const title = cov === 'full' ? 'Invoiced' : cov === 'first' ? '1st half invoiced, 2nd half not yet' : cov === 'second' ? '2nd half invoiced, 1st half not yet' : 'No service invoice received'
+                            const chip = cov === 'full'
+                              ? { bg: '#dcfce7', fg: '#166534', body: <Check size={13} strokeWidth={3} /> }
+                              : cov === 'none'
+                                ? { bg: '#fdf2f2', fg: '#e05252', body: <X size={12} strokeWidth={2.5} /> }
+                                : { bg: '#fef3c7', fg: '#92400e', body: <span className="text-[11px] font-bold leading-none">½</span> }
+                            const inner = (
+                              <span className="inline-flex items-center justify-center w-[22px] h-[22px] rounded-md" style={{ background: chip.bg, color: chip.fg }}>{chip.body}</span>
+                            )
+                            return (
+                              <td key={m} className="px-1 py-2.5 text-center group-hover:bg-[var(--off-white)]">
+                                {copy
+                                  ? <a href={copy} target="_blank" rel="noopener noreferrer" title={`${title} — view the copy`} className="inline-flex hover:ring-2 hover:ring-[#a7d3cd] rounded-md">{inner}</a>
+                                  : <span title={title} className="inline-flex">{inner}</span>}
+                              </td>
+                            )
+                          })}
+                          <td className="px-4 py-2.5 group-hover:bg-[var(--off-white)]">
+                            {due ? (
+                              <div className="flex items-center gap-2.5">
+                                <div className="h-1.5 w-20 rounded-full overflow-hidden" style={{ background: '#EEF2E6' }}>
+                                  <div className="h-full rounded-full" style={{ width: `${pct}%`, background: tone }} />
+                                </div>
+                                <span className="text-[13px] font-bold tabular-nums" style={{ color: tone }}>{pct}%</span>
+                                <span className="text-[11px] tabular-nums" style={{ color: 'var(--hr-faint)' }}>{done}/{due}</span>
+                              </div>
+                            ) : <span style={{ color: 'var(--hr-faint)' }}>Not due yet</span>}
+                          </td>
+                        </tr>
+                      )
+                    })}
+                    {visibleMatrix.length === 0 && (
+                      <tr><td colSpan={2 + matrixMonths.length} className="px-4 py-10 text-center" style={{ color: 'var(--mid-gray)' }}>
+                        {matrixRows.length === 0 ? 'No consultant has a COR on file yet.' : 'No consultant matches this view.'}
+                      </td></tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            {/* Legend */}
+            <div className="flex items-center gap-4 flex-wrap px-4 py-2.5 border-t text-[11px]" style={{ borderColor: 'var(--hr-line)', color: 'var(--mid-gray)' }}>
+              {[
+                { bg: '#dcfce7', fg: '#166534', body: <Check size={11} strokeWidth={3} />, label: 'Invoiced (click to view the copy)' },
+                { bg: '#fef3c7', fg: '#92400e', body: <span className="text-[10px] font-bold">½</span>, label: 'One cutoff of the month invoiced' },
+                { bg: '#fdf2f2', fg: '#e05252', body: <X size={10} strokeWidth={2.5} />, label: 'Not received' },
+              ].map(l => (
+                <span key={l.label} className="inline-flex items-center gap-1.5">
+                  <span className="inline-flex items-center justify-center w-[18px] h-[18px] rounded" style={{ background: l.bg, color: l.fg }}>{l.body}</span>
+                  {l.label}
+                </span>
+              ))}
+              <span className="inline-flex items-center gap-1.5"><span style={{ color: '#c9d3cf' }}>—</span> Before their start date (HR Hub Date Hired), not counted</span>
+              <span className="ml-auto" style={{ color: 'var(--hr-faint)' }}>Only consultants with a COR on file · record invoices with “Upload SI” in Tracking &amp; Reminders</span>
             </div>
-          )}
-          <p className="text-[11px]" style={{ color: 'var(--mid-gray)' }}>
-            Only consultants with a COR on file are tracked. ✓ invoiced · ½ one cutoff of the month invoiced · ✗ none · N/A before their start date in HR Hub Staff Profiles (Date Hired) — not counted in % Done. Record invoices with “Upload SI” in Tracking &amp; Reminders.
-          </p>
+          </div>
         </>
       ) : (
         <>
