@@ -17,6 +17,7 @@ import {
   ArrowUpDown, TrendingDown,
 } from 'lucide-react'
 import { formatCurrency, formatDate } from '@/lib/utils'
+import { isCreditPayer } from '@/lib/pos/advance-guard'
 import { normalizeSI } from '@/lib/sales-invoice'
 import { ScanUpload } from '@/components/ScanUpload'
 import { PaymongoAdvanceQueue } from './PaymongoAdvanceQueue'
@@ -1190,7 +1191,12 @@ function OrderFormModal({
   const [showAdvancePay, setShowAdvancePay] = useState(false)
   const [advanceSearch, setAdvanceSearch] = useState('')
   const [advanceWallets, setAdvanceWallets] = useState<DigitalWallet[]>([])
-  const [isAdvancePayment, setIsAdvancePayment] = useState(false)
+  const [advanceTicked, setIsAdvancePayment] = useState(false)
+  // HMO / GL pay after the session, so their sales are never advance payments:
+  // once one is on the order the box is hidden and a leftover tick is ignored
+  // (no Unearned booking, no Advance wallet). See lib/pos/advance-guard.
+  const hasCreditPayer = payments.some(p => isCreditPayer(p.method))
+  const isAdvancePayment = advanceTicked && !hasCreditPayer
   const [walletPopup, setWalletPopup] = useState<{ show: boolean; wallet?: DigitalWallet; walletType?: string }>({ show: false })
   const [patientId, setPatientId] = useState(prefill?.patientId as string || '')
   const [activeWallet, setActiveWallet] = useState<DigitalWallet | null>(null) // wallet being used for payment
@@ -3194,7 +3200,7 @@ function OrderFormModal({
           </div>
 
           {/* Advance Payment Toggle */}
-          {orderType === 'SERVICE' && !hasUnearnedItems && !hasGiftCardItems && (
+          {orderType === 'SERVICE' && !hasUnearnedItems && !hasGiftCardItems && !hasCreditPayer && (
             <div className="rounded-xl border p-3" style={{ borderColor: isAdvancePayment ? 'var(--teal)' : 'var(--light-gray)', background: isAdvancePayment ? 'var(--pale-teal)' : 'transparent' }}>
               <label className="flex items-center gap-2 text-sm cursor-pointer" style={{ color: 'var(--charcoal)' }}>
                 <input type="checkbox" checked={isAdvancePayment}

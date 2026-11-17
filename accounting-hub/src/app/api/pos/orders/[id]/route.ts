@@ -1,4 +1,5 @@
 import { branchShort } from '@/lib/branch'
+import { isCreditPayer, CREDIT_PAYER_ADVANCE_ERROR } from '@/lib/pos/advance-guard'
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { TUITION_SERVICE_NAME } from '@/lib/tuition'
@@ -582,6 +583,23 @@ export async function PUT(
       salesInvoiceNumber,
       referenceNumber,
     } = body
+
+    // HMO / GL pay after the session — an edit can't turn such a sale into an
+    // advance payment (see lib/pos/advance-guard).
+    if (revenueType === 'UNEARNED') {
+      const pays: { method?: string | null }[] = payments
+        ?? await prisma.orderPayment.findMany({ where: { orderId: id }, select: { method: true } })
+      if (pays.some(p => isCreditPayer(p?.method))) {
+        const svcIds: string[] = items
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          ? (items as any[]).map(i => i?.serviceId).filter(Boolean)
+          : (await prisma.orderItem.findMany({ where: { orderId: id }, select: { serviceId: true } })).map(i => i.serviceId).filter((s): s is string => !!s)
+        const packaged = svcIds.length
+          ? await prisma.service.count({ where: { id: { in: svcIds }, revenueType: 'UNEARNED' } })
+          : 0
+        if (!packaged) return NextResponse.json({ error: CREDIT_PAYER_ADVANCE_ERROR }, { status: 400 })
+      }
+    }
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const data: any = { status: 'COMPLETED' }

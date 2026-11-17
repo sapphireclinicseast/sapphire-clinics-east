@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { isCreditPayer, CREDIT_PAYER_ADVANCE_ERROR } from '@/lib/pos/advance-guard'
 import { auth } from '@/lib/auth'
 import { TUITION_SERVICE_NAME } from '@/lib/tuition'
 import { classHubMethod, recordClassHubPayment } from '@/lib/tuition-server'
@@ -216,6 +217,19 @@ export async function POST(req: Request) {
         { error: 'orderType, branch, and items are required' },
         { status: 400 }
       )
+    }
+
+    // HMO / GL pay after the session: such a sale is Unearned only when one of
+    // its services is itself an Unearned (package) service — never because the
+    // advance-payment box was ticked.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    if (revenueType === 'UNEARNED' && (payments || []).some((p: any) => isCreditPayer(p?.method))) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const svcIds = (items as any[]).map(i => i?.serviceId).filter(Boolean) as string[]
+      const packaged = svcIds.length
+        ? await prisma.service.count({ where: { id: { in: svcIds }, revenueType: 'UNEARNED' } })
+        : 0
+      if (!packaged) return NextResponse.json({ error: CREDIT_PAYER_ADVANCE_ERROR }, { status: 400 })
     }
 
     // Calculate subtotal from items
