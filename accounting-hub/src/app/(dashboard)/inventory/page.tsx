@@ -46,7 +46,7 @@ import { ScanUpload } from '@/components/ScanUpload'
 import BranchStockPanel from './BranchStockPanel'
 import SkuGuidePanel from './SkuGuidePanel'
 import PriceListPanel from './PriceListPanel'
-import { priceTiers } from '@/lib/price-tiers'
+import { priceTiers, PRICE_TIERS, tierValueFromKey } from '@/lib/price-tiers'
 import PsychTestsPanel from './PsychTestsPanel'
 import ItemDetailsModal from './ItemDetailsModal'
 import { SKU_HIERARCHY } from '@/lib/sku-taxonomy'
@@ -420,6 +420,7 @@ interface InventoryItem {
   issuedOfficialInvoice?: boolean
   isPreOrder?: boolean
   websiteClassification?: string | null
+  websitePriceTier?: string | null
   supplierProductName?: string | null
   description?: string | null
   bundleComponents?: { id: string; quantity: number; component: { id: string; name: string; sku: string; quantity: number } }[]
@@ -874,6 +875,8 @@ function InventoryInner() {
   const [fSubType, setFSubType] = useState('')
   const [fUnitCost, setFUnitCost] = useState('')
   const [fSellingPrice, setFSellingPrice] = useState('')
+  // Website price tier: null = manual price; 'LOW'|'STANDARD'|'HIGH' = auto (COGS × 3/6/8).
+  const [fPriceTier, setFPriceTier] = useState<string | null>(null)
   const [fRewardPointsPrice, setFRewardPointsPrice] = useState('')
   const [fInitialQty, setFInitialQty] = useState('')
   // Quantity as loaded when the edit modal opened. On save, quantity is only
@@ -1692,7 +1695,7 @@ function InventoryInner() {
   function openItemCreate() {
     setEditingItem(null)
     setFName(''); setFSkuDept(''); setFSkuCat(''); setFSkuSub(''); setFSkuValue('')
-    setFBranch('SANDBOX_EAST'); setFSubType(''); setFUnitCost(''); setFSellingPrice(''); setFRewardPointsPrice('')
+    setFBranch('SANDBOX_EAST'); setFSubType(''); setFUnitCost(''); setFSellingPrice(''); setFPriceTier(null); setFRewardPointsPrice('')
     setFInitialQty(''); setFReorderLevel(''); setFSupplierId(''); setFExchangeRate('')
     setFSupplierProductName(''); setFDescription('')
     setFRevenueAccountId(''); setFRevenueAccountSearch(''); setFSourceAccountId(''); setFSourceAccountSearch(''); setFExpenseAccountId(''); setFExpenseAccountSearch('')
@@ -1747,6 +1750,7 @@ function InventoryInner() {
     setFSubType(item.accountSubType || '')
     setFUnitCost(String(item.unitCost))
     setFSellingPrice(item.sellingPrice != null ? String(item.sellingPrice) : '')
+    setFPriceTier(item.websitePriceTier ?? null)
     setFRewardPointsPrice(item.rewardPointsPrice != null ? String(item.rewardPointsPrice) : '')
     setFInitialQty(String(item.quantity))
     setFQtyAsLoaded(String(item.quantity))
@@ -1917,6 +1921,7 @@ function InventoryInner() {
       accountSubType: fSubType || null,
       unitCost: fUnitCost || '0',
       sellingPrice: fSellingPrice || null,
+      websitePriceTier: fPriceTier,
       rewardPointsPrice: fRewardPointsPrice || null,
       // Edits only carry quantity when the user actually touched the field.
       ...(editingItem && fInitialQty === fQtyAsLoaded
@@ -3482,21 +3487,43 @@ setTimeout(()=>window.print(),500);
                     </div>
                     <div>
                       <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--charcoal)' }}>Selling Price (PHP)</label>
-                      <input type="number" step="0.01" min="0" value={fSellingPrice} onChange={(e) => setFSellingPrice(e.target.value)}
+                      <input type="number" step="0.01" min="0" value={fSellingPrice}
+                        onChange={(e) => { setFSellingPrice(e.target.value); setFPriceTier(null) }}
                         className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
                       {(() => {
-                        // Price tiers from the cost typed above (rule in lib/price-tiers.ts).
+                        // Website price tier — click one to auto-price from COGS (× 3 / 6 / 8,
+                        // rounded up ₱10; rule in lib/price-tiers.ts). The chosen tier is saved,
+                        // so changing the cost later re-applies it. Editing the box above = Custom.
                         const t = priceTiers(parseFloat(fUnitCost))
                         if (!t) return null
-                        const isStd = Number(fSellingPrice) === t.standard
                         return (
-                          <p className="mt-1 text-[11px] leading-snug" style={{ color: 'var(--mid-gray)' }}>
-                            Lowest ₱{t.lowest.toLocaleString()} · <b style={{ color: 'var(--teal)' }}>Standard ₱{t.standard.toLocaleString()}</b> · Highest ₱{t.highest.toLocaleString()}
-                            {!isStd && (
-                              <button type="button" onClick={() => setFSellingPrice(String(t.standard))}
-                                className="ml-1.5 font-semibold hover:underline" style={{ color: 'var(--teal)' }}>Use Standard</button>
-                            )}
-                          </p>
+                          <div className="mt-1.5">
+                            <div className="flex gap-1.5">
+                              {PRICE_TIERS.map((tier) => {
+                                const val = tierValueFromKey(tier.key)
+                                const price = t[tier.key]
+                                const active = fPriceTier === val
+                                return (
+                                  <button key={tier.key} type="button"
+                                    onClick={() => { setFPriceTier(val); setFSellingPrice(String(price)) }}
+                                    title={`${tier.label} — COGS × ${tier.multiple}`}
+                                    className="flex-1 px-2 py-1 rounded-lg border text-[11px] font-semibold leading-tight text-center transition"
+                                    style={{
+                                      borderColor: active ? 'var(--teal)' : 'var(--light-gray)',
+                                      background: active ? 'var(--teal)' : 'white',
+                                      color: active ? 'white' : 'var(--charcoal)',
+                                    }}>
+                                    {tier.label}<br />₱{price.toLocaleString()}
+                                  </button>
+                                )
+                              })}
+                            </div>
+                            <p className="mt-1 text-[10.5px] leading-snug" style={{ color: fPriceTier ? 'var(--teal)' : 'var(--mid-gray)' }}>
+                              {fPriceTier
+                                ? `Auto-priced at COGS × ${PRICE_TIERS.find((x) => tierValueFromKey(x.key) === fPriceTier)?.multiple} — re-applies if the cost changes. This is the POS & website price.`
+                                : 'Custom price. Click a tier to auto-price it from COGS.'}
+                            </p>
+                          </div>
                         )
                       })()}
                     </div>

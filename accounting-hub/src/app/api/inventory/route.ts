@@ -6,6 +6,23 @@ import { parsePagination, paginatedResult } from '@/lib/pagination'
 import { resolveProductAccounts, inventorySubTypeForDept } from '@/lib/inventory-accounts'
 import { consumeFifoLots } from '@/lib/fifo'
 import { SKU_HIERARCHY } from '@/lib/sku-taxonomy'
+import { priceForTier, tierKeyFromValue } from '@/lib/price-tiers'
+
+/**
+ * COGS for a tier recompute: a bundle's cost is the sum of its components'
+ * costs (× qty); everything else uses its own unit cost. Returns null when
+ * there is nothing to price from.
+ */
+async function cogsForTier(itemId: string, isBundle: boolean, unitCost: number): Promise<number | null> {
+  if (!isBundle) return unitCost > 0 ? unitCost : null
+  const comps = await prisma.bundleComponent.findMany({
+    where: { bundleId: itemId },
+    select: { quantity: true, component: { select: { unitCost: true } } },
+  })
+  if (!comps.length) return unitCost > 0 ? unitCost : null
+  const sum = comps.reduce((s, c) => s + Number(c.component?.unitCost || 0) * c.quantity, 0)
+  return sum > 0 ? sum : null
+}
 
 const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN']
 
@@ -45,7 +62,7 @@ export async function GET(req: Request) {
   if (all) {
     const items = await prisma.inventoryItem.findMany({
       where: { ...where, isActive: true },
-      select: { id: true, name: true, supplierProductName: true, description: true, sku: true, branch: true, quantity: true, sellingPrice: true, unitCost: true, barcode: true, imageUrl: true, rewardPointsPrice: true, isPreOrder: true, websiteClassification: true, dimensionLength: true, dimensionWidth: true, dimensionHeight: true, weightKg: true, variants: { where: { isActive: true }, select: { id: true, variantType: true, variantLabel: true, variantSku: true, quantity: true, unitCost: true, sellingPrice: true, dimensionLength: true, dimensionWidth: true, dimensionHeight: true, weightKg: true }, orderBy: { variantLabel: 'asc' } } },
+      select: { id: true, name: true, supplierProductName: true, description: true, sku: true, branch: true, quantity: true, sellingPrice: true, unitCost: true, barcode: true, imageUrl: true, rewardPointsPrice: true, isPreOrder: true, websiteClassification: true, websitePriceTier: true, dimensionLength: true, dimensionWidth: true, dimensionHeight: true, weightKg: true, variants: { where: { isActive: true }, select: { id: true, variantType: true, variantLabel: true, variantSku: true, quantity: true, unitCost: true, sellingPrice: true, dimensionLength: true, dimensionWidth: true, dimensionHeight: true, weightKg: true }, orderBy: { variantLabel: 'asc' } } },
       orderBy: { sku: 'asc' },
     })
     // Ensure Decimal fields are serialized as numbers
@@ -121,6 +138,11 @@ export async function POST(req: Request) {
       revenueAccountId, expenseAccountId, sourceAccountId, accountSubType,
     })
 
+    // Website price tier on create: a new item has no components yet, so COGS is
+    // its unit cost. A chosen tier auto-prices it; otherwise the manual price stands.
+    const createTier = tierKeyFromValue(body.websitePriceTier) ? String(body.websitePriceTier).toUpperCase() : null
+    const tierPriceOnCreate = createTier ? priceForTier(unitCost ? parseFloat(unitCost) : 0, createTier) : null
+
     const item = await prisma.inventoryItem.create({
       data: {
         // Product names are stored upper case so the catalogue reads uniformly.
@@ -136,7 +158,8 @@ export async function POST(req: Request) {
         accountSubType: acct.accountSubType,
         unitCost: unitCost ? parseFloat(unitCost) : 0,
         initialUnitCost: unitCost ? parseFloat(unitCost) : 0,
-        sellingPrice: sellingPrice ? parseFloat(sellingPrice) : null,
+        sellingPrice: tierPriceOnCreate != null ? tierPriceOnCreate : (sellingPrice ? parseFloat(sellingPrice) : null),
+        websitePriceTier: createTier,
         rewardPointsPrice: rewardPointsPrice ? parseInt(rewardPointsPrice) : null,
         quantity: quantity ? parseInt(quantity) : 0,
         reorderLevel: reorderLevel ? parseInt(reorderLevel) : null,
@@ -212,7 +235,7 @@ export async function PUT(req: Request) {
   try {
     const { id, name, branch, accountSubType, unitCost, sellingPrice, rewardPointsPrice, quantity,
             reorderLevel, supplierId, supplierProductName, description, supplierExchangeRate, revenueAccountId, sourceAccountId, expenseAccountId,
-            issuedOfficialInvoice, isPreOrder, websiteClassification, imageUrl, isActive,
+            issuedOfficialInvoice, isPreOrder, websiteClassification, websitePriceTier, imageUrl, isActive,
             skuDepartment, skuCategory, skuSubcategory,
             dimensionLength, dimensionWidth, dimensionHeight, weightKg } = await req.json()
 
@@ -251,8 +274,26 @@ export async function PUT(req: Request) {
       where: { id },
       select: { sku: true, skuDepartment: true, skuCategory: true, skuSubcategory: true, skuSequence: true,
                 revenueAccountId: true, expenseAccountId: true, sourceAccountId: true, accountSubType: true,
-                quantity: true, unitCost: true },
+                quantity: true, unitCost: true, isBundle: true, websitePriceTier: true },
     })
+
+    // Website price tier: picking a tier (or changing the cost of a tiered item)
+    // auto-computes sellingPrice = COGS × 3/6/8 (rounded up ₱10). null = manual price.
+    // This is the single source of truth; any sellingPrice sent alongside a tier is ignored.
+    if (websitePriceTier !== undefined) {
+      data.websitePriceTier = tierKeyFromValue(websitePriceTier) ? String(websitePriceTier).toUpperCase() : null
+    }
+    {
+      const effectiveTier = websitePriceTier !== undefined ? data.websitePriceTier : current?.websitePriceTier
+      const tierTouched = websitePriceTier !== undefined
+      const costTouched = unitCost !== undefined
+      if (current && tierKeyFromValue(effectiveTier) && (tierTouched || costTouched)) {
+        const effectiveCost = unitCost !== undefined ? parseFloat(unitCost) : Number(current.unitCost)
+        const cogs = await cogsForTier(id, current.isBundle, effectiveCost)
+        const computed = priceForTier(cogs, effectiveTier)
+        if (computed != null) data.sellingPrice = computed
+      }
+    }
 
     // Reclassification. The edit form has always SENT these three fields; the API
     // just ignored them, so changing a product's department in the UI silently did

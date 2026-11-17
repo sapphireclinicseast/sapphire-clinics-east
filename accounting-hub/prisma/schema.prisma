@@ -504,6 +504,7 @@ model InventoryItem {
   unitCost              Decimal   @default(0)
   initialUnitCost       Decimal? // Original unit cost set at item creation
   sellingPrice          Decimal?
+  websitePriceTier      String? // null = manual sellingPrice; 'LOW'|'STANDARD'|'HIGH' = auto = COGS × 3/6/8 rounded up to ₱10 (see lib/price-tiers.ts). Picking a tier recomputes sellingPrice; editing COGS re-applies the chosen tier.
   rewardPointsPrice     Int? // Price in reward points (e.g., 1000 pts)
   quantity              Int       @default(0)
   branchStock           Json? // Display-only per-branch split of `quantity` for consigned stock, e.g. { "SANDBOX_GREENHILLS": 2 }. `quantity` remains the authoritative TOTAL for FIFO/COGS/BS; this only records where the units physically sit (folded-in from the retired '-SAND' consignment rows).

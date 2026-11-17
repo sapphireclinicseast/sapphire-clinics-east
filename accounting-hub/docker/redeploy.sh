@@ -359,6 +359,10 @@ ALTER TABLE "InventoryItem" ADD COLUMN IF NOT EXISTS "dimensionWidth"  DECIMAL(6
 ALTER TABLE "InventoryItem" ADD COLUMN IF NOT EXISTS "dimensionHeight" DECIMAL(65,30);
 -- Shipping weight (kg) — feeds the shipping rates on verdanarehab.com
 ALTER TABLE "InventoryItem" ADD COLUMN IF NOT EXISTS "weightKg" DECIMAL(65,30);
+-- Website price tier (Hannah 2026-11-17): null = manual sellingPrice; 'LOW'|'STANDARD'|'HIGH'
+-- = auto-priced at COGS × 3/6/8 rounded up to ₱10 (lib/price-tiers.ts). The API recomputes
+-- sellingPrice when the tier is set or the cost changes; the storefront sync mirrors sellingPrice.
+ALTER TABLE "InventoryItem" ADD COLUMN IF NOT EXISTS "websitePriceTier" TEXT;
 
 -- Supplier purchase requests: what we are asking a supplier for, and who asked
 CREATE TABLE IF NOT EXISTS "SupplierRequest" (
