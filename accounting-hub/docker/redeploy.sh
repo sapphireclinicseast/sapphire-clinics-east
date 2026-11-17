@@ -1344,6 +1344,10 @@ CREATE TABLE IF NOT EXISTS "ParkedGlCharge" (
 CREATE UNIQUE INDEX IF NOT EXISTS "ParkedGlCharge_scheduleId_key" ON "ParkedGlCharge"("scheduleId");
 CREATE UNIQUE INDEX IF NOT EXISTS "ParkedGlCharge_orderId_key" ON "ParkedGlCharge"("orderId");
 CREATE INDEX IF NOT EXISTS "ParkedGlCharge_patientId_status_idx" ON "ParkedGlCharge"("patientId", "status");
+-- Waiving a parked fee (2026-11-18).
+ALTER TABLE "ParkedGlCharge" ADD COLUMN IF NOT EXISTS "waivedAt" TIMESTAMP(3);
+ALTER TABLE "ParkedGlCharge" ADD COLUMN IF NOT EXISTS "waivedById" TEXT;
+ALTER TABLE "ParkedGlCharge" ADD COLUMN IF NOT EXISTS "waiveReason" TEXT;
 SQL
 
 echo "Redeploy complete."

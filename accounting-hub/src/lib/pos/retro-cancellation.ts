@@ -12,3 +12,6 @@ export const RETRO_CANCEL_COLOR = '#7c3aed'
 
 export const isRetroCancellation = (notes?: string | null): boolean =>
   !!notes && notes.trimStart().toUpperCase().startsWith(RETRO_CANCEL_MARKER)
+
+/** Who may waive (forgive) a parked GL cancellation fee — not front desk. */
+export const PARKED_FEE_WAIVE_ROLES = ['ADMIN', 'ACCOUNTANT', 'AHEA_ADMIN', 'AHGH_ADMIN']

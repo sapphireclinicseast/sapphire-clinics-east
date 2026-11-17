@@ -18,7 +18,7 @@ import {
 } from 'lucide-react'
 import { formatCurrency, formatDate } from '@/lib/utils'
 import { isCreditPayer } from '@/lib/pos/advance-guard'
-import { RETRO_CANCEL_COLOR } from '@/lib/pos/retro-cancellation'
+import { RETRO_CANCEL_COLOR, PARKED_FEE_WAIVE_ROLES } from '@/lib/pos/retro-cancellation'
 import { normalizeSI } from '@/lib/sales-invoice'
 import { ScanUpload } from '@/components/ScanUpload'
 import { PaymongoAdvanceQueue } from './PaymongoAdvanceQueue'
@@ -32,7 +32,7 @@ import TuitionDesk from './TuitionDesk'
 import { buildSoaPdf, MONTH_OPTIONS, periodLabel, type SoaSettings, type SoaOrder } from '@/lib/soa-pdf'
 import { EARLIEST_OBTAINED, latestObtained, obtainedDateError } from '@/lib/wallet-dates'
 import CancellationLinkModal, { type FeeLine } from './CancellationLinkModal'
-import { HR_PAGE_CLASS, HR_PAGE_STYLE, HrShimmerStyle } from '@/components/ui/hr-look'
+import { HR_PAGE_CLASS, HR_PAGE_STYLE, HrShimmerStyle, HrNoticeModal, hrBtn } from '@/components/ui/hr-look'
 import { GiftCardBatchList, GiftCardCodeInput, printGiftCards, type GiftCardBatchRow } from './GiftCards'
 
 /* ─────────────────────────── TYPES ─────────────────────────── */
@@ -5464,6 +5464,15 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
     return m
   }, [parkedFees])
   const parkedTotal = useMemo(() => parkedFees.reduce((s, f) => s + f.amount, 0), [parkedFees])
+  // Waive (forgive) a parked fee — admins and accountants only, with a reason.
+  const canWaiveParked = PARKED_FEE_WAIVE_ROLES.includes(String(session?.user?.role || ''))
+  const [waiveTarget, setWaiveTarget] = useState<{ id: string; patientName: string; feeName: string; detail: string; amount: number } | null>(null)
+  const [waiveReason, setWaiveReason] = useState('')
+  const [waiveBusy, setWaiveBusy] = useState(false)
+  const [waiveError, setWaiveError] = useState<string | null>(null)
+  const openWaive = (t: { id: string; patientName: string; feeName: string; detail: string; amount: number }) => {
+    setWaiveTarget(t); setWaiveReason(''); setWaiveError(null)
+  }
 
   const fetchWallets = useCallback(async () => {
     setLoading(true)
@@ -5639,6 +5648,28 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
       setParkedNotice('Could not charge the parked fees — check the connection and try again.')
     } finally {
       setParkedBusy(false)
+    }
+  }
+
+  const confirmWaive = async () => {
+    if (!waiveTarget || waiveBusy) return
+    if (waiveReason.trim().length < 3) { setWaiveError('Say why the fee is waived.'); return }
+    setWaiveBusy(true); setWaiveError(null)
+    try {
+      const r = await fetch(`/api/pos/parked-gl-charges/${waiveTarget.id}/waive`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reason: waiveReason.trim() }),
+      })
+      const d = await r.json().catch(() => ({}))
+      if (!r.ok) { setWaiveError(d.error || `Could not waive (${r.status})`); return }
+      setParkedNotice(`${waiveTarget.patientName}: ${formatCurrency(waiveTarget.amount)} ${waiveTarget.feeName} waived — it won't go on a letter.`)
+      setWaiveTarget(null)
+      fetchParked()
+      if (walletDetail?.walletType === 'GL') await loadWalletDetail(walletDetail)
+    } catch {
+      setWaiveError('Could not waive — check the connection and try again.')
+    } finally {
+      setWaiveBusy(false)
     }
   }
 
@@ -6289,20 +6320,38 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
             <thead>
               <tr className="border-b text-xs" style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>
                 <th className="px-5 py-2 text-left font-semibold">Patient</th>
-                <th className="px-5 py-2 text-right font-semibold">Fees</th>
+                <th className="px-5 py-2 text-left font-semibold">Cancellation</th>
+                <th className="px-5 py-2 text-left font-semibold">Fee</th>
                 <th className="px-5 py-2 text-right font-semibold">Amount</th>
-                <th className="px-5 py-2 text-left font-semibold">Cancellation dates</th>
+                {canWaiveParked && <th className="px-5 py-2" />}
               </tr>
             </thead>
             <tbody>
-              {[...parkedByPatient.entries()].sort((a, b) => b[1].amount - a[1].amount).map(([pid, p]) => (
-                <tr key={pid} className="border-b" style={{ borderColor: 'var(--light-gray)' }}>
-                  <td className="px-5 py-2 font-medium" style={{ color: 'var(--charcoal)' }}>{p.name}</td>
-                  <td className="px-5 py-2 text-right font-mono">{p.count}</td>
-                  <td className="px-5 py-2 text-right font-mono" style={{ color: RETRO_CANCEL_COLOR }}>{formatCurrency(p.amount)}</td>
-                  <td className="px-5 py-2 text-xs" style={{ color: 'var(--mid-gray)' }}>{p.dates.map(d => formatDate(d)).join(' · ')}</td>
-                </tr>
-              ))}
+              {[...parkedByPatient.entries()].sort((a, b) => b[1].amount - a[1].amount).flatMap(([pid, p]) => {
+                const fees = parkedFees.filter(f => f.patientId === pid)
+                return [
+                  <tr key={`${pid}-h`} className="border-b" style={{ borderColor: 'var(--light-gray)', background: '#faf9ff' }}>
+                    <td className="px-5 py-2 font-semibold" style={{ color: 'var(--charcoal)' }}>{p.name}</td>
+                    <td className="px-5 py-2 text-xs" style={{ color: 'var(--mid-gray)' }}><span className="font-mono">{p.count}</span> fee{p.count === 1 ? '' : 's'}</td>
+                    <td />
+                    <td className="px-5 py-2 text-right font-mono font-semibold" style={{ color: RETRO_CANCEL_COLOR }}>{formatCurrency(p.amount)}</td>
+                    {canWaiveParked && <td />}
+                  </tr>,
+                  ...fees.map(f => (
+                    <tr key={f.id} className="border-b text-xs" style={{ borderColor: 'var(--light-gray)' }}>
+                      <td />
+                      <td className="px-5 py-1.5" style={{ color: 'var(--charcoal)' }}>{f.detail}</td>
+                      <td className="px-5 py-1.5" style={{ color: 'var(--mid-gray)' }}>{f.feeName}</td>
+                      <td className="px-5 py-1.5 text-right font-mono">{formatCurrency(f.amount)}</td>
+                      {canWaiveParked && (
+                        <td className="px-5 py-1.5 text-right">
+                          <button onClick={() => openWaive(f)} className="text-xs font-semibold underline" style={{ color: '#b91c1c' }}>Waive</button>
+                        </td>
+                      )}
+                    </tr>
+                  )),
+                ]
+              })}
             </tbody>
           </table>
         </div>
@@ -7091,6 +7140,30 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
       )}
 
       {/* Wallet Detail Modal */}
+      {waiveTarget && (
+        <HrNoticeModal icon={<Ban size={18} />} tone="amber" title="Waive this parked fee?"
+          subtitle="It won't go on any letter. The waiver is recorded with your name and reason."
+          onClose={() => !waiveBusy && setWaiveTarget(null)}
+          footer={<>
+            <button className={hrBtn.outline} style={{ borderColor: 'var(--light-gray)' }} onClick={() => setWaiveTarget(null)} disabled={waiveBusy}>Cancel</button>
+            <button className={`${hrBtn.primary} ml-auto`} style={{ background: '#b91c1c' }} onClick={confirmWaive} disabled={waiveBusy}>
+              {waiveBusy && <Loader2 size={14} className="animate-spin" />} Waive <span className="font-mono">{formatCurrency(waiveTarget.amount)}</span>
+            </button>
+          </>}>
+          <div className="rounded-lg px-3 py-2.5 text-[13px]" style={{ background: '#f5f3ff', border: '1px solid #ddd6fe' }}>
+            <p className="font-semibold">{waiveTarget.patientName}</p>
+            <p style={{ color: 'var(--mid-gray)' }}>{waiveTarget.feeName} · <span className="font-mono">{formatCurrency(waiveTarget.amount)}</span></p>
+            <p style={{ color: 'var(--mid-gray)' }}>{waiveTarget.detail}</p>
+          </div>
+          <label className="block pt-2">
+            <span className="text-[11.5px] font-semibold uppercase tracking-[.4px]" style={{ color: 'var(--mid-gray)' }}>Reason</span>
+            <textarea value={waiveReason} onChange={e => setWaiveReason(e.target.value)} rows={2} maxLength={500} autoFocus
+              placeholder="e.g. Patient was hospitalized — medical certificate on file"
+              className="mt-1 w-full px-3 py-2 rounded-lg border text-[13px] bg-white" style={{ borderColor: 'var(--light-gray)' }} />
+          </label>
+          {waiveError && <p className="text-[12px]" style={{ color: '#b91c1c' }}>{waiveError}</p>}
+        </HrNoticeModal>
+      )}
       {selectedWallet && walletDetail && (
         <div className="fixed inset-0 bg-black/40 z-50 flex items-start justify-center pt-8 overflow-y-auto">
           <div className="bg-white rounded-2xl p-6 shadow-xl w-full max-w-2xl mb-8 relative">
@@ -7602,7 +7675,13 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
                       <p className="mt-0.5" style={{ color: 'var(--mid-gray)' }}>No letter had room for these when they happened. They go on this patient&apos;s next letter — or charge them here, dated on each cancellation.</p>
                       <ul className="mt-1.5 space-y-0.5">
                         {walletDetail.parked!.map(p => (
-                          <li key={p.id}><span className="font-mono">{formatCurrency(p.amount)}</span> · {p.feeName} — {p.detail}</li>
+                          <li key={p.id}>
+                            <span className="font-mono">{formatCurrency(p.amount)}</span> · {p.feeName} — {p.detail}
+                            {canWaiveParked && (
+                              <button onClick={() => openWaive({ ...p, patientName: walletDetail.patientName })}
+                                className="ml-2 text-[11px] font-semibold underline" style={{ color: '#b91c1c' }}>Waive</button>
+                            )}
+                          </li>
                         ))}
                       </ul>
                     </div>

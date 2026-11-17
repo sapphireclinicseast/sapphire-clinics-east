@@ -4731,12 +4731,16 @@ model ParkedGlCharge {
   reason          String?
   /// Letter it would have gone on.
   sourceWalletId  String?
-  /// PARKED | CHARGING (claimed, order being made) | CHARGED
+  /// PARKED | CHARGING (claimed, order being made) | CHARGED | WAIVED
   status          String    @default("PARKED")
   orderId         String?   @unique
   chargedWalletId String?
   chargedAt       DateTime?
   chargedById     String?
+  /// Forgiven instead of charged — admins/accountants only, with a reason.
+  waivedAt        DateTime?
+  waivedById      String?
+  waiveReason     String?
   createdById     String?
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @default(now()) @updatedAt
