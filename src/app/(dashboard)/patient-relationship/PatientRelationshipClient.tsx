@@ -1867,6 +1867,15 @@ function CancellationTab({ branch }: { branch: string }) {
   const atSlotCount = patients.filter((p: any) => p.cancellationsUsed >= 12).length
   const unpaidFeeCount = patients.reduce((n: number, p: any) =>
     n + (p.logs || []).filter((l: any) => !l.deletedAt && l.feeBearing && !l.feePaid).length, 0)
+  // How often the CLINIC called a session off. This is the figure the clinic
+  // wants about itself, and it was previously unrecoverable: a therapist-side
+  // cancellation could only be waived with a free-text reason, which cannot be
+  // totalled. Counted from the logs, not from a waiver string.
+  const therapistCount = patients.reduce((n: number, p: any) =>
+    n + (p.logs || []).filter((l: any) => l.initiatedBy === 'THERAPIST').length, 0)
+  // Chargeable to a guarantee letter: a GL session the patient called off. No
+  // two-free allowance applies, so each one is owed from the first.
+  const glCount = patients.reduce((n: number, p: any) => n + (p.glChargeable ?? 0), 0)
   // Reloads after every log, upload and delete; keep the rows (dimmed) rather
   // than blanking the table, so the open patient stays open in place.
   const firstLoad = loading && patients.length === 0
@@ -1879,8 +1888,30 @@ function CancellationTab({ branch }: { branch: string }) {
           <li><strong>Not counted:</strong> reschedules, and any cancellation front desk waived when logging it (the reason is shown on the log).</li>
           <li><strong>Fees:</strong> owed from the <strong>3rd cancellation onward</strong> in the window; paid/unpaid is read from POS orders in the Accounting Hub.</li>
           <li><strong>Slot Removal:</strong> Upon reaching <strong>12 total cancellations</strong>, the patient is subject to slot removal.</li>
+          <li><strong>Guarantee letters:</strong> a GL session has <strong>no free allowance</strong> &mdash; a letter buys named sessions, so a cancellation the patient called off is chargeable from the first and is flagged for the POS to collect against the letter.</li>
+          <li><strong>Therapist-initiated:</strong> never counted against the patient and never charged. Recorded so the clinic can see how often it is the one calling off.</li>
         </ul>
       </Callout>
+
+      {/* The two figures that are about the CLINIC rather than about a
+          patient, so they are not buried inside an expanded row. */}
+      {(therapistCount > 0 || glCount > 0) && (
+        <div className="flex flex-wrap items-center gap-2 text-[12.5px]">
+          {therapistCount > 0 && (
+            <span className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 font-semibold"
+              style={{ background: '#EEF2FF', color: '#3730A3', border: '1px solid #C7D2FE' }}>
+              {therapistCount} therapist-initiated
+              <span className="font-normal" style={{ color: '#4C51BF' }}>· not charged to anyone</span>
+            </span>
+          )}
+          {glCount > 0 && (
+            <span className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 font-semibold"
+              style={{ background: '#FFF7ED', color: '#9A3412', border: '1px solid #FED7AA' }}>
+              {glCount} chargeable to a guarantee letter
+            </span>
+          )}
+        </div>
+      )}
 
       {/* If the lookup ran but matched NOTHING, every fee-bearing row would read
           "unpaid" — which looks like a fact and isn't. Far more likely the POS
@@ -2044,6 +2075,20 @@ function CancellationTab({ branch }: { branch: string }) {
                                           like it disagrees with the number above it. */}
                                       {!log.deletedAt && log.sourceStatus === 'RESCHEDULED' && (
                                         <Badge bg="#EFF6FF" fg="#1D4ED8">reschedule &middot; not counted</Badge>
+                                      )}
+                                      {/* Who called it off. Only shown for therapist-initiated:
+                                          patient-initiated is the ordinary case and badging every
+                                          row with it would bury the one that matters. Rows logged
+                                          before the question existed carry no badge at all rather
+                                          than being read as either. */}
+                                      {!log.deletedAt && log.initiatedBy === 'THERAPIST' && (
+                                        <Badge bg="#EEF2FF" fg="#3730A3">therapist-initiated</Badge>
+                                      )}
+                                      {!log.deletedAt && log.paymentType === 'GL' && (
+                                        <Badge bg="#FFF7ED" fg="#9A3412"
+                                          title="A guarantee letter buys named sessions, so there is no free allowance — chargeable from the first cancellation">
+                                          guarantee letter &middot; no free allowance
+                                        </Badge>
                                       )}
                                       {!log.deletedAt && log.countsToward === false && (
                                         <Badge bg="#F1F5F9" fg="#475569" title={log.excludeReason || undefined}>

@@ -10,6 +10,10 @@ import {
   WAITLIST_FORM_TYPES, loadWaitlistResponses, attachWaitlistFollowUps, hrFetch,
 } from '@/lib/waitlist-source'
 import { attachWaitlistOutreach } from '@/lib/waitlist-outreach'
+import {
+  NON_FEE_TYPE, THERAPIST_EXCLUDE_REASON, hasFreeAllowance,
+  isCancellationType, isCoverage, isInitiator,
+} from '@/lib/cancellation-types'
 
 // Department-specific follow-up intervals (in days). Defined in
 // lib/followup-groups.ts so this tab and the SMS follow-up audiences read the
@@ -273,18 +277,29 @@ export async function GET(req: NextRequest) {
 
       // Inside the rolling window, for the fee allowance (0/2).
       const windowLogs = countedLogs.filter(l => new Date(l.createdAt) >= windowStart)
-      const windowUsed = windowLogs.length
+      // The 0/2 counts only what the allowance applies to. A GL cancellation
+      // is charged outright and must not also eat a free slot.
+      const windowUsed = windowLogs.filter(l => hasFreeAllowance(l.paymentType)).length
       const freeRemaining = Math.max(0, FREE_CANCELLATIONS - windowUsed)
+
+      // A guarantee letter buys named sessions, so there is no allowance to
+      // spend: a GL cancellation is fee-bearing from the first one, and it is
+      // the LETTER that gets charged. Taken out of the allowance arithmetic
+      // entirely rather than given a smaller allowance — otherwise a GL
+      // cancellation would also use up a cash session's free slot, charging
+      // the patient twice over for one call.
+      const glLogs = windowLogs.filter(l => !hasFreeAllowance(l.paymentType))
+      const allowanceLogs = windowLogs.filter(l => hasFreeAllowance(l.paymentType))
 
       // Which specific logs a fee is actually owed on: the 3rd onward inside the
       // window. Assigned OLDEST FIRST — the first two chronologically are the
       // free ones, so as the window rolls forward and an old log ages out, the
       // next one becomes free rather than the newest arbitrarily being charged.
       // Ordering by id or by insertion would make "which two were free" drift.
-      const feeBearingLogs = [...windowLogs]
+      const feeBearingLogs = [...allowanceLogs]
         .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
         .slice(FREE_CANCELLATIONS)
-      const feeBearingIds = new Set(feeBearingLogs.map(l => l.id))
+      const feeBearingIds = new Set([...feeBearingLogs, ...glLogs].map(l => l.id))
 
       // Settled fees, oldest cancellation paired with oldest payment.
       //
@@ -335,6 +350,13 @@ export async function GET(req: NextRequest) {
         cancellationsRemaining: Math.max(0, MAX_CANCELLATIONS - totalUsed),
         windowUsed,
         freeRemaining,
+        // Chargeable to a guarantee letter, inside the window. The clinic
+        // needs this as its own figure: a letter being spent on sessions
+        // nobody attended is a conversation with the HMO, not with the family.
+        glChargeable: glLogs.length,
+        // Has this patient any GL-funded cancellation at all? Drives the
+        // "no free allowance" reading on the row rather than a bare 0/2.
+        hasGl: activeLogs.some(l => l.paymentType === 'GL'),
         windowStart,
         windowLapsed,
         lastLogAt,
@@ -345,6 +367,8 @@ export async function GET(req: NextRequest) {
           // Lets the log list show which entries still count toward the 0/2.
           inWindow: !l.deletedAt && new Date(l.createdAt) >= windowStart,
           sourceStatus: l.sourceStatus,
+          initiatedBy: l.initiatedBy,
+          paymentType: l.paymentType,
           countsToward: l.countsToward,
           excludeReason: l.excludeReason,
           // True when a cancellation fee is owed on THIS log (3rd onward in the
@@ -491,9 +515,37 @@ export async function POST(req: NextRequest) {
   }
 
   // Cancellation log creation
-  const { patientId, type, branch, remarks, scheduleId } = body
-  if (!patientId || !type || !branch) {
-    return NextResponse.json({ error: 'patientId, type, branch required' }, { status: 400 })
+  const { patientId, branch, remarks, scheduleId } = body
+  if (!patientId || !branch) {
+    return NextResponse.json({ error: 'patientId and branch required' }, { status: 400 })
+  }
+
+  // Who called it off. Unknown is allowed — the POS and older clients do not
+  // ask — but it is stored as unknown rather than guessed into 'PATIENT',
+  // because a guess here lands on somebody's fee record.
+  const initiatedBy = isInitiator(body.initiatedBy) ? body.initiatedBy : null
+  // What paid for the session. Unknown stays unknown and keeps the ordinary
+  // allowance — see hasFreeAllowance.
+  const paymentType = isCoverage(body.paymentType) ? body.paymentType : null
+  const isReschedule = body.sourceStatus === 'RESCHEDULED'
+  const therapistCalled = initiatedBy === 'THERAPIST'
+
+  // The six fee types answer "how much notice did the PATIENT give". That
+  // question has no answer when the clinic called it off, or when the session
+  // was moved rather than dropped — and a fee type stored there would read as
+  // a fee owed. Those rows get a plain label instead.
+  let type: string
+  if (therapistCalled) {
+    type = isReschedule ? NON_FEE_TYPE.RESCHEDULED : NON_FEE_TYPE.THERAPIST_CANCELLED
+  } else if (isReschedule && !isCancellationType(body.type)) {
+    type = NON_FEE_TYPE.RESCHEDULED
+  } else {
+    if (!body.type) {
+      return NextResponse.json(
+        { error: 'type is required for a patient-initiated cancellation' }, { status: 400 },
+      )
+    }
+    type = String(body.type)
   }
 
   const isValid = type.includes('VALID') && !type.includes('INVALID')
@@ -509,8 +561,15 @@ export async function POST(req: NextRequest) {
 
   // A waiver must carry its reason, or the count quietly shrinks with nothing on
   // record saying who decided that or why. No reason given → it counts.
-  const excludeReason = typeof body.excludeReason === 'string' ? body.excludeReason.trim() : ''
-  const countsToward = body.countsToward === false && excludeReason ? false : true
+  //
+  // Therapist-initiated is the exception, and not a judgement call: the clinic
+  // called it off, so it cannot be the patient's cancellation. Written through
+  // the SAME countsToward flag every count already honours, so attribution and
+  // exemption cannot drift apart later.
+  const typedReason = typeof body.excludeReason === 'string' ? body.excludeReason.trim() : ''
+  const excludeReason = therapistCalled ? (typedReason || THERAPIST_EXCLUDE_REASON) : typedReason
+  const countsToward = therapistCalled ? false
+    : body.countsToward === false && excludeReason ? false : true
 
   const log = await prisma.cancellationLog.create({
     data: {
@@ -520,6 +579,8 @@ export async function POST(req: NextRequest) {
       // Reschedules are recorded but never counted; see the cancellation tab.
       sourceStatus: body.sourceStatus === 'RESCHEDULED' ? 'RESCHEDULED'
         : body.sourceStatus === 'CANCELLED' ? 'CANCELLED' : null,
+      initiatedBy,
+      paymentType,
       countsToward,
       excludeReason: countsToward ? null : excludeReason,
     },
