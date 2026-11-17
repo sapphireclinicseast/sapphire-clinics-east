@@ -17,6 +17,18 @@ const READ_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'VIEWER', 'AHEA_ADMIN',
 
 const n = (v: unknown) => Number(v ?? 0) || 0
 
+// proofUrl holds one plain URL, or a JSON array of "url" strings / { url, locked }
+// objects (the same shapes Payment History writes).
+function proofUrlsOf(raw: string | null): string[] {
+  if (!raw) return []
+  try {
+    const p = JSON.parse(raw)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    if (Array.isArray(p)) return p.map((e: any) => typeof e === 'string' ? e : e?.url).filter(Boolean) as string[]
+  } catch { /* plain URL */ }
+  return [raw]
+}
+
 export async function GET(req: NextRequest) {
   const session = await auth()
   if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -61,7 +73,7 @@ export async function GET(req: NextRequest) {
         overpayment: n(p.overpayment),
         settled: Math.round((cash + withheld - n(p.overpayment)) * 100) / 100,
         sessions: p._count.items,
-        hasProof: !!p.proofUrl,
+        proofUrls: proofUrlsOf(p.proofUrl),
         notes: notesWithoutRef(p.notes),
         // No cash received: SCI-era ₱0 markers, GL write-offs, and the separate
         // BIR 2307 (TC) entries — they are not collections needing an AR number.

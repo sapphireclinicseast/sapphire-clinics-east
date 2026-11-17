@@ -34,7 +34,8 @@ interface RegisterRow {
   overpayment: number
   settled: number
   sessions: number
-  hasProof: boolean
+  /** Proof files attached in Payment History (PV, deposit slip, claim notice…). */
+  proofUrls: string[]
   notes: string
   noCash: boolean
 }
@@ -174,9 +175,9 @@ export default function PaymentRegisterTab({ branch }: { branch: string }) {
       if (l.kind === 'missing') { out.push([refInSeries(l.series, l.num), 'MISSING — no payment has this number', '', '', '', '', '', '', '', '', '', '']); continue }
       const r = l.row
       const status = l.groupSize > 1 ? (l.reused ? `Number used ${l.groupSize}× on different dates` : `One deposit, row ${l.groupIndex + 1} of ${l.groupSize}`) : 'OK'
-      out.push([r.ref, status, dayOf(r.paymentDate), r.type, r.payer, branchShort(r.branch) || '', r.cash.toFixed(2), r.withheld.toFixed(2), r.overpayment.toFixed(2), r.sessions, r.hasProof ? 'Yes' : 'No', r.notes])
+      out.push([r.ref, status, dayOf(r.paymentDate), r.type, r.payer, branchShort(r.branch) || '', r.cash.toFixed(2), r.withheld.toFixed(2), r.overpayment.toFixed(2), r.sessions, r.proofUrls.length ? 'Yes' : 'No', r.notes])
     }
-    for (const r of unnumbered) out.push(['', 'NO REFERENCE', dayOf(r.paymentDate), r.type, r.payer, branchShort(r.branch) || '', r.cash.toFixed(2), r.withheld.toFixed(2), r.overpayment.toFixed(2), r.sessions, r.hasProof ? 'Yes' : 'No', r.notes])
+    for (const r of unnumbered) out.push(['', 'NO REFERENCE', dayOf(r.paymentDate), r.type, r.payer, branchShort(r.branch) || '', r.cash.toFixed(2), r.withheld.toFixed(2), r.overpayment.toFixed(2), r.sessions, r.proofUrls.length ? 'Yes' : 'No', r.notes])
     downloadXlsx(`Payment Register ${year || 'All years'}.xlsx`, [{ name: 'Payment Register', headers, rows: out }])
   }
 
@@ -199,7 +200,18 @@ export default function PaymentRegisterTab({ branch }: { branch: string }) {
       <td className="px-3 py-2 text-right whitespace-nowrap tabular-nums">{formatCurrency(r.cash)}</td>
       <td className="px-3 py-2 text-right whitespace-nowrap tabular-nums" style={{ color: r.withheld ? 'var(--charcoal)' : 'var(--mid-gray)' }}>{r.withheld ? formatCurrency(r.withheld) : '—'}</td>
       <td className="px-3 py-2 text-right whitespace-nowrap tabular-nums">{r.sessions || '—'}</td>
-      <td className="px-3 py-2 text-center">{r.hasProof ? '✓' : <span style={{ color: '#b45309' }} title="No proof attached in Payment History">none</span>}</td>
+      <td className="px-3 py-2 text-center whitespace-nowrap">
+        {r.proofUrls.length === 0
+          ? <span style={{ color: '#b45309' }} title="No proof attached in Payment History">none</span>
+          : r.proofUrls.map((url, i) => (
+              <a key={url + i} href={url} target="_blank" rel="noopener noreferrer"
+                className="text-xs font-semibold underline underline-offset-2 hover:opacity-80"
+                style={{ color: 'var(--teal)', marginLeft: i ? 8 : 0 }}
+                title={`Open ${decodeURIComponent(url.split('/').pop() || 'proof')}`}>
+                {r.proofUrls.length > 1 ? `View ${i + 1}` : 'View'}
+              </a>
+            ))}
+      </td>
       <td className="px-3 py-2 text-xs" style={{ color: 'var(--mid-gray)', maxWidth: 380 }}><span className="line-clamp-2" title={r.notes}>{r.notes || '—'}</span></td>
     </>
   )
@@ -289,10 +301,12 @@ export default function PaymentRegisterTab({ branch }: { branch: string }) {
         <div className="rounded-lg px-4 py-3 text-sm" style={{ background: '#FEF2F2', color: '#991B1B', border: '1px solid #FCA5A5' }}>{error}</div>
       )}
 
-      <div className="rounded-lg border overflow-x-auto bg-white" style={{ borderColor: 'var(--light-gray)' }}>
+      {/* The table scrolls in its own box so the column headers stay in view
+          (Hannah 2026-11-18: "make the column headers stay even when i scroll down"). */}
+      <div className="rounded-lg border overflow-auto bg-white max-h-[calc(100vh-180px)] min-h-[320px]" style={{ borderColor: 'var(--light-gray)' }}>
         <table className="w-full text-sm">
-          <thead>
-            <tr style={{ background: '#f8faf6', color: 'var(--mid-gray)' }}>
+          <thead className="sticky top-0 z-10">
+            <tr style={{ background: '#f8faf6', color: 'var(--mid-gray)', boxShadow: '0 1px 0 #E9EFDC' }}>
               <th className={`${th} text-left`}>Reference</th>
               <th className={`${th} text-left`}>Date</th>
               <th className={`${th} text-left`}>Type</th>
