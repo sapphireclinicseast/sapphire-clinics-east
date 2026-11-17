@@ -28,6 +28,7 @@
 
 import type { Prisma, PrismaClient } from '@prisma/client'
 import { postJournalEntry, UnbalancedJournalEntryError, type PostingLine } from './posting'
+import { QB_ERA_END } from './qb-era'
 import { giftCardCodeFromItem } from '../gift-cards'
 
 /** Either the app client or the interactive-transaction client the locked wrappers pass in. */
@@ -61,15 +62,12 @@ export interface PostOrderResult {
 }
 
 /**
- * QuickBooks era (Hannah 2026-11-17): sales dated before 2026 are on the books
- * through the QuickBooks import (QB_IMPORT_JE) — the 2025 reports read only
- * that, and a branch's 2026 opening is built from every earlier entry. So a
- * POS reopen/edit of a 2025 order must never post a hub sale for it: 13 East
- * orders re-posted that way on 11/15–11/17 counted ₱38,950 of AR and revenue
- * twice in East's 2026 opening. Reversals are not blocked — they only take
- * back an entry that stands.
+ * QuickBooks era (lib/accounting/qb-era): a POS reopen/edit of a 2025 order
+ * must never post a hub sale for it — 13 East orders re-posted that way on
+ * 11/15–11/17 counted ₱38,950 of AR and revenue twice in East's 2026 opening.
+ * Reversals are not blocked — they only take back an entry that stands.
  */
-export const QB_ERA_END = new Date('2026-01-01T00:00:00+08:00')
+export { QB_ERA_END }
 export const QB_ERA_REASON = 'QuickBooks era: sales dated before 2026 are in the QB import, so the hub posts none'
 
 /**

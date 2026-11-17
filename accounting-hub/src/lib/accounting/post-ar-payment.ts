@@ -12,6 +12,7 @@
 
 import type { PrismaClient } from '@prisma/client'
 import { postJournalEntry, UnbalancedJournalEntryError, type PostingLine } from './posting'
+import { QB_ERA_END } from './qb-era'
 
 export interface PostARResult {
   posted: boolean
@@ -70,6 +71,15 @@ export async function postARPaymentJournal(
     },
   })
   if (!payment) return { posted: false, reason: 'AR payment not found' }
+
+  // QuickBooks era: a 2025 HMO cheque's collection is in the QB import. Editing
+  // its tags in Payment History (reverse + re-post) must not give it a first,
+  // hub-made entry. Payments that already carry hub entries (the 2026-08-06
+  // Guarantee Letter migration, Cainta) keep posting as before.
+  if (payment.wallet.walletType === 'HMO' && payment.paymentDate < QB_ERA_END) {
+    const history = await prisma.journalEntry.count({ where: { referenceType: { in: ['AR_PAYMENT', 'AR_PAYMENT_REVERSAL'] }, referenceId: paymentId } })
+    if (history === 0) return { posted: false, reason: 'QuickBooks era: HMO collections dated before 2026 are in the QB import, so the hub posts none' }
+  }
 
   const cashAmt     = Number(payment.amount)
   const discountAmt = Number(payment.discount || 0)
