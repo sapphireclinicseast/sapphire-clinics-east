@@ -11,6 +11,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Loader2, Upload, Trash2, Eye, X, PenLine, AlertTriangle } from 'lucide-react'
 import { generateBir2307Pdf, SIG_BOX } from '@/lib/bir2307-pdf'
+import { hrBtn } from '@/components/ui/hr-look'
 
 export interface SignatureStatus { source: 'uploaded' | 'default' | 'none'; updatedAt: string | null }
 export interface SignatoryInfo {
@@ -417,7 +418,7 @@ export function SignaturePanel({ branch, info, status, canManage, settings, onCh
   return (
     <div className="md:col-span-2 space-y-2">
       <div className="flex items-center justify-between gap-2 flex-wrap">
-        <label className="block text-[11px] font-semibold uppercase tracking-wide" style={{ color: 'var(--mid-gray)' }}>
+        <label className="block text-[11px] font-semibold uppercase tracking-[.4px]" style={{ color: 'var(--mid-gray)' }}>
           E-signature on the 2307
         </label>
         <span className="text-[11px]" style={{ color: status?.source === 'uploaded' ? '#166534' : 'var(--mid-gray)' }}>{sourceText(status)}</span>
@@ -427,19 +428,19 @@ export function SignaturePanel({ branch, info, status, canManage, settings, onCh
       </div>
       <div className="flex items-center gap-2 flex-wrap">
         {canManage && (
-          <button onClick={() => setUploading(true)} className="flex items-center gap-1 px-3 py-1.5 rounded-xl border text-xs font-semibold"
+          <button onClick={() => setUploading(true)} className={hrBtn.ghost}
             style={{ borderColor: 'var(--light-gray)', color: 'var(--teal)' }}>
             <Upload size={13} /> {status?.source === 'uploaded' ? 'Replace e-signature' : 'Upload e-signature'}
           </button>
         )}
         {canManage && status?.source === 'uploaded' && (
-          <button onClick={remove} disabled={removing} className="flex items-center gap-1 px-3 py-1.5 rounded-xl border text-xs font-semibold disabled:opacity-50"
+          <button onClick={remove} disabled={removing} className={hrBtn.ghost}
             style={{ borderColor: 'var(--light-gray)', color: '#b91c1c' }}>
             {removing ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />} Remove upload
           </button>
         )}
         <button onClick={() => sample.open(branch, info)} disabled={sample.busy || !info}
-          className="flex items-center gap-1 px-3 py-1.5 rounded-xl border text-xs font-semibold disabled:opacity-50"
+          className={hrBtn.ghost}
           style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>
           {sample.busy ? <Loader2 size={13} className="animate-spin" /> : <Eye size={13} />} Preview on a 2307
         </button>

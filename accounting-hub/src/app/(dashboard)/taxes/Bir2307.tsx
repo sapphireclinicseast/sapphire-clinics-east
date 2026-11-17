@@ -14,7 +14,7 @@
  */
 
 import { useState, useEffect, useCallback, type ReactNode } from 'react'
-import { Loader2, FileText, Eye, Download, Plus, X, RotateCcw, Save, CheckCircle2 } from 'lucide-react'
+import { Loader2, FileText, Eye, Download, Plus, X, RotateCcw, Save, CheckCircle2, Building2 } from 'lucide-react'
 import { StatCard, hrBtn } from '@/components/ui/hr-look'
 import { generateBir2307Pdf, type Bir2307Row } from '@/lib/bir2307-pdf'
 import { SignaturePanel, SignatureStrip, useSignatureStatus } from './Bir2307Signature'
@@ -40,6 +40,33 @@ const labelCls = 'block text-[11px] font-semibold uppercase tracking-[.4px] mb-1
 /** A compact field inside the income table. */
 const cellCls = 'w-full h-8 px-2 rounded-md border text-xs bg-white outline-none focus:border-[var(--teal)]'
 const labelStyle = { color: 'var(--mid-gray)' }
+
+/** HR Hub section card: light header (badge, title, optional right-hand slot) over a white body. */
+function SectionCard({ badge, title, aside, children }: { badge: ReactNode; title: string; aside?: ReactNode; children: ReactNode }) {
+  return (
+    <div className="rounded-lg border bg-white overflow-hidden" style={{ borderColor: 'var(--light-gray)' }}>
+      <div className="flex items-center gap-2.5 flex-wrap px-4 py-2.5 border-b" style={{ background: 'var(--hr-head)', borderColor: 'var(--hr-line)' }}>
+        {badge}
+        <h3 className="text-[13px] font-bold" style={{ color: 'var(--charcoal)' }}>{title}</h3>
+        {aside && <div className="ml-auto flex items-center gap-1.5 flex-wrap">{aside}</div>}
+      </div>
+      <div className="p-4">{children}</div>
+    </div>
+  )
+}
+const badgeCls = 'inline-flex items-center justify-center w-5 h-5 rounded-full text-[11px] font-bold'
+const badgeStyle = { background: 'var(--pale-teal)', color: 'var(--deep-teal)' }
+
+const PILL = {
+  green: { background: '#dcfce7', color: '#166534' },
+  amber: { background: '#fef3c7', color: '#92400e' },
+  red: { background: '#fee2e2', color: '#b91c1c' },
+  blue: { background: '#eff6ff', color: '#1d4ed8' },
+  grey: { background: 'var(--off-white)', color: 'var(--mid-gray)' },
+}
+const pill = (tone: keyof typeof PILL, text: string, icon?: ReactNode) => (
+  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold whitespace-nowrap" style={PILL[tone]}>{icon}{text}</span>
+)
 
 interface IncomeRow extends Bir2307Row { id: number }
 let rowSeq = 0
@@ -157,14 +184,7 @@ export function Bir2307Generator({ branch, canWrite }: { branch: string; canWrit
   // view look like this too"): summary cards, numbered section cards with light
   // headers, read-only payor details as text, one action bar.
   const section = (n: number, title: string, body: ReactNode, aside?: ReactNode) => (
-    <div className="rounded-lg border bg-white overflow-hidden" style={{ borderColor: 'var(--light-gray)' }}>
-      <div className="flex items-center gap-2.5 flex-wrap px-4 py-2.5 border-b" style={{ background: 'var(--hr-head)', borderColor: 'var(--hr-line)' }}>
-        <span className="inline-flex items-center justify-center w-5 h-5 rounded-full text-[11px] font-bold" style={{ background: 'var(--pale-teal)', color: 'var(--deep-teal)' }}>{n}</span>
-        <h3 className="text-[13px] font-bold" style={{ color: 'var(--charcoal)' }}>{title}</h3>
-        {aside && <div className="ml-auto">{aside}</div>}
-      </div>
-      <div className="p-4">{body}</div>
-    </div>
+    <SectionCard badge={<span className={badgeCls} style={badgeStyle}>{n}</span>} title={title} aside={aside}>{body}</SectionCard>
   )
   const readField = (label: string, value: string, wide = false) => (
     <div className={wide ? 'sm:col-span-2' : ''}>
@@ -311,8 +331,7 @@ export function Bir2307Generator({ branch, canWrite }: { branch: string; canWrit
           </div>
         </>
       ), autoNote ? (
-        <span className="px-2 py-0.5 rounded-full text-[11px] font-semibold"
-          style={autoNote.startsWith('Auto-filled') ? { background: '#dcfce7', color: '#166534' } : { background: '#fef3c7', color: '#92400e' }}>
+        <span className="px-2 py-0.5 rounded-full text-[11px] font-semibold" style={autoNote.startsWith('Auto-filled') ? PILL.green : PILL.amber}>
           {autoNote}
         </span>
       ) : undefined)}
@@ -344,8 +363,23 @@ export function Bir2307Generator({ branch, canWrite }: { branch: string; canWrit
   )
 }
 
+const EMPTY_SETTINGS: BranchSettings = { payorName: '', payorTin: '', payorAddress: '', payorZip: '', signatoryName: '', signatoryTitle: '' }
+/** What each field is called when it is blank ("Missing TIN, zip"). */
+const REQUIRED: [keyof BranchSettings, string][] = [
+  ['payorName', 'name'], ['payorTin', 'TIN'], ['payorAddress', 'address'], ['payorZip', 'zip'],
+  ['signatoryName', 'signatory'], ['signatoryTitle', 'title'],
+]
+const missingOf = (s?: BranchSettings) => REQUIRED.filter(([k]) => !(s?.[k] || '').trim()).map(([, l]) => l)
+const sameSettings = (a?: BranchSettings, b?: BranchSettings) =>
+  (Object.keys(EMPTY_SETTINGS) as (keyof BranchSettings)[]).every(k => (a?.[k] || '') === (b?.[k] || ''))
+
+// 2307 Settings in the HR Hub look (Hannah 11/17: "make the 2307 Settings view
+// look like this too"): summary cards, a toolbar with Save, and one section
+// card per branch with its status pills. Saving is unchanged (every branch).
 export function Bir2307Settings({ canWrite }: { canWrite: boolean }) {
   const [settings, setSettings] = useState<Record<string, BranchSettings>>({})
+  /** What the server last held, to show which branches have unsaved edits. */
+  const [baseline, setBaseline] = useState<Record<string, BranchSettings>>({})
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [savedAt, setSavedAt] = useState('')
@@ -353,7 +387,7 @@ export function Bir2307Settings({ canWrite }: { canWrite: boolean }) {
 
   useEffect(() => {
     fetch('/api/payroll/bir-2307?mode=settings').then(r => r.ok ? r.json() : { settings: {} })
-      .then(d => { setSettings(d.settings || {}); setLoading(false) })
+      .then(d => { setSettings(d.settings || {}); setBaseline(d.settings || {}); setLoading(false) })
       .catch(() => setLoading(false))
   }, [])
 
@@ -362,72 +396,121 @@ export function Bir2307Settings({ canWrite }: { canWrite: boolean }) {
 
   const saveAll = async () => {
     setSaving(true)
+    const sent = settings
     try {
       for (const b of BRANCHES) {
-        const s = settings[b.value]
+        const s = sent[b.value]
         if (!s) continue
         const r = await fetch('/api/payroll/bir-2307', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ branch: b.value, ...s }),
         })
         if (!r.ok) { alert((await r.json()).error || `Failed to save ${b.label}`); setSaving(false); return }
+        setBaseline(prev => ({ ...prev, [b.value]: s }))
       }
-      setSavedAt(new Date().toLocaleTimeString('en-PH'))
+      setSavedAt(new Date().toLocaleTimeString('en-PH', { hour: 'numeric', minute: '2-digit' }))
     } catch { alert('Failed to save settings') }
     setSaving(false)
   }
 
   if (loading) return <div className="flex items-center justify-center py-12"><Loader2 className="animate-spin" size={18} style={{ color: 'var(--teal)' }} /></div>
 
-  return (
-    <div className="rounded-2xl border bg-white p-5 space-y-4" style={{ borderColor: 'var(--light-gray)' }}>
-      <div className="flex items-center justify-between">
-        <h3 className="text-sm font-bold" style={{ color: 'var(--charcoal)' }}>2307 Payor Settings</h3>
-        {canWrite && (
-          <button onClick={saveAll} disabled={saving}
-            className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold text-white disabled:opacity-50" style={{ background: 'var(--teal)' }}>
-            {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />} Save Settings
-          </button>
-        )}
+  const sOf = (b: string) => settings[b] || EMPTY_SETTINGS
+  const incomplete = BRANCHES.filter(b => missingOf(sOf(b.value)).length)
+  const dirty = BRANCHES.filter(b => !sameSettings(settings[b.value], baseline[b.value]))
+  const sigSource = (b: string) => sig.signatures[b]?.source || 'none'
+  const uploaded = BRANCHES.filter(b => sigSource(b.value) === 'uploaded').length
+  const fromHr = BRANCHES.filter(b => sigSource(b.value) === 'default').length
+  const noSig = BRANCHES.filter(b => sigSource(b.value) === 'none')
+  const signatories = [...new Set(BRANCHES.map(b => sOf(b.value).signatoryName.trim()).filter(Boolean))]
+  const short = (bs: typeof BRANCHES) => bs.map(b => b.label.replace(/ (Branch|Store)$/, '')).join(', ')
+
+  const field = (b: string, k: keyof BranchSettings, label: string, opts: { wide?: boolean; placeholder?: string } = {}) => {
+    const changed = (sOf(b)[k] || '') !== (baseline[b]?.[k] || '')
+    return (
+      <div className={opts.wide ? 'sm:col-span-2' : ''}>
+        <label className={labelCls} style={labelStyle}>
+          {label}{changed && <span className="ml-1.5 normal-case tracking-normal" style={{ color: '#b45309' }}>· edited</span>}
+        </label>
+        <input value={sOf(b)[k] || ''} onChange={e => setField(b, k, e.target.value)} disabled={!canWrite} placeholder={opts.placeholder}
+          className={inputCls} style={{ borderColor: changed ? '#f59e0b' : 'var(--light-gray)' }} />
       </div>
-      <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>
-        Company information and certificate signatory per branch — these auto-fill the generator and print on the BIR 2307.
-        {savedAt && <span style={{ color: '#16a34a' }}> Saved {savedAt}.</span>}
-      </p>
+    )
+  }
+  const groupHead = (title: string, sub: string) => (
+    <div>
+      <p className="text-[12px] font-bold" style={{ color: 'var(--charcoal)' }}>{title}</p>
+      <p className="text-[11px]" style={{ color: 'var(--hr-faint)' }}>{sub}</p>
+    </div>
+  )
+
+  return (
+    <div className="space-y-4">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <StatCard label="Payor details" value={`${BRANCHES.length - incomplete.length} of ${BRANCHES.length} complete`}
+          sub={incomplete.length ? `Missing in ${short(incomplete)}` : 'Name, TIN, address, zip, signatory'}
+          tone={incomplete.length ? 'amber' : 'green'} compact />
+        <StatCard label="Signatory" value={signatories.length === 1 ? signatories[0] : signatories.length ? `${signatories.length} names` : '—'}
+          sub={signatories.length === 1 ? (sOf(BRANCHES[0].value).signatoryTitle || 'No title') : signatories.length ? 'Differs by branch' : 'Not set'}
+          tone={signatories.length ? 'blue' : 'zero'} compact />
+        <StatCard label="E-signatures" value={sig.loaded ? `${BRANCHES.length - noSig.length} of ${BRANCHES.length}` : '—'}
+          sub={!sig.loaded ? 'Checking…' : noSig.length ? `None for ${short(noSig)}` : [uploaded && `${uploaded} uploaded`, fromHr && `${fromHr} from the HR hub`].filter(Boolean).join(' · ')}
+          tone={!sig.loaded ? 'zero' : noSig.length ? 'red' : 'green'} compact />
+        <StatCard label="Unsaved changes" value={dirty.length ? `${dirty.length} branch${dirty.length === 1 ? '' : 'es'}` : 'None'}
+          sub={dirty.length ? short(dirty) : savedAt ? `Saved at ${savedAt}` : 'Matches what prints'}
+          tone={dirty.length ? 'amber' : savedAt ? 'green' : 'zero'} compact />
+      </div>
+
+      <div className="rounded-lg border bg-white px-4 py-3 flex items-center gap-3 flex-wrap" style={{ borderColor: 'var(--light-gray)' }}>
+        <div className="min-w-0 flex-1">
+          <p className="text-[13px] font-bold" style={{ color: 'var(--charcoal)' }}>2307 payor settings</p>
+          <p className="text-[11.5px]" style={{ color: 'var(--mid-gray)' }}>
+            Company details and the certificate signatory per branch. They fill the 2307 Generator and print on every BIR 2307.
+          </p>
+        </div>
+        {canWrite ? (
+          <button onClick={saveAll} disabled={saving} className={hrBtn.primary} style={{ background: 'var(--teal)' }}>
+            {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />} Save settings
+          </button>
+        ) : pill('grey', 'View only')}
+      </div>
+
       {BRANCHES.map(b => {
-        const s = settings[b.value] || { payorName: '', payorTin: '', payorAddress: '', payorZip: '', signatoryName: '', signatoryTitle: '' }
+        const s = sOf(b.value)
+        const missing = missingOf(s)
+        const src = sigSource(b.value)
         return (
-          <div key={b.value} className="rounded-xl border p-4 space-y-3" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
-            <p className="text-xs font-bold" style={{ color: 'var(--charcoal)' }}>{b.label}</p>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              <div>
-                <label className={labelCls} style={labelStyle}>Company / Registered Name</label>
-                <input value={s.payorName} onChange={e => setField(b.value, 'payorName', e.target.value)} disabled={!canWrite} className={inputCls} style={inputStyle} />
+          <SectionCard key={b.value} title={b.label}
+            badge={<span className={badgeCls} style={badgeStyle}><Building2 size={12} /></span>}
+            aside={<>
+              {dirty.some(d => d.value === b.value) && pill('amber', 'Unsaved')}
+              {missing.length ? pill('amber', `Missing ${missing.join(', ')}`) : pill('green', 'Complete', <CheckCircle2 size={12} />)}
+              {sig.loaded && (src === 'uploaded' ? pill('green', 'E-signature uploaded')
+                : src === 'default' ? pill('blue', 'E-signature from the HR hub') : pill('red', 'No e-signature'))}
+            </>}>
+            <div className="grid grid-cols-1 xl:grid-cols-2 gap-x-6 gap-y-5">
+              <div className="space-y-3">
+                {groupHead('Company', 'Prints in Part II — Payor and fills the generator')}
+                <div className="grid grid-cols-1 sm:grid-cols-[1fr_140px] gap-3">
+                  {field(b.value, 'payorName', 'Registered name', { wide: true })}
+                  {field(b.value, 'payorTin', 'TIN', { placeholder: '000-000-000-00000' })}
+                  {field(b.value, 'payorZip', 'Zip code')}
+                  {field(b.value, 'payorAddress', 'Registered address', { wide: true })}
+                </div>
               </div>
-              <div>
-                <label className={labelCls} style={labelStyle}>TIN</label>
-                <input value={s.payorTin} onChange={e => setField(b.value, 'payorTin', e.target.value)} disabled={!canWrite} className={inputCls} style={inputStyle} />
+              <div className="space-y-3">
+                {groupHead('Signatory', 'Printed under the signature line')}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {field(b.value, 'signatoryName', 'Name', { placeholder: 'HANNAH JARA' })}
+                  {field(b.value, 'signatoryTitle', 'Title', { placeholder: '(CEO AND PRESIDENT)' })}
+                  <div className="sm:col-span-2">
+                    <SignaturePanel branch={b.value} info={s} status={sig.signatures[b.value]} canManage={sig.canManage}
+                      settings={settings} onChanged={sig.refresh} />
+                  </div>
+                </div>
               </div>
-              <div>
-                <label className={labelCls} style={labelStyle}>Registered Address</label>
-                <input value={s.payorAddress} onChange={e => setField(b.value, 'payorAddress', e.target.value)} disabled={!canWrite} className={inputCls} style={inputStyle} />
-              </div>
-              <div className="max-w-[140px]">
-                <label className={labelCls} style={labelStyle}>Zip Code</label>
-                <input value={s.payorZip} onChange={e => setField(b.value, 'payorZip', e.target.value)} disabled={!canWrite} className={inputCls} style={inputStyle} />
-              </div>
-              <div>
-                <label className={labelCls} style={labelStyle}>Signatory Name</label>
-                <input value={s.signatoryName} onChange={e => setField(b.value, 'signatoryName', e.target.value)} disabled={!canWrite} className={inputCls} style={inputStyle} placeholder="HANNAH JARA" />
-              </div>
-              <div>
-                <label className={labelCls} style={labelStyle}>Signatory Title</label>
-                <input value={s.signatoryTitle} onChange={e => setField(b.value, 'signatoryTitle', e.target.value)} disabled={!canWrite} className={inputCls} style={inputStyle} placeholder="(CEO AND PRESIDENT)" />
-              </div>
-              <SignaturePanel branch={b.value} info={s} status={sig.signatures[b.value]} canManage={sig.canManage}
-                settings={settings} onChanged={sig.refresh} />
             </div>
-          </div>
+          </SectionCard>
         )
       })}
     </div>
