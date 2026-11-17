@@ -1,5 +1,18 @@
-// GET /api/public/hatch.png — the diagonal hatching used for an hour a
-// consultant does not work.
+// GET /api/public/hatch.png — NO LONGER USED by the decking sheet.
+//
+// The sheet drew an unworked hour as =IMAGE(this_url, 2), one formula per
+// cell. That never actually rendered: a tab carried four to eight hundred of
+// them, Sheets fetches =IMAGE server side under a per-spreadsheet queue, and
+// the five-minute sync rewrote every formula before the queue could drain —
+// so the cells read "Loading…" for ever instead of showing any hatching. They
+// are a flat colour now (see OFF_BG in decking-sheet/grid.ts).
+//
+// Kept, not deleted, only because a tab that has not re-synced since the
+// change may still hold the old formulas, and a 404 there would turn "Loading…"
+// into a broken-image icon. Safe to remove once every tab has synced.
+//
+// Originally:
+// The diagonal hatching used for an hour a consultant does not work.
 //
 // Google Sheets cannot fill a cell with a pattern. The nearest thing to the
 // hub's own striped "Unavailable" cell is an image stretched across the cell

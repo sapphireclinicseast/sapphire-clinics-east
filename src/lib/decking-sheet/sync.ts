@@ -1072,12 +1072,16 @@ async function pushTab(
     .map(v => ({ sheetId, startRowIndex: v.row, endRowIndex: v.row + 1, startColumnIndex: v.col, endColumnIndex: v.col + 1 }))
   // A slot closed to N/A or BREAK greys its payment and notes lines AT ONCE.
   //
-  // Choosing N/A cannot turn the cell into the hatched image on the spot: the
-  // hatch is an =IMAGE() formula, which is a cell VALUE, and conditional
-  // formatting can only change how a cell looks. The sync rewrites the slot
+  // Choosing N/A does not close the slot on the spot. The sync rewrites it
   // properly on its next run — within five minutes — and that is also when the
   // two lines below genuinely stop accepting input, because protection is
-  // static and cannot react to a value either.
+  // static and cannot react to a value.
+  //
+  // (The closed-hour fill used to be an =IMAGE() formula, i.e. a cell VALUE,
+  // which conditional formatting could not have produced at all. It is a plain
+  // background colour now, so a rule COULD grey the cell itself the moment N/A
+  // is chosen — worth doing, but it is a change to what the sheet looks like
+  // mid-edit and not part of removing the image.)
   //
   // What this does is close the gap in between: the moment N/A is chosen, the
   // payment and notes lines go grey and struck through, so nobody fills in a
