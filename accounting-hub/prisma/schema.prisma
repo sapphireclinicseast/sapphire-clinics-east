@@ -4702,11 +4702,14 @@ model ReportShareLink {
   createdAt     DateTime  @default(now())
 }
 
-/// A GL patient's cancellation fee that no guarantee letter had room for (the
-/// letter in use was used up or too low). It waits here and goes onto the
-/// patient's next letter: automatically when front desk adds the letter, or
-/// with "Charge to this letter" in the wallet view. The POS order is dated on
-/// the cancellation so it sits where it happened (lib/pos/parked-gl-charges).
+/// The fee record for one missed booking (cancelled / rescheduled / no-show).
+/// PARKED: a GL patient's fee no guarantee letter had room for — it waits here
+/// and goes onto the patient's next letter, automatically when front desk adds
+/// the letter or with "Charge to this letter" (lib/pos/parked-gl-charges).
+/// CHARGED: the order that settled it (parked-then-charged, charged from POS →
+/// Uncharged Cancellations, or rung up at New Payment). WAIVED: forgiven.
+/// One row per booking (scheduleId), so a booking is never charged twice and a
+/// recorded one is never flagged again (lib/pos/uncharged-cancellations).
 /// Hannah, 2026-11-18.
 model ParkedGlCharge {
   id              String    @id @default(cuid())
@@ -4733,7 +4736,8 @@ model ParkedGlCharge {
   sourceWalletId  String?
   /// PARKED | CHARGING (claimed, order being made) | CHARGED | WAIVED
   status          String    @default("PARKED")
-  orderId         String?   @unique
+  /// One order can settle several bookings (New Payment rings them together).
+  orderId         String?
   chargedWalletId String?
   chargedAt       DateTime?
   chargedById     String?
@@ -4746,4 +4750,5 @@ model ParkedGlCharge {
   updatedAt       DateTime  @default(now()) @updatedAt
 
   @@index([patientId, status])
+  @@index([orderId])
 }

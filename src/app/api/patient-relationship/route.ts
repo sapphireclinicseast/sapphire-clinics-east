@@ -263,14 +263,13 @@ export async function GET(req: NextRequest) {
       const firstSession = p.schedules[0]
       const activeLogs = p.cancellationLogs.filter(l => !l.deletedAt)
 
-      // What actually counts against the patient. Two things are excluded:
-      //   - reschedules, which are logged here but are not cancellations
-      //   - individual cancellations front desk waived when logging them
-      // Everything else counts, including logs predating sourceStatus (NULL) —
-      // treating those as cancellations keeps existing counts unchanged rather
-      // than silently shrinking them.
-      const countedLogs = activeLogs.filter(l =>
-        l.sourceStatus !== 'RESCHEDULED' && l.countsToward !== false)
+      // What actually counts against the patient: everything except the
+      // individual cancellations front desk waived when logging them (which
+      // includes therapist-initiated ones). Reschedules COUNT — Hannah,
+      // 2026-11-18: "there are no reschedules. reschedules should be charged
+      // as cancellations." A moved session is a session the patient called
+      // off. Logs predating sourceStatus (NULL) count too, as before.
+      const countedLogs = activeLogs.filter(l => l.countsToward !== false)
 
       // Lifetime count for slot removal (0/12) — deliberately NOT windowed.
       const totalUsed = countedLogs.length

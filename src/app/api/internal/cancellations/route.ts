@@ -89,9 +89,10 @@ export async function GET(req: NextRequest) {
     // or the cashier links a second payment to it.
     cancellations: logs.map((l) => ({
       ...l,
-      // Reschedules and waived entries are logged but never chargeable; the
-      // till should not offer them as something a fee settles.
-      chargeable: l.sourceStatus !== 'RESCHEDULED' && l.countsToward !== false,
+      // Waived entries (incl. therapist-initiated) are logged but never
+      // chargeable. Reschedules ARE chargeable — they are charged as
+      // cancellations (Hannah, 2026-11-18).
+      chargeable: l.countsToward !== false,
       settled: !!l.paidOrderId,
     })),
   })
