@@ -1161,6 +1161,38 @@ model CancellationLog {
   // before this field existed are backfilled from the linked schedule where one
   // exists, and an untagged manual entry is treated as a cancellation.
   sourceStatus    String?
+  /// Who called it off: "PATIENT" or "THERAPIST".
+  ///
+  /// A cancellation the clinic caused is not the patient's cancellation, and
+  /// counting it against their free allowance or their slot-removal total
+  /// punishes them for the clinic's own change of plan. Therapist-initiated
+  /// rows are therefore written with countsToward = false, which every count
+  /// and report already respects.
+  ///
+  /// It is also the figure the clinic wants about ITSELF: how often sessions
+  /// are called off from our side. That cannot be recovered from a free-text
+  /// waiver reason, which is where it used to hide.
+  ///
+  /// Nullable: rows written before this existed. They are not silently read as
+  /// patient-initiated — unknown is shown as unknown, because inventing an
+  /// attribution for a year of history would make the first report wrong in a
+  /// way nobody could see.
+  initiatedBy     String?
+  /// How the cancelled session was funded: "CASH", "HMO" or "GL".
+  ///
+  /// A guarantee letter buys named sessions. There is no two-free allowance
+  /// to spend — a GL patient who calls off has cost the letter a session, and
+  /// the clinic charges for it from the first one. So the allowance cannot be
+  /// read off the patient; it depends on what paid for THAT session.
+  ///
+  /// Recorded per log rather than as a flag on the patient because coverage is
+  /// not a property of a person: the same child can be GL for occupational
+  /// therapy and cash for speech, and a letter runs out mid-year. A patient
+  /// flag would be wrong for both, and wrong silently.
+  ///
+  /// Nullable: rows logged before the question was asked. Treated as the
+  /// ordinary allowance, which is what they were charged under.
+  paymentType     String?
   // Front desk can waive a specific cancellation at the moment they log it —
   // clinic closure, staff-side reschedule, an emergency they don't want held
   // against the patient. The reason is required when waiving so the decision is

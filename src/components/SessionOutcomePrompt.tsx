@@ -1,19 +1,10 @@
 'use client'
 
-import { useState } from 'react'
-
-// Fee-bearing statuses. A cancellation's fee depends on how much notice was
-// given, so the type has to be picked by whoever changed the status — nobody
-// reconstructs "was this >24 hrs?" a week later from the Patient Relationship
-// tab.
-const CANCELLATION_TYPES = [
-  'Cancellation >24 hrs (VALID)',
-  'Cancellation >24 hrs (INVALID)',
-  'Late Cancellation <24 hrs (VALID)',
-  'Late Cancellation <24 hrs (INVALID)',
-  'Retainer (VALID)',
-  'Retainer (INVALID)',
-]
+import { useEffect, useState } from 'react'
+import {
+  CANCELLATION_TYPES, COVERAGE, COVERAGE_LABEL, INITIATORS, INITIATOR_LABEL,
+  hasFreeAllowance, type Coverage, type Initiator,
+} from '@/lib/cancellation-types'
 
 export interface OutcomeTarget {
   scheduleId: string
@@ -43,7 +34,22 @@ export default function SessionOutcomePrompt({ target, onClose }: {
   onClose: (logged: boolean) => void
 }) {
   const isNoShow = target.status === 'NO_SHOW'
-  const [type, setType]       = useState(CANCELLATION_TYPES[0])
+  const isReschedule = target.status === 'RESCHEDULED'
+
+  // Who called it off. No default: the whole point is attribution, and a
+  // pre-selected "Patient" would be answered by inertia on a busy morning —
+  // which is how every therapist-initiated cancellation would end up on a
+  // patient's fee record. The prompt is skippable, so insisting on a real
+  // choice inside it costs nothing.
+  const [initiatedBy, setInitiatedBy] = useState<Initiator | null>(null)
+
+  // What paid for the session, pre-filled from the board below. A guarantee
+  // letter has no free allowance, so this decides whether the cancellation is
+  // chargeable from the first one.
+  const [coverage, setCoverage] = useState<Coverage | null>(null)
+  const [coverageHint, setCoverageHint] = useState<string | null>(null)
+
+  const [type, setType]       = useState<string>(CANCELLATION_TYPES[0])
   const [remarks, setRemarks] = useState('')
   const [waive, setWaive]           = useState(false)
   const [waiveReason, setWaiveReason] = useState('')
@@ -54,8 +60,40 @@ export default function SessionOutcomePrompt({ target, onClose }: {
   // admin holds). Say so rather than showing a form that cannot submit.
   const canLog = !!target.patientId && !!target.branch
 
+  // Ask the board how this patient is usually funded, so the common case is a
+  // confirmation rather than a classification. A failure leaves it unset and
+  // front desk pick — never a silent default, because the wrong value here
+  // charges a guarantee letter that may not exist.
+  useEffect(() => {
+    if (!target.patientId || isNoShow) return
+    const ctl = new AbortController()
+    fetch(`/api/patient-relationship/coverage?patientId=${encodeURIComponent(target.patientId)}`,
+      { signal: ctl.signal })
+      .then(r => (r.ok ? r.json() : null))
+      .then(d => {
+        if (!d?.suggested) return
+        setCoverage(d.suggested)
+        setCoverageHint(d.mixed
+          ? `From the board (${d.reason}) — this patient has more than one payment type, so check it`
+          : `From the board (${d.reason})`)
+      })
+      .catch(() => { /* leave it unset; the field is shown either way */ })
+    return () => ctl.abort()
+  }, [target.patientId, isNoShow])
+
+  // The fee question only has an answer for a patient-initiated cancellation.
+  // "How much notice did they give" means nothing when the clinic called it
+  // off, and a reschedule is not a cancellation at all.
+  const askFeeType = !isNoShow && !isReschedule && initiatedBy === 'PATIENT'
+  // A GL cancellation the patient called off is charged from the first one.
+  const glCharged = askFeeType && coverage === 'GL'
+
   async function save() {
     if (!canLog) return
+    if (!isNoShow && !initiatedBy) {
+      setError('Say who called this off — the patient, or the therapist.')
+      return
+    }
     // Without this the checkbox would be ignored server-side (a waiver needs a
     // reason) and the cancellation would count anyway — the opposite of what the
     // user just asked for, with no feedback saying so.
@@ -72,7 +110,12 @@ export default function SessionOutcomePrompt({ target, onClose }: {
           isNoShow
             ? { tab: 'noshow', patientId: target.patientId, branch: target.branch,
                 remarks: remarks || null, scheduleId: target.scheduleId }
-            : { patientId: target.patientId, branch: target.branch, type,
+            : { patientId: target.patientId, branch: target.branch,
+                // Only sent when it means something — the server stores a
+                // plain label for the rest rather than a fee type.
+                type: askFeeType ? type : null,
+                initiatedBy,
+                paymentType: coverage,
                 remarks: remarks || null, scheduleId: target.scheduleId,
                 // What this actually was. Reschedules are logged but never counted,
                 // and without this they are indistinguishable from cancellations.
@@ -116,7 +159,69 @@ export default function SessionOutcomePrompt({ target, onClose }: {
             </p>
           ) : (
             <>
+              {/* Who called it off. First, because it decides what else is
+                  worth asking: a cancellation the clinic caused has no notice
+                  period to classify and never counts against the patient. */}
               {!isNoShow && (
+                <div>
+                  <label className="block text-xs font-semibold mb-1.5" style={{ color: 'var(--charcoal)' }}>
+                    Who called this off?
+                  </label>
+                  <div className="grid grid-cols-2 gap-2">
+                    {INITIATORS.map(v => (
+                      <button key={v} type="button" onClick={() => setInitiatedBy(v)}
+                        className="rounded-lg px-3 py-2 text-sm font-semibold text-left transition-colors"
+                        style={initiatedBy === v
+                          ? { background: 'var(--pale-teal)', color: 'var(--teal)', border: '1.5px solid var(--teal)' }
+                          : { background: '#fff', color: 'var(--charcoal)', border: '1.5px solid var(--light-gray)' }}>
+                        {INITIATOR_LABEL[v]}
+                      </button>
+                    ))}
+                  </div>
+                  {initiatedBy === 'THERAPIST' && (
+                    <p className="mt-1.5 text-[11px]" style={{ color: 'var(--mid-gray)' }}>
+                      Recorded, but never counted against the patient and never charged — the
+                      clinic called it off. It is counted as a therapist-initiated cancellation
+                      in Patient Relationship.
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {/* What paid for the session. Only for a cancellation the
+                  patient called off: a therapist-initiated one is not charged
+                  to anybody, and a reschedule has not spent a session. */}
+              {askFeeType && (
+                <div>
+                  <label className="block text-xs font-semibold mb-1.5" style={{ color: 'var(--charcoal)' }}>
+                    How was this session paid for?
+                  </label>
+                  <div className="grid grid-cols-3 gap-2">
+                    {COVERAGE.map(v => (
+                      <button key={v} type="button" onClick={() => setCoverage(v)}
+                        className="rounded-lg px-2 py-2 text-sm font-semibold transition-colors"
+                        style={coverage === v
+                          ? { background: 'var(--pale-teal)', color: 'var(--teal)', border: '1.5px solid var(--teal)' }
+                          : { background: '#fff', color: 'var(--charcoal)', border: '1.5px solid var(--light-gray)' }}>
+                        {COVERAGE_LABEL[v]}
+                      </button>
+                    ))}
+                  </div>
+                  {coverageHint && (
+                    <p className="mt-1.5 text-[11px]" style={{ color: 'var(--mid-gray)' }}>{coverageHint}</p>
+                  )}
+                  {glCharged && (
+                    <p className="mt-1.5 text-[11px] rounded-lg px-2.5 py-2"
+                      style={{ background: '#FFF7ED', color: '#9A3412', border: '1px solid #FED7AA' }}>
+                      A guarantee letter has no two free cancellations — it buys named sessions,
+                      and this one has been spent. This will be charged from the first
+                      cancellation and flagged for the POS to collect against the letter.
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {askFeeType && (
                 <div>
                   <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--charcoal)' }}>
                     Type
@@ -148,7 +253,7 @@ export default function SessionOutcomePrompt({ target, onClose }: {
                   moment of logging, because that is when whoever knows the reason is
                   looking at it. Reschedules are excluded automatically and don't need
                   this, so it is only shown for actual cancellations. */}
-              {!isNoShow && target.status !== 'RESCHEDULED' && (
+              {askFeeType && (
                 <div className="rounded-lg p-3" style={{ background: '#F8FAFC', border: '1px solid #E2E8F0' }}>
                   <label className="flex items-start gap-2 cursor-pointer">
                     <input type="checkbox" checked={waive} className="mt-0.5"
