@@ -1290,4 +1290,28 @@ CREATE UNIQUE INDEX IF NOT EXISTS "ConsultantSiSubmission_consultantId_branch_mo
 DROP INDEX IF EXISTS "ConsultantSiSubmission_consultantId_month_key";
 SQL
 
+# ── Reports → Share: view-only public statement links, 2026-11-17 ──
+docker exec -i accounting_db psql -U sapphire -d sapphire_accounting <<'SQL'
+CREATE TABLE IF NOT EXISTS "ReportShareLink" (
+  "id"            TEXT NOT NULL,
+  "token"         TEXT NOT NULL,
+  "label"         TEXT,
+  "tab"           TEXT NOT NULL DEFAULT 'income-statement',
+  "year"          INTEGER NOT NULL,
+  "branch"        TEXT NOT NULL,
+  "view"          TEXT NOT NULL DEFAULT 'monthly',
+  "allowDrill"    BOOLEAN NOT NULL DEFAULT true,
+  "hideNames"     BOOLEAN NOT NULL DEFAULT true,
+  "expiresAt"     TIMESTAMP(3),
+  "revokedAt"     TIMESTAMP(3),
+  "viewCount"     INTEGER NOT NULL DEFAULT 0,
+  "lastViewedAt"  TIMESTAMP(3),
+  "createdById"   TEXT,
+  "createdByName" TEXT,
+  "createdAt"     TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT "ReportShareLink_pkey" PRIMARY KEY ("id")
+);
+CREATE UNIQUE INDEX IF NOT EXISTS "ReportShareLink_token_key" ON "ReportShareLink"("token");
+SQL
+
 echo "Redeploy complete."

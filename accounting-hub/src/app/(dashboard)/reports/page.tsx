@@ -5,7 +5,7 @@ import { useSession } from 'next-auth/react'
 import { userBranchScope } from '@/lib/branch-scope'
 import {
   FileText, Download, Printer, Loader2, ChevronDown,
-  Calendar, Building2, LayoutList, BarChart3, X, TrendingUp, Percent, ShieldCheck, CalendarRange, Wallet,
+  Calendar, Building2, LayoutList, BarChart3, X, TrendingUp, Percent, ShieldCheck, CalendarRange, Wallet, Link2,
 } from 'lucide-react'
 import { formatCurrency } from '@/lib/utils'
 import { DISPLAY_CURRENCIES, type DisplayCurrency, setDisplay, inDisplay, fmt, fmtSigned } from './display-currency'
@@ -18,6 +18,8 @@ import ContributionMargin, { type CmPayload } from './ContributionMargin'
 import SalesByPayment, { type SbpPayload } from './SalesByPayment'
 import AuditedStatement from './AuditedStatement'
 import YoYComparison from './YoYComparison'
+import ShareReportDialog from './ShareReportDialog'
+import { SHARE_ROLES } from '@/lib/reports/share'
 import { HR_PAGE_CLASS, HR_PAGE_STYLE, HrShimmerStyle, hrBtn } from '@/components/ui/hr-look'
 import { RETAINED_EARNINGS_BF_2026 } from '@/lib/reports/historical-fs'
 import { mergeLedgerStatements } from '@/lib/reports/v2/merge'
@@ -1731,6 +1733,9 @@ export default function ReportsPage() {
   const allIsTicked = isTicked.length === TICK_BRANCHES.length
   const isBranchSel = allIsTicked ? 'ALL' : isTicked.length === 1 ? isTicked[0] : isTicked.join('+')
   const effIsBranch = isTickboxes ? isBranchSel : effBranch
+  // Reports → Share: a view-only public link to the income statement on screen.
+  const canShare = effTab === 'income-statement' && SHARE_ROLES.includes(role) && !scope.short
+  const [shareOpen, setShareOpen] = useState(false)
 
   const currentYear = new Date().getFullYear()
   // Includes next year: a period fee (annual/biannual tuition) recognises part
@@ -2228,6 +2233,17 @@ export default function ReportsPage() {
             <Printer size={15} />
             PDF
           </button>
+          {canShare && (
+            <button
+              onClick={() => setShareOpen(true)}
+              className={hrBtn.outline}
+              style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}
+              title="Make a view-only link to this statement that opens without a login"
+            >
+              <Link2 size={15} />
+              Share
+            </button>
+          )}
         </div>
       </div>
 
@@ -2545,6 +2561,10 @@ export default function ReportsPage() {
           branch={branch}
           onClose={() => setDrillDown(null)}
         />
+      )}
+
+      {shareOpen && canShare && (
+        <ShareReportDialog year={year} branch={effIsBranch} view={effView} onClose={() => setShareOpen(false)} />
       )}
 
       {/* Print styles */}

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { computeLedgerStatements, type V2Statements } from '@/lib/reports/v2/engine'
+import { withholdLineDetails } from '@/lib/reports/v2/privacy'
 
 const READ_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'VIEWER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN', 'INVESTOR', 'MEDREP', 'PAYROLL_OFFICER']
 // Med reps and the payroll officer see SALES only (Hannah 2026-10-13), now from
@@ -59,19 +60,9 @@ export async function GET(req: Request) {
       account ? { account, ...(month && month >= 1 && month <= 12 ? { month, ...(cumulative ? { cumulative: true } : {}) } : {}) } : undefined,
       daily ? { daily: true } : undefined,
     )
-    /* Investors see the subsidiary ledger — every line, every amount, so the
-       ledger provably ties to the statements — but not who was treated or
-       paid: patient and personnel identities are clinic-confidential. Lines
-       from mechanical sources carry no person, so their labels pass through;
-       everything else keeps its reference (order #, PCV, cutoff) and loses
-       the free text after it. */
+    // Investors see every ledger line and amount, but not who was treated or paid.
     if (account && (session.user.role as string) === 'INVESTOR' && statements.collected) {
-      const KEEP_FULL = /^(bank-trueup|bank-opening-trueup|float-floor|period-fee|depreciation|interbranch|opening|history:)/
-      statements.collected = statements.collected.map(l => {
-        if (KEEP_FULL.test(l.source)) return l
-        const head = l.label.split(' — ')[0].split(' | ')[0]
-        return { ...l, label: head === l.label ? head : `${head} — (details withheld for privacy)` }
-      })
+      statements.collected = withholdLineDetails(statements.collected)
     }
     return NextResponse.json(revenueOnly ? revenueOnlyView(statements) : statements)
   } catch (err) {

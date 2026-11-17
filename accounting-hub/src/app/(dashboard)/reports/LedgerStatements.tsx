@@ -195,8 +195,9 @@ function MultiRow({ label, indent, bold, rule, doubleRule, muted, ...cells }: {
 
 /* ── Drill-down modal ───────────────────────────────────────────── */
 
-function DrillDown({ year, branch, account, title, month, cumulative, onClose }: {
+function DrillDown({ year, branch, account, title, month, cumulative, onClose, apiBase }: {
   year: number; branch: string; account: string; title: string; month: number | null; cumulative?: boolean; onClose: () => void
+  apiBase: string
 }) {
   const [lines, setLines] = useState<V2CollectedLine[] | null>(null)
   const [totals, setTotals] = useState<{ debit: number; credit: number } | null>(null)
@@ -212,7 +213,7 @@ function DrillDown({ year, branch, account, title, month, cumulative, onClose }:
       const params = new URLSearchParams({ year: String(year), branch: p, account })
       if (month) params.set('month', String(month))
       if (month && cumulative) params.set('cumulative', '1')
-      return fetch(`/api/reports/v2?${params}`).then(async r => ({ ok: r.ok, j: await r.json() }))
+      return fetch(`${apiBase}?${params}`).then(async r => ({ ok: r.ok, j: await r.json() }))
     }))
       .then(resps => {
         if (!live) return
@@ -229,7 +230,7 @@ function DrillDown({ year, branch, account, title, month, cumulative, onClose }:
       })
       .catch(() => live && setError('Failed to load'))
     return () => { live = false }
-  }, [year, branch, account, month])
+  }, [year, branch, account, month, apiBase])
 
   // Exact sums come from the engine (correct even when the list is capped);
   // fall back to summing the visible lines.
@@ -353,10 +354,15 @@ function DrillDown({ year, branch, account, title, month, cumulative, onClose }:
 
 /* ── Main component ─────────────────────────────────────────────── */
 
-export default function LedgerStatements({ year, branch, tab, view, readOnly, revenueOnly }: {
+export default function LedgerStatements({ year, branch, tab, view, readOnly, revenueOnly, apiBase = '/api/reports/v2', shared }: {
   year: number
   branch: string
   readOnly?: boolean
+  /** Where statements and drill-downs come from — a shared report link
+   *  (Reports → Share) reads its own public endpoint instead of the hub API. */
+  apiBase?: string
+  /** Public shared view: no engine health checks (they quote bank figures). */
+  shared?: boolean
   /** Med reps / payroll officer: the income statement's Gross Revenue section only
    *  (the API strips everything else for those roles anyway). */
   revenueOnly?: boolean
@@ -384,7 +390,7 @@ export default function LedgerStatements({ year, branch, tab, view, readOnly, re
     // branch and sum the payloads (mergeLedgerStatements).
     const parts = branch.split('+')
     Promise.all(parts.map(b =>
-      fetch(`/api/reports/v2?year=${year}&branch=${b}`).then(async r => ({ ok: r.ok, j: await r.json() }))
+      fetch(`${apiBase}?year=${year}&branch=${b}`).then(async r => ({ ok: r.ok, j: await r.json() }))
     ))
       .then(res => {
         if (!live) return
@@ -397,7 +403,7 @@ export default function LedgerStatements({ year, branch, tab, view, readOnly, re
       })
       .catch(() => live && setResult({ key, data: null, error: 'Failed to load' }))
     return () => { live = false }
-  }, [key, year, branch])
+  }, [key, year, branch, apiBase])
 
   const loading = result.key !== key
   const data = result.data
@@ -1019,12 +1025,12 @@ export default function LedgerStatements({ year, branch, tab, view, readOnly, re
     <ReadOnlyCtx.Provider value={!!readOnly}>
     <div className="pb-2">
       {body}
-      {readOnly || branch.includes('+') ? null : integrity}
+      {readOnly || shared || branch.includes('+') ? null : integrity}
       <p className="px-5 pt-1 text-[0.68rem]" style={{ color: '#9ca3af' }}>
         * derived account (not yet in the Chart of Accounts).{readOnly ? '' : ' Click any amount to see the entries behind it.'}
       </p>
       {drill && !readOnly && (
-        <DrillDown year={year} branch={branch} account={drill.account} title={drill.title} month={drill.month} cumulative={drill.cumulative} onClose={() => setDrill(null)} />
+        <DrillDown year={year} branch={branch} account={drill.account} title={drill.title} month={drill.month} cumulative={drill.cumulative} onClose={() => setDrill(null)} apiBase={apiBase} />
       )}
     </div>
     </ReadOnlyCtx.Provider>

@@ -4675,3 +4675,29 @@ model WfhDay {
   @@unique([employeeId, date])
   @@index([payslipId])
 }
+
+/// A view-only public link to one filtered financial statement (Reports →
+/// Share). Anyone holding the token sees that statement — year, branches and
+/// column view fixed at creation — live from the ledger engine, with no login.
+/// Revoking or expiry ends access; the token is the only secret.
+model ReportShareLink {
+  id            String    @id @default(cuid())
+  token         String    @unique
+  label         String?
+  tab           String    @default("income-statement")
+  year          Int
+  /// "ALL", one branch ("VERDANA_STORE"), or ticked branches joined by "+".
+  branch        String
+  view          String    @default("monthly")
+  /// Viewers may click an amount to see the entries behind it.
+  allowDrill    Boolean   @default(true)
+  /// Entry details keep their reference but drop the free text (names).
+  hideNames     Boolean   @default(true)
+  expiresAt     DateTime?
+  revokedAt     DateTime?
+  viewCount     Int       @default(0)
+  lastViewedAt  DateTime?
+  createdById   String?
+  createdByName String?
+  createdAt     DateTime  @default(now())
+}
