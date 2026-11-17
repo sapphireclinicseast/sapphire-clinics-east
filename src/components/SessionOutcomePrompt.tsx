@@ -65,7 +65,7 @@ export default function SessionOutcomePrompt({ target, onClose }: {
   // front desk pick — never a silent default, because the wrong value here
   // charges a guarantee letter that may not exist.
   useEffect(() => {
-    if (!target.patientId || isNoShow) return
+    if (!target.patientId) return
     const ctl = new AbortController()
     fetch(`/api/patient-relationship/coverage?patientId=${encodeURIComponent(target.patientId)}`,
       { signal: ctl.signal })
@@ -79,14 +79,22 @@ export default function SessionOutcomePrompt({ target, onClose }: {
       })
       .catch(() => { /* leave it unset; the field is shown either way */ })
     return () => ctl.abort()
-  }, [target.patientId, isNoShow])
+  }, [target.patientId])
 
   // The fee question only has an answer for a patient-initiated cancellation.
   // "How much notice did they give" means nothing when the clinic called it
   // off, and a reschedule is not a cancellation at all.
   const askFeeType = !isNoShow && !isReschedule && initiatedBy === 'PATIENT'
-  // A GL cancellation the patient called off is charged from the first one.
-  const glCharged = askFeeType && coverage === 'GL'
+
+  // What paid for the session is asked whenever the LETTER could be charged:
+  //   - a no-show, always — nobody rang and nobody came
+  //   - anything the patient called off, cancelled or rescheduled alike. A
+  //     rescheduled GL session is still an hour the letter bought and nobody
+  //     attended, which is what the Accounting Hub bills for.
+  // Never for a therapist-initiated one: the clinic moved it, so there is
+  // nothing to bill the letter for.
+  const askCoverage = isNoShow || initiatedBy === 'PATIENT'
+  const glCharged = askCoverage && coverage === 'GL'
 
   async function save() {
     if (!canLog) return
@@ -109,6 +117,9 @@ export default function SessionOutcomePrompt({ target, onClose }: {
         body: JSON.stringify(
           isNoShow
             ? { tab: 'noshow', patientId: target.patientId, branch: target.branch,
+                // On a guarantee letter this is what makes the no-show
+                // chargeable, so it has to reach the log.
+                paymentType: coverage,
                 remarks: remarks || null, scheduleId: target.scheduleId }
             : { patientId: target.patientId, branch: target.branch,
                 // Only sent when it means something — the server stores a
@@ -191,7 +202,7 @@ export default function SessionOutcomePrompt({ target, onClose }: {
               {/* What paid for the session. Only for a cancellation the
                   patient called off: a therapist-initiated one is not charged
                   to anybody, and a reschedule has not spent a session. */}
-              {askFeeType && (
+              {askCoverage && (
                 <div>
                   <label className="block text-xs font-semibold mb-1.5" style={{ color: 'var(--charcoal)' }}>
                     How was this session paid for?
@@ -213,9 +224,12 @@ export default function SessionOutcomePrompt({ target, onClose }: {
                   {glCharged && (
                     <p className="mt-1.5 text-[11px] rounded-lg px-2.5 py-2"
                       style={{ background: '#FFF7ED', color: '#9A3412', border: '1px solid #FED7AA' }}>
-                      A guarantee letter has no two free cancellations — it buys named sessions,
-                      and this one has been spent. This will be charged from the first
-                      cancellation and flagged for the POS to collect against the letter.
+                      {isNoShow
+                        ? 'A guarantee letter bought this hour and the clinician held it. Every GL no-show is charged to the letter — there is no allowance and nothing to waive.'
+                        : isReschedule
+                          ? 'A guarantee letter buys named sessions, and this one was held and not used. It is charged to the letter even though a reschedule never counts against the patient.'
+                          : 'A guarantee letter has no two free cancellations — it buys named sessions, and this one has been spent. Charged from the first cancellation.'}
+                      {' '}Flagged for the POS to collect against the letter.
                     </p>
                   )}
                 </div>

@@ -1244,6 +1244,15 @@ model NoShowLog {
   scheduleId      String?
   staffId         String?
   branch          String // "SANDBOX_EAST" | "SANDBOX_GREENHILLS"
+  /// How the missed session was funded: "CASH", "HMO" or "GL".
+  ///
+  /// A no-show carries no initiator — nobody rang and nobody came, so it is
+  /// the patient's by definition. What it does carry is who paid for the
+  /// session, and on a guarantee letter that is decisive: the letter bought a
+  /// named session, the clinician held the hour, and nobody attended. A GL
+  /// no-show is charged to the letter EVERY TIME. There is no allowance to
+  /// spend and nothing to waive.
+  paymentType     String?
   remarks         String?
   feeDeducted     Boolean   @default(false)
   feeDeductedAt   DateTime?
