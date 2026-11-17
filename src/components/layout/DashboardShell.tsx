@@ -6,6 +6,7 @@ import TopBar from './TopBar'
 import SurveyPrompt from '../SurveyPrompt'
 import WaitlistReminder from '../WaitlistReminder'
 import type { Session } from 'next-auth'
+import { canUseInquiries } from '@/lib/inquiry-access'
 
 export default function DashboardShell({
   user,
@@ -39,7 +40,24 @@ export default function DashboardShell({
 
       <div className="flex flex-col flex-1 overflow-hidden min-w-0">
         <TopBar user={user} onMenuClick={() => setSidebarOpen(true)} />
-        <main className="flex-1 overflow-y-auto p-4 md:p-6">{children}</main>
+        {/* The enquiry dock is fixed to the bottom-right CORNER OF THE
+            VIEWPORT, so it sits on top of whatever the page puts there — and
+            what pages put there is the pagination. Page 3 of the waitlist was
+            under the bubble and unclickable.
+
+            Reserved as scroll room rather than by moving the dock or shifting
+            the pagination left: the dock belongs in the corner, and every
+            paginated table in the Hub has its controls bottom-right, so
+            nudging them one by one would be a fix per table and a new bug on
+            the next one. With this, the last row can always be scrolled clear
+            of the bubble.
+ 
+            Only when the dock is actually rendered — it ships for the roles
+            that may read enquiries, and the rest should not pay for a gap
+            nothing occupies. */}
+        <main className={`flex-1 overflow-y-auto p-4 md:p-6 ${canUseInquiries(role) ? 'pb-28 md:pb-32' : ''}`}>
+          {children}
+        </main>
       </div>
 
       {/* Global survey prompt — shows on ALL pages for front desk users */}
