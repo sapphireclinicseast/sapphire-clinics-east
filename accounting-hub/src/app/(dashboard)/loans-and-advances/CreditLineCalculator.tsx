@@ -150,6 +150,10 @@ export default function CreditLineCalculator({ lines }: { lines: LineLite[] }) {
     { id: nextId++, date: addDays(today, 14), amount: '300,000' },
   ])
   const [extras, setExtras] = useState<Move[]>([])
+  // Quick check, laid out like BPI's own KCL calculator ("One BB Loan Calculator",
+  // KCL sheet): availment × rate ÷ 360 × days, daily interest, 1% curtailment.
+  const [qcAmt, setQcAmt] = useState('300,000')
+  const [qcDays, setQcDays] = useState('18')
 
   // Start from the BPI line in the register (or the first open one) once it loads.
   useEffect(() => {
@@ -264,6 +268,22 @@ export default function CreditLineCalculator({ lines }: { lines: LineLite[] }) {
             <p className="text-[11px] mt-0.5" style={{ color: 'var(--hr-faint)' }}>BPI&apos;s {peso0(BPI.feesPaid)} already paid (Nov 2026)</p></div>
         </div>
 
+        {(() => {
+          const a = num(qcAmt), d = Math.max(0, Math.round(num(qcDays))), apr = num(annualPct) / 100
+          const perDay = basis === 'days365' ? a * apr / 365 : basis === 'month' ? a * apr / 12 / 30 : a * apr / 360
+          return (
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-lg px-3 py-2.5 text-[12.5px]" style={{ background: 'var(--hr-head)', border: '1px solid var(--hr-line)', color: 'var(--mid-gray)' }}>
+              <span className="text-[11px] font-semibold uppercase tracking-[.4px]">Quick check</span>
+              <span className="flex items-center gap-1.5">Owe <input value={qcAmt} onChange={e => setQcAmt(e.target.value)} inputMode="decimal" aria-label="Quick check amount" className="h-8 w-28 px-2 rounded-lg border bg-white font-mono text-[12.5px]" style={bc} /></span>
+              <span className="flex items-center gap-1.5">for <input value={qcDays} onChange={e => setQcDays(e.target.value)} inputMode="numeric" aria-label="Quick check days" className="h-8 w-14 px-2 rounded-lg border bg-white font-mono text-[12.5px]" style={bc} /> days</span>
+              <span>→ interest <strong className="font-mono" style={{ color: 'var(--charcoal)' }}>{peso(r2(perDay * d))}</strong></span>
+              <span>· <strong className="font-mono" style={{ color: 'var(--charcoal)' }}>{peso(r2(perDay))}</strong> a day</span>
+              <span>· {num(minPct)}% principal <strong className="font-mono" style={{ color: 'var(--charcoal)' }}>{peso(r2(a * num(minPct) / 100))}</strong></span>
+              <span className="text-[11px]" style={{ color: 'var(--hr-faint)' }}>Same method as BPI&apos;s KCL calculator</span>
+            </div>
+          )
+        })()}
+
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {moveList('Draws', 'When you take money from the line, and how much.', draws, setDraws, 'Add a draw',
             () => ({ id: nextId++, date: draws.length ? addDays(draws[draws.length - 1].date || today, 14) : today, amount: '100,000' }))}
@@ -288,7 +308,7 @@ export default function CreditLineCalculator({ lines }: { lines: LineLite[] }) {
                 <select value={minBase} onChange={e => setMinBase(e.target.value as MinBase)} className="h-9 px-2 rounded-lg border bg-white text-xs" style={bc}><option value="balance">% of what you owe</option><option value="drawn">% of all you drew</option></select></div></div>
             <div><label className={lbl} style={mg}>Interest counted</label>
               <select value={basis} onChange={e => setBasis(e.target.value as Basis)} className="h-9 px-2 rounded-lg border bg-white text-xs" style={bc}>
-                <option value="days360">By days (year = 360)</option><option value="days365">By days (year = 365)</option><option value="month">Flat per month</option>
+                <option value="days360">By days, year = 360 (BPI)</option><option value="days365">By days (year = 365)</option><option value="month">Flat per month</option>
               </select></div>
           </div>
         </div>
