@@ -113,7 +113,7 @@ export async function PATCH(req: NextRequest) {
 
     const p = await prisma.aRPayment.findUnique({
       where: { id },
-      select: { id: true, notes: true, branch: true, wallet: { select: { walletType: true } } },
+      select: { id: true, notes: true, branch: true, paymentDate: true, wallet: { select: { walletType: true } } },
     })
     if (!p || !['HMO', 'GL'].includes(p.wallet.walletType)) return NextResponse.json({ error: 'Payment not found' }, { status: 404 })
     if (p.branch && !branchAllowed(user.branch, p.branch, user.branches)) {
@@ -126,18 +126,24 @@ export async function PATCH(req: NextRequest) {
       if (!parsed || parsed.kind !== 'AR') {
         return NextResponse.json({ error: 'Write the AR number like AHEA-AR26-0026 or AR25-0028' }, { status: 400 })
       }
-      // A number belongs to one collection (a deposit split across wallets is
-      // numbered in Payment History, not here).
+      // A number belongs to one collection. One remittance paid out as several
+      // credits (Pacific Cross's claim-by-claim batch, a deposit split across
+      // GL wallets) shares its number across rows of the SAME day — the
+      // register shows those as "one deposit · i of n" (Hannah 2026-11-18: "if
+      // paid in bulk, this should just be one AR reference number"). The same
+      // number on a different day is refused.
       const yy = String(parsed.yy).padStart(2, '0')
       const candidates = await prisma.aRPayment.findMany({
         where: { id: { not: id }, notes: { contains: `AR${yy}-` } },
-        select: { id: true, notes: true },
+        select: { id: true, notes: true, paymentDate: true },
       })
+      const manilaDay = (d: Date) => d.toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' })
       const clash = candidates.find(c => {
         const other = parseArRef(arRefOf(c.notes))
         return other && other.series === parsed.series && other.num === parsed.num
+          && manilaDay(c.paymentDate) !== manilaDay(p.paymentDate)
       })
-      if (clash) return NextResponse.json({ error: `${parsed.ref} is already used by another payment` }, { status: 409 })
+      if (clash) return NextResponse.json({ error: `${parsed.ref} is already used by a payment on another date` }, { status: 409 })
       notes = notesWithRef(parsed.ref, notes)
     }
     if (copyPending !== undefined) notes = copyPending ? withCopyPending(notes) : withoutCopyPending(notes)
