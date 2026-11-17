@@ -1312,6 +1312,38 @@ CREATE TABLE IF NOT EXISTS "ReportShareLink" (
   CONSTRAINT "ReportShareLink_pkey" PRIMARY KEY ("id")
 );
 CREATE UNIQUE INDEX IF NOT EXISTS "ReportShareLink_token_key" ON "ReportShareLink"("token");
+
+-- Parked GL cancellation fees (2026-11-18): fees no letter had room for wait
+-- here until the patient's next guarantee letter (lib/pos/parked-gl-charges).
+CREATE TABLE IF NOT EXISTS "ParkedGlCharge" (
+  "id"              TEXT NOT NULL,
+  "patientId"       TEXT NOT NULL,
+  "patientName"     TEXT NOT NULL,
+  "branch"          TEXT NOT NULL,
+  "scheduleId"      TEXT,
+  "eventDate"       TIMESTAMP(3) NOT NULL,
+  "eventType"       TEXT NOT NULL,
+  "detail"          TEXT NOT NULL,
+  "department"      TEXT,
+  "therapistName"   TEXT,
+  "serviceId"       TEXT NOT NULL,
+  "feeName"         TEXT NOT NULL,
+  "amount"          DECIMAL(65,30) NOT NULL,
+  "reason"          TEXT,
+  "sourceWalletId"  TEXT,
+  "status"          TEXT NOT NULL DEFAULT 'PARKED',
+  "orderId"         TEXT,
+  "chargedWalletId" TEXT,
+  "chargedAt"       TIMESTAMP(3),
+  "chargedById"     TEXT,
+  "createdById"     TEXT,
+  "createdAt"       TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "updatedAt"       TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT "ParkedGlCharge_pkey" PRIMARY KEY ("id")
+);
+CREATE UNIQUE INDEX IF NOT EXISTS "ParkedGlCharge_scheduleId_key" ON "ParkedGlCharge"("scheduleId");
+CREATE UNIQUE INDEX IF NOT EXISTS "ParkedGlCharge_orderId_key" ON "ParkedGlCharge"("orderId");
+CREATE INDEX IF NOT EXISTS "ParkedGlCharge_patientId_status_idx" ON "ParkedGlCharge"("patientId", "status");
 SQL
 
 echo "Redeploy complete."

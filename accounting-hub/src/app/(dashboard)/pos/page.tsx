@@ -191,7 +191,29 @@ interface DigitalWallet {
   logs?: WalletLog[]
   ledger?: WalletLedgerEntry[]
   initialBalance?: number
+  /** GL: the patient's parked cancellation fees (lib/pos/parked-gl-charges). */
+  parked?: { id: string; eventDate: string; detail: string; feeName: string; amount: number; reason: string | null }[]
   [key: string]: unknown
+}
+
+/** A cancellation fee no guarantee letter had room for, waiting for the next letter. */
+interface ParkedFee {
+  id: string; patientId: string; patientName: string; branch: string
+  eventDate: string; detail: string; feeName: string; amount: number; reason: string | null
+}
+
+interface ChargeParkedResponse {
+  charged?: { orderNumber: number | null; amount: number }[]
+  chargedAmount?: number; left?: number; leftAmount?: number; error?: string
+}
+
+const parkedResultText = (d: ChargeParkedResponse, onNewLetter = false): string => {
+  const n = d.charged?.length || 0
+  const fees = (k: number) => `${k} parked cancellation fee${k === 1 ? '' : 's'}`
+  const leftText = d.left ? ` ${fees(d.left)} (${formatCurrency(d.leftAmount || 0)}) still parked — not enough left on this letter.` : ''
+  if (n) return `${onNewLetter ? 'New letter: ' : ''}${fees(n)} (${formatCurrency(d.chargedAmount || 0)}) charged to this letter, dated on ${n === 1 ? 'its cancellation' : 'their cancellations'}.${leftText}`
+  if (d.error) return d.error
+  return d.left ? `This letter doesn't have enough left for the parked fees.` : 'No parked fees for this patient.'
 }
 
 interface WalletPackage {
@@ -5420,6 +5442,28 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
   const filterDropRef = useRef<HTMLDivElement>(null)
   const [syncing, setSyncing] = useState(false)
   const [syncResult, setSyncResult] = useState<string | null>(null)
+  // Parked cancellation fees — GL list summary, per-patient tags, wallet banner.
+  const [parkedFees, setParkedFees] = useState<ParkedFee[]>([])
+  const [showParked, setShowParked] = useState(false)
+  const [parkedNotice, setParkedNotice] = useState<string | null>(null)
+  const [parkedBusy, setParkedBusy] = useState(false)
+  const fetchParked = useCallback(async () => {
+    try {
+      const r = await fetch('/api/pos/parked-gl-charges', { cache: 'no-store' })
+      if (r.ok) setParkedFees(((await r.json()).charges || []) as ParkedFee[])
+    } catch { /* the list is a convenience; the wallet view still shows them */ }
+  }, [])
+  useEffect(() => { if (walletTypeFilter === 'GL') fetchParked() }, [walletTypeFilter, fetchParked])
+  const parkedByPatient = useMemo(() => {
+    const m = new Map<string, { name: string; count: number; amount: number; dates: string[] }>()
+    for (const f of parkedFees) {
+      const e = m.get(f.patientId) || { name: f.patientName, count: 0, amount: 0, dates: [] }
+      e.count += 1; e.amount += f.amount; e.dates.push(f.eventDate)
+      m.set(f.patientId, e)
+    }
+    return m
+  }, [parkedFees])
+  const parkedTotal = useMemo(() => parkedFees.reduce((s, f) => s + f.amount, 0), [parkedFees])
 
   const fetchWallets = useCallback(async () => {
     setLoading(true)
@@ -5530,6 +5574,11 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
         fetchWallets()
         return
       }
+      // A new guarantee letter takes the patient's parked cancellation fees.
+      if (walletTypeFilter === 'GL' && data.parkedCharged && (data.parkedCharged.charged?.length || data.parkedCharged.error)) {
+        setParkedNotice(`${data.patientName}: ${parkedResultText(data.parkedCharged, true)}`)
+        fetchParked()
+      }
       // If PACKAGE wallet and a package service was selected, auto-add the first package
       if (walletTypeFilter === 'PACKAGE' && createPkgSelected && data.id) {
         try {
@@ -5573,6 +5622,23 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
       setWalletDetail(d)
     } catch {
       setWalletDetail(null)
+    }
+  }
+
+  // "Charge to this letter" — the patient's parked cancellation fees, oldest
+  // first, as far as this letter's balance goes.
+  const chargeParkedHere = async () => {
+    if (!walletDetail || parkedBusy) return
+    setParkedBusy(true)
+    try {
+      const r = await fetch(`/api/pos/wallets/${walletDetail.id}/charge-parked`, { method: 'POST' })
+      const d = (await r.json().catch(() => ({}))) as ChargeParkedResponse
+      setParkedNotice(`${walletDetail.patientName}: ${parkedResultText(d)}`)
+      await loadWalletDetail(walletDetail); fetchWallets(); fetchParked()
+    } catch {
+      setParkedNotice('Could not charge the parked fees — check the connection and try again.')
+    } finally {
+      setParkedBusy(false)
     }
   }
 
@@ -6197,6 +6263,48 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
               {syncResult.includes('failed') ? '✗' : '✓'} {syncResult}
             </span>
           )}
+          {parkedFees.length > 0 && (
+            <button onClick={() => setShowParked(o => !o)}
+              className="flex items-center gap-1.5 text-xs px-3 py-2 rounded-xl font-semibold border"
+              style={{ borderColor: '#ddd6fe', background: '#f5f3ff', color: RETRO_CANCEL_COLOR }}>
+              <span className="font-mono">{parkedFees.length}</span> parked cancellation fees · <span className="font-mono">{formatCurrency(parkedTotal)}</span> · <span className="font-mono">{parkedByPatient.size}</span> patients
+              <ChevronDown size={12} style={{ transform: showParked ? 'rotate(180deg)' : undefined }} />
+            </button>
+          )}
+        </div>
+      )}
+      {walletTypeFilter === 'GL' && parkedNotice && (
+        <div className="flex items-start justify-between gap-3 rounded-xl border px-4 py-2.5 text-xs" style={{ borderColor: '#ddd6fe', background: '#f5f3ff', color: RETRO_CANCEL_COLOR }}>
+          <span>{parkedNotice}</span>
+          <button onClick={() => setParkedNotice(null)} className="flex-none" aria-label="Dismiss"><X size={13} /></button>
+        </div>
+      )}
+      {walletTypeFilter === 'GL' && showParked && parkedFees.length > 0 && (
+        <div className="rounded-2xl border bg-white overflow-x-auto" style={{ borderColor: '#ddd6fe' }}>
+          <p className="px-5 pt-3 pb-2 text-xs" style={{ color: 'var(--mid-gray)' }}>
+            Cancellation fees no letter had room for (the letter in use was used up or too low). They go on the patient&apos;s next guarantee letter
+            automatically when it&apos;s created, dated on the cancellation — or open the patient&apos;s letter and click <b>Charge to this letter</b>.
+          </p>
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b text-xs" style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>
+                <th className="px-5 py-2 text-left font-semibold">Patient</th>
+                <th className="px-5 py-2 text-right font-semibold">Fees</th>
+                <th className="px-5 py-2 text-right font-semibold">Amount</th>
+                <th className="px-5 py-2 text-left font-semibold">Cancellation dates</th>
+              </tr>
+            </thead>
+            <tbody>
+              {[...parkedByPatient.entries()].sort((a, b) => b[1].amount - a[1].amount).map(([pid, p]) => (
+                <tr key={pid} className="border-b" style={{ borderColor: 'var(--light-gray)' }}>
+                  <td className="px-5 py-2 font-medium" style={{ color: 'var(--charcoal)' }}>{p.name}</td>
+                  <td className="px-5 py-2 text-right font-mono">{p.count}</td>
+                  <td className="px-5 py-2 text-right font-mono" style={{ color: RETRO_CANCEL_COLOR }}>{formatCurrency(p.amount)}</td>
+                  <td className="px-5 py-2 text-xs" style={{ color: 'var(--mid-gray)' }}>{p.dates.map(d => formatDate(d)).join(' · ')}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       )}
 
@@ -6411,6 +6519,12 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
                       {w.patientName}
                       {w.isActive === false && <span className="ml-2 text-xs font-normal text-red-600">(Deleted)</span>}
                       {isGlZeroBalance && <span className="ml-2 text-xs font-normal" style={{ color: '#9ca3af' }}>(No Balance)</span>}
+                      {walletTypeFilter === 'GL' && w.patientId && parkedByPatient.get(w.patientId) && (
+                        <span className="ml-2 inline-block px-1.5 py-0.5 rounded text-[10px] font-semibold align-middle" style={{ background: '#ede9fe', color: RETRO_CANCEL_COLOR }}
+                          title="Cancellation fees waiting for this patient's next letter">
+                          <span className="font-mono">{formatCurrency(parkedByPatient.get(w.patientId)!.amount)}</span> parked
+                        </span>
+                      )}
                     </td>
                     <td className="px-5 py-3">
                       {walletTypeFilter === 'GL' ? (
@@ -7476,6 +7590,32 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
                 </>
               ) : (
                 <>
+              {/* Parked cancellation fees — waiting for a letter with room */}
+              {walletDetail.walletType === 'GL' && (walletDetail.parked?.length || 0) > 0 && (
+                <div className="mb-4 rounded-xl border px-4 py-3" style={{ borderColor: '#ddd6fe', background: '#f5f3ff' }}>
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="text-xs" style={{ color: RETRO_CANCEL_COLOR }}>
+                      <p className="font-semibold text-sm">
+                        <span className="font-mono">{walletDetail.parked!.length}</span> parked cancellation fee{walletDetail.parked!.length === 1 ? '' : 's'} ·{' '}
+                        <span className="font-mono">{formatCurrency(walletDetail.parked!.reduce((s, p) => s + p.amount, 0))}</span>
+                      </p>
+                      <p className="mt-0.5" style={{ color: 'var(--mid-gray)' }}>No letter had room for these when they happened. They go on this patient&apos;s next letter — or charge them here, dated on each cancellation.</p>
+                      <ul className="mt-1.5 space-y-0.5">
+                        {walletDetail.parked!.map(p => (
+                          <li key={p.id}><span className="font-mono">{formatCurrency(p.amount)}</span> · {p.feeName} — {p.detail}</li>
+                        ))}
+                      </ul>
+                    </div>
+                    {walletDetail.isActive !== false && !walletDetail.usedUpAt && (
+                      <button onClick={chargeParkedHere} disabled={parkedBusy}
+                        className="flex-none flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium text-white"
+                        style={{ background: RETRO_CANCEL_COLOR, opacity: parkedBusy ? 0.7 : 1 }}>
+                        {parkedBusy && <Loader2 size={12} className="animate-spin" />} Charge to this letter
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
               {/* Running Balance — monetary wallets and GL (consumable balance tracking) */}
               {['VIP', 'PREPAID_CARD', 'DOWNPAYMENT', 'ADVANCE', 'GL'].includes(walletDetail.walletType) && (
                 <div className="mb-4">

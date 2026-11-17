@@ -288,7 +288,13 @@ export async function GET(
 
       // Paid per application: the whole letter, not each session (lib/gl-paid).
       const glPaid = (await glWalletsPaid(prisma, [wallet.id])).get(wallet.id) || null
-      return NextResponse.json({ ...wallet, ledger: glEnriched, initialBalance: glInitialBalance, orders, glPaid })
+      // Cancellation fees waiting for a letter with room (lib/pos/parked-gl-charges).
+      const parked = (await prisma.parkedGlCharge.findMany({
+        where: { patientId: wallet.patientId, status: 'PARKED' },
+        orderBy: { eventDate: 'asc' },
+        select: { id: true, eventDate: true, detail: true, feeName: true, amount: true, reason: true },
+      })).map(p => ({ ...p, amount: Number(p.amount) }))
+      return NextResponse.json({ ...wallet, ledger: glEnriched, initialBalance: glInitialBalance, orders, glPaid, parked })
     }
 
     return NextResponse.json(wallet)

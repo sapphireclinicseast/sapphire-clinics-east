@@ -4,6 +4,7 @@ import { prisma } from '@/lib/prisma'
 import { parsePagination, paginatedResult } from '@/lib/pagination'
 import { obtainedDateError } from '@/lib/wallet-dates'
 import { parseAgency, AGENCY_ERROR } from '@/lib/gl-stage'
+import { chargeParkedToLetter, type ChargeParkedResult } from '@/lib/pos/parked-gl-charges'
 
 const WRITE_ROLES = ['ADMIN', 'PAYROLL_OFFICER', 'ACCOUNTANT', 'BOOKKEEPER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN', 'AHEA_FRONTDESK', 'AHGH_FRONTDESK']
 
@@ -239,7 +240,19 @@ export async function POST(req: Request) {
       },
     })
 
-    return NextResponse.json(wallet, { status: 201 })
+    // A new guarantee letter takes the patient's parked cancellation fees —
+    // ones an earlier letter had no room for (lib/pos/parked-gl-charges).
+    // Never blocks the letter from being saved.
+    let parkedCharged: ChargeParkedResult | null = null
+    if (wallet.walletType === 'GL' && Number(wallet.balance) > 0) {
+      try {
+        parkedCharged = await chargeParkedToLetter(prisma, wallet.id, session.user.id)
+      } catch (e) {
+        console.error('[wallets.POST] charging parked GL fees failed:', e)
+      }
+    }
+
+    return NextResponse.json({ ...wallet, parkedCharged }, { status: 201 })
   } catch {
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }

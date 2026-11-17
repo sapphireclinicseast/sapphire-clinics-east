@@ -4701,3 +4701,45 @@ model ReportShareLink {
   createdByName String?
   createdAt     DateTime  @default(now())
 }
+
+/// A GL patient's cancellation fee that no guarantee letter had room for (the
+/// letter in use was used up or too low). It waits here and goes onto the
+/// patient's next letter: automatically when front desk adds the letter, or
+/// with "Charge to this letter" in the wallet view. The POS order is dated on
+/// the cancellation so it sits where it happened (lib/pos/parked-gl-charges).
+/// Hannah, 2026-11-18.
+model ParkedGlCharge {
+  id              String    @id @default(cuid())
+  patientId       String
+  patientName     String
+  /// Branch the booking was at; the order is recorded there.
+  branch          String
+  /// Ops Hub Schedule id of the booking — one fee per booking.
+  scheduleId      String?   @unique
+  /// Day of the cancellation / no-show; the order's transactionDate.
+  eventDate       DateTime
+  /// CANCELLED | RESCHEDULED | NO_SHOW
+  eventType       String
+  /// "cancelled booking on Apr 21, 2026 (OT, therapist)" — goes into the order note.
+  detail          String
+  department      String?
+  therapistName   String?
+  serviceId       String
+  feeName         String
+  amount          Decimal
+  /// Why it was parked (e.g. "letter used up", "not enough left on the letter").
+  reason          String?
+  /// Letter it would have gone on.
+  sourceWalletId  String?
+  /// PARKED | CHARGING (claimed, order being made) | CHARGED
+  status          String    @default("PARKED")
+  orderId         String?   @unique
+  chargedWalletId String?
+  chargedAt       DateTime?
+  chargedById     String?
+  createdById     String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @default(now()) @updatedAt
+
+  @@index([patientId, status])
+}
