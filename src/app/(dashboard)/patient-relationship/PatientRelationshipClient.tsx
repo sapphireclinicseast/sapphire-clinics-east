@@ -1579,6 +1579,10 @@ function NoShowTab({ branch }: { branch: string }) {
   const atLimitCount = patients.filter((p: any) => p.noShowCount >= MAX_NOSHOWS).length
   const nearingCount = patients.filter((p: any) => p.noShowCount === MAX_NOSHOWS - 1).length
   const totalNoShows = patients.reduce((n: number, p: any) => n + Number(p.noShowCount ?? 0), 0)
+  // Every one of these is chargeable to a guarantee letter. Not a window, not
+  // an allowance, not waivable — the letter bought the hour and the clinician
+  // held it.
+  const glNoShows = patients.reduce((n: number, p: any) => n + Number(p.glChargeable ?? 0), 0)
   // The list reloads after every log/delete; keep the rows (dimmed) rather than
   // blanking the table, so the open patient stays open in place.
   const firstLoad = loading && patients.length === 0
@@ -1597,6 +1601,14 @@ function NoShowTab({ branch }: { branch: string }) {
         <KpiCard label="Subject to slot removal" value={firstLoad ? '—' : <span style={{ color: atLimitCount ? '#DC2626' : undefined }}>{atLimitCount.toLocaleString()}</span>}
           sub={`At ${MAX_NOSHOWS}/${MAX_NOSHOWS}`} accent="#DC2626" icon={<AlertTriangle size={15} />} />
       </div>
+
+      {glNoShows > 0 && (
+        <Callout tone="warn" icon={<Info size={14} />}>
+          <strong>{glNoShows} chargeable to a guarantee letter.</strong> A GL no-show is charged
+          every time &mdash; the letter bought the hour and the clinician held it. There is no
+          allowance against it and nothing to waive.
+        </Callout>
+      )}
 
       {loadError && <LoadError message={loadError} onRetry={fetchData} />}
 
