@@ -9,6 +9,7 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { arRefOf, parseArRef } from '@/lib/ar-ref'
 
 const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN']
 const PREFIXES = ['AHEA', 'AHGH', 'VER'] as const
@@ -25,12 +26,13 @@ export async function GET(req: Request) {
     select: { notes: true },
   })
   const max: Record<string, number> = Object.fromEntries(PREFIXES.map(p => [p, 0]))
-  const re = new RegExp(`(?:\\b(AHEA|AHGH|VER)-)?\\bAR${yy}-(\\d{3,5})\\b`, 'g')
+  // Only the reference at the head of the notes is the payment's own; a note may
+  // mention another payment's number further on (lib/ar-ref).
   for (const r of rows) {
-    for (const m of (r.notes || '').matchAll(re)) {
-      const prefix = m[1] || 'AHEA'
-      max[prefix] = Math.max(max[prefix] ?? 0, parseInt(m[2], 10))
-    }
+    const parsed = parseArRef(arRefOf(r.notes))
+    if (!parsed || parsed.kind !== 'AR' || parsed.yy !== parseInt(yy, 10)) continue
+    const prefix = parsed.prefix || 'AHEA'
+    max[prefix] = Math.max(max[prefix] ?? 0, parsed.num)
   }
   const next = Object.fromEntries(PREFIXES.map(p => [p, `${p}-AR${yy}-${String((max[p] ?? 0) + 1).padStart(4, '0')}`]))
   return NextResponse.json({ next })

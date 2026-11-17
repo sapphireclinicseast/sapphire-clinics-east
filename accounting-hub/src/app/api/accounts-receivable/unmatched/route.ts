@@ -15,11 +15,11 @@ import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { enforceBranch } from '@/lib/branch-scope'
+import { arRefOf } from '@/lib/ar-ref'
 
 const READ_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'VIEWER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN', 'HMO_OFFICER']
 /** The account an unmatched excess is parked in while it is still owed to the payer. */
 const HELD_ACCOUNT = '4050'
-const AR_REF_RE = /\b(?:(?:AHEA|AHGH|VER)-)?AR\d{2}-\d{3,5}\b/
 
 const n = (v: unknown) => Number(v ?? 0) || 0
 const round2 = (x: number) => Math.round(x * 100) / 100
@@ -68,7 +68,7 @@ export async function GET(req: NextRequest) {
     const rows = payments.map(p => {
       const gross = round2(n(p.amount) + n(p.discount))
       const unmatched = round2(n(p.overpayment))
-      const ref = p.notes?.match(AR_REF_RE)?.[0] || ''
+      const ref = arRefOf(p.notes)
       return {
         id: p.id,
         paymentDate: p.paymentDate.toISOString(),

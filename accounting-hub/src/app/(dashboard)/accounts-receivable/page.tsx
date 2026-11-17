@@ -16,6 +16,7 @@ import {
   Download, Filter, FileText, Settings, Maximize2, Minimize2, Lock, Unlock, TrendingDown, Loader2,
 } from 'lucide-react'
 import { formatCurrency } from '@/lib/utils'
+import { arRefOf, notesWithoutRef, notesWithRef } from '@/lib/ar-ref'
 import { HmoSettlementModal, HMO_SETTLE_ROLES, type SettleOrder } from '@/components/HmoSettlementModal'
 import { downloadXlsx, downloadReportPdf } from '@/lib/export'
 import { ScanUpload } from '@/components/ScanUpload'
@@ -24,6 +25,7 @@ import { soaBranchCode } from '@/lib/soa-ref'
 import SubmittedForSoa from './SubmittedForSoa'
 import OthersTab from './OthersTab'
 import TuitionTab from './TuitionTab'
+import PaymentRegisterTab from './PaymentRegisterTab'
 import HmoDirectoryTab from './HmoDirectoryTab'
 import CollectionSettingsModal from './CollectionSettingsModal'
 import {
@@ -203,21 +205,16 @@ const HMO_FOLLOW_UP_VIEWS = [
   // batch-mates are already tagged paid, while this one is not.
   { key: 'submitted-unpaid', label: 'Left Out Sessions' },
 ] as const
-type ArTab = 'HMO' | 'GL' | 'TUITION' | 'OTHERS'
+type ArTab = 'HMO' | 'GL' | 'TUITION' | 'OTHERS' | 'REGISTER'
 
 function formatDate(d: string) {
   return new Date(d).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })
 }
 
-// AR collection reference ("AHEA-AR26-0015", "AR25-0022"). It has always been
-// keyed at the head of the payment's notes, so it is read from — and saved to —
-// there rather than a field of its own.
-const AR_REF_RE = /\b(?:(?:AHEA|AHGH|VER)-)?AR\d{2}-\d{3,5}\b/
-const arRefOf = (notes?: string | null) => notes?.match(AR_REF_RE)?.[0] || ''
-const notesWithoutRef = (notes?: string | null) =>
-  (notes || '').replace(new RegExp(`${AR_REF_RE.source}\\s*[;|:–-]?\\s*`), '').trim()
-const notesWithRef = (ref: string, notes: string) =>
-  [ref.trim(), notesWithoutRef(notes)].filter(Boolean).join('; ')
+// AR collection reference ("AHEA-AR26-0015", "AR25-0022", "TC25-0011"). It has
+// always been keyed at the head of the payment's notes, so it is read from — and
+// saved to — there rather than a field of its own (lib/ar-ref: only the head
+// counts, so a note mentioning another payment's number never shows as this one's).
 // Page branch → the prefix its AR references carry.
 const AR_REF_PREFIX: Record<string, string> = { SANDBOX_EAST: 'AHEA', SANDBOX_GREENHILLS: 'AHGH', VERDANA_STORE: 'VER' }
 
@@ -552,7 +549,8 @@ export default function AccountsReceivablePage() {
   const isFrontdesk = ['AHEA_FRONTDESK', 'AHGH_FRONTDESK'].includes(role)
   // Tuition (Class Hub promissory plans) sits after GL; front desk see it too —
   // they collect the scheduled payments at the till.
-  const visibleTabs = (isHmoOfficer ? ['HMO'] : isFrontdesk ? ['HMO', 'GL', 'TUITION'] : ['HMO', 'GL', 'TUITION', 'OTHERS']) as readonly ArTab[]
+  // Payment Register (HMO + GL reference sequence) is for accounting, like Others.
+  const visibleTabs = (isHmoOfficer ? ['HMO'] : isFrontdesk ? ['HMO', 'GL', 'TUITION'] : ['HMO', 'GL', 'TUITION', 'OTHERS', 'REGISTER']) as readonly ArTab[]
   // Money: recording a payment against an agency or provider stays with the roles
   // that reconcile it.
   const canWrite = !isFrontdesk
@@ -569,14 +567,14 @@ export default function AccountsReceivablePage() {
   const scope = userBranchScope((session?.user as { branch?: string })?.branch)
   const searchParams = useSearchParams()
   // HMO Officers and front desk are locked to the HMO tab only
-  const initialType = ['GL', 'OTHERS', 'TUITION'].includes(searchParams.get('type') || '')
-    && (isHmoOfficer ? false : !(isFrontdesk && searchParams.get('type') === 'OTHERS'))
+  const initialType = ['GL', 'OTHERS', 'TUITION', 'REGISTER'].includes(searchParams.get('type') || '')
+    && (isHmoOfficer ? false : !(isFrontdesk && ['OTHERS', 'REGISTER'].includes(searchParams.get('type') || '')))
     ? (searchParams.get('type') as ArTab) : 'HMO'
   const initialWallet = searchParams.get('wallet') || ''
 
   const [tab, setTab] = useState<ArTab>(initialType as ArTab)
-  // Others and Tuition load and render their own data.
-  const ownTab = tab === 'OTHERS' || tab === 'TUITION'
+  // Others, Tuition and the Payment Register load and render their own data.
+  const ownTab = tab === 'OTHERS' || tab === 'TUITION' || tab === 'REGISTER'
   const [branch, setBranch] = useState(scope.enum || '')
   useEffect(() => { if (scope.enum && branch !== scope.enum) setBranch(scope.enum) }, [scope.enum]) // eslint-disable-line react-hooks/exhaustive-deps
   const [dateFrom, setDateFrom] = useState('')
@@ -871,7 +869,7 @@ export default function AccountsReceivablePage() {
   const canRecomputeSoa = session?.user?.role === 'ADMIN' || session?.user?.role === 'ACCOUNTANT'
 
   const fetchData = useCallback(async () => {
-    if (tab === 'OTHERS' || tab === 'TUITION') return // Others / Tuition fetch their own data
+    if (tab === 'OTHERS' || tab === 'TUITION' || tab === 'REGISTER') return // Others / Tuition / Payment Register fetch their own data
     // A slower answer for the tab just left must never land on this one.
     fetchCtl.current?.abort()
     const ctl = new AbortController()
@@ -958,7 +956,7 @@ export default function AccountsReceivablePage() {
 
   // Fetch aging dashboard data whenever tab / branch / period changes
   useEffect(() => {
-    if (tab === 'OTHERS' || tab === 'TUITION') return
+    if (tab === 'OTHERS' || tab === 'TUITION' || tab === 'REGISTER') return
     const ctl = new AbortController()
     const load = async () => {
       try {
@@ -1864,7 +1862,7 @@ export default function AccountsReceivablePage() {
               onClick={() => { setTab(t); setWalletFilter(''); setBucketFilterIds(null); setBucketFilterLabel(''); setHmoSubTab(isFrontdesk ? 'per-hmo' : 'overview') }}
               className="px-4 py-2.5 border-b-2 text-[13px] font-semibold whitespace-nowrap transition-colors hover:text-[var(--teal)]"
               style={{ fontFamily: 'var(--font-display)', borderColor: tab === t ? 'var(--teal)' : 'transparent', color: tab === t ? 'var(--teal)' : 'var(--mid-gray)' }}>
-              {t === 'HMO' ? 'HMO Providers' : t === 'GL' ? 'Guarantee Letters (GL)' : t === 'TUITION' ? 'Tuition' : 'Other Customers'}
+              {t === 'HMO' ? 'HMO Providers' : t === 'GL' ? 'Guarantee Letters (GL)' : t === 'TUITION' ? 'Tuition' : t === 'REGISTER' ? 'Payment Register (HMO + GL)' : 'Other Customers'}
             </button>
           ))}
         </div>
@@ -2396,6 +2394,9 @@ export default function AccountsReceivablePage() {
 
       {/* ── Tuition: Class Hub promissory notes and their payment plans ── */}
       {tab === 'TUITION' && <TuitionTab branch={branch} canWrite={canWrite && !isHmoOfficer} />}
+
+      {/* ── Payment Register: HMO + GL payments in AR reference order, gaps flagged ── */}
+      {tab === 'REGISTER' && <PaymentRegisterTab branch={branch} />}
 
       {/* ── Overview content (AR Dashboard + Filters + Cards + Table + Payment History) ── */}
       {!ownTab && (tab !== 'HMO' || hmoSubTab === 'overview') && (tab !== 'GL' || glSubTab === 'overview') && <>
