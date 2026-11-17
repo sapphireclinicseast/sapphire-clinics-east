@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { isRetroCancellation } from '@/lib/pos/retro-cancellation'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { obtainedDateError } from '@/lib/wallet-dates'
@@ -59,7 +60,7 @@ export async function GET(
         prisma.orderPayment.findMany({
           where: { walletId: id, ...(method ? { method: method as 'VIP_CARD' | 'PREPAID_CARD' | 'DOWNPAYMENT' | 'ADVANCE' } : {}) },
           include: {
-            order: { select: { id: true, orderNumber: true, transactionDate: true, status: true, patientName: true } },
+            order: { select: { id: true, orderNumber: true, transactionDate: true, status: true, patientName: true, notes: true } },
           },
         }),
         prisma.walletLog.findMany({
@@ -83,12 +84,15 @@ export async function GET(
       const deductions = payments.map(p => ({
         date: new Date(p.order.transactionDate),
         type: 'DEDUCTION' as const,
-        description: `Order #${p.order.orderNumber} · ${p.order.patientName || '—'}`,
+        description: isRetroCancellation(p.order.notes)
+          ? `Order #${p.order.orderNumber} · ${p.order.notes}`
+          : `Order #${p.order.orderNumber} · ${p.order.patientName || '—'}`,
         credit: 0,
         debit: Number(p.amount),
         orderNumber: p.order.orderNumber,
         orderId: p.order.id,
         voided: p.order.status === 'VOIDED',
+        retro: isRetroCancellation(p.order.notes),
       }))
 
       const reversals = voidLogs.map(log => {
@@ -129,6 +133,7 @@ export async function GET(
         orderNumber: number | null
         orderId: string | null
         voided: boolean
+        retro?: boolean
         balanceBefore: number
         balanceAfter: number
       }[] = []
@@ -196,7 +201,7 @@ export async function GET(
         prisma.orderPayment.findMany({
           where: { walletId: id, method: 'GL' },
           include: {
-            order: { select: { id: true, orderNumber: true, transactionDate: true, status: true, patientName: true } },
+            order: { select: { id: true, orderNumber: true, transactionDate: true, status: true, patientName: true, notes: true } },
           },
         }),
         prisma.walletLog.findMany({
@@ -214,12 +219,17 @@ export async function GET(
         .map(p => ({
           date: new Date(p.order.transactionDate),
           type: 'DEDUCTION' as const,
-          description: `Order #${p.order.orderNumber} · ${p.order.patientName || '—'}`,
+          // Retroactive cancellation fees say so, in their own colour in the
+          // wallet view (lib/pos/retro-cancellation).
+          description: isRetroCancellation(p.order.notes)
+            ? `Order #${p.order.orderNumber} · ${p.order.notes}`
+            : `Order #${p.order.orderNumber} · ${p.order.patientName || '—'}`,
           credit: 0,
           debit: Number(p.amount),
           orderNumber: p.order.orderNumber,
           orderId: p.order.id,
           voided: false,
+          retro: isRetroCancellation(p.order.notes),
         }))
 
       const glReversals = glVoidLogs.map(log => {
@@ -250,7 +260,7 @@ export async function GET(
       const glEnriched: {
         date: string; type: string; description: string
         credit: number; debit: number; orderNumber: number | null
-        orderId: string | null; voided: boolean
+        orderId: string | null; voided: boolean; retro?: boolean
         balanceBefore: number; balanceAfter: number
       }[] = []
 

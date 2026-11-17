@@ -18,6 +18,7 @@ import {
 } from 'lucide-react'
 import { formatCurrency, formatDate } from '@/lib/utils'
 import { isCreditPayer } from '@/lib/pos/advance-guard'
+import { RETRO_CANCEL_COLOR } from '@/lib/pos/retro-cancellation'
 import { normalizeSI } from '@/lib/sales-invoice'
 import { ScanUpload } from '@/components/ScanUpload'
 import { PaymongoAdvanceQueue } from './PaymongoAdvanceQueue'
@@ -165,6 +166,8 @@ interface WalletLedgerEntry {
   orderNumber?: number | null
   orderId?: string | null
   voided?: boolean
+  /** A cancellation fee billed retroactively — shown in its own colour. */
+  retro?: boolean
 }
 
 interface DigitalWallet {
@@ -7556,11 +7559,15 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
                               : e.type === 'STARTING_BALANCE'
                               ? { bg: '#e0e7ff', color: '#3730a3', label: 'Starting Balance' }
                               : { bg: '#dbeafe', color: '#1e40af', label: 'Reversal' }
+                            // Retroactive cancellation fees (billed later, dated on the
+                            // cancellation) stand out so front desk can tell them apart.
+                            const retroColor = e.retro ? RETRO_CANCEL_COLOR : undefined
                             return (
                               <tr key={i} className="border-t" style={{ borderColor: 'var(--light-gray)', ...rowStyle }}>
-                                <td className="px-3 py-2 whitespace-nowrap" style={{ color: 'var(--mid-gray)' }}>{formatDate(e.date)}</td>
-                                <td className="px-3 py-2" style={{ color: 'var(--charcoal)' }}>
+                                <td className="px-3 py-2 whitespace-nowrap" style={{ color: retroColor ?? 'var(--mid-gray)', fontWeight: e.retro ? 600 : undefined }}>{formatDate(e.date)}</td>
+                                <td className="px-3 py-2" style={{ color: retroColor ?? 'var(--charcoal)', fontWeight: e.retro ? 600 : undefined }}>
                                   <span className="inline-block px-1.5 py-0.5 mr-1.5 rounded text-[10px] font-semibold align-middle" style={{ background: typeBadge.bg, color: typeBadge.color }}>{typeBadge.label}</span>
+                                  {e.retro && <span className="inline-block px-1.5 py-0.5 mr-1.5 rounded text-[10px] font-semibold align-middle" style={{ background: '#ede9fe', color: RETRO_CANCEL_COLOR }}>Retroactive</span>}
                                   {e.description}{e.voided ? ' (voided)' : ''}
                                 </td>
                                 <td className="px-3 py-2 text-right whitespace-nowrap" style={{ color: 'var(--mid-gray)' }}>{formatCurrency(e.balanceBefore)}</td>
