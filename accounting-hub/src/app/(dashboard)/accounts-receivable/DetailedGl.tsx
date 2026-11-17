@@ -3,10 +3,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Search, X, Pencil, ArrowUpDown, ChevronUp, ChevronDown, Download, Plus, Link2, Trash2 } from 'lucide-react'
 import { formatCurrency } from '@/lib/utils'
-import { branchLabel } from '@/lib/branch'
+import { branchLabel, branchShort } from '@/lib/branch'
 import { downloadXlsx, downloadReportPdf } from '@/lib/export'
 import ExpandablePanel from './ExpandablePanel'
-import { GL_STAGES, agencySortKey } from '@/lib/gl-stage'
+import { GL_STAGES, GL_TREATED_BRANCHES, agencySortKey } from '@/lib/gl-stage'
 import { GlAgencySelect, useGlAgencies } from '@/components/GlAgencySelect'
 import { num, buildRows, arRunningDays, soaSubmittedOn, avgArRunningDays, posBalanceOf, drawnDown, type GlCaseWallet, type GlCaseRow, type GlLetterRow } from '@/lib/gl-letters'
 import { indexStageEvents, eventsForRow, stageSince, daysSince, spanBetween, enteredAt, average, DAY_MS, type GlStageEvent } from '@/lib/gl-stage-times'
@@ -235,7 +235,7 @@ type ColKey =
   | 'stage' | 'stageDays' | 'name' | 'branch' | 'docsDate' | 'requested' | 'released' | 'approved' | 'soaAmount'
   | 'posBalance'
   | 'rendered' | 'soaSubmitted' | 'soaDate' | 'soaResubDate' | 'status' | 'paidDate' | 'arDays' | 'arDaysResub' | 'perMonths'
-  | 'guardian' | 'drive' | 'commission' | 'payout' | 'qb' | 'linked' | 'glNo' | 'agency'
+  | 'guardian' | 'drive' | 'commission' | 'payout' | 'qb' | 'linked' | 'glNo' | 'agency' | 'treated'
 
 interface Col { key: ColKey; label: string; numeric?: boolean }
 
@@ -251,6 +251,8 @@ const COLS: Col[] = [
   // Hannah 11/11: the number printed on the OP letter — OP payment lists name letters by it.
   { key: 'glNo', label: 'GL No.' },
   { key: 'branch', label: 'Branch' },
+  // Hannah 11/17: some East GL patients are actually treated at Greenhills — tag them here.
+  { key: 'treated', label: 'Treated at' },
   { key: 'linked', label: 'POS wallet' },
   { key: 'docsDate', label: 'Date submission of documents' },
   { key: 'requested', label: 'Requested GL', numeric: true },
@@ -275,6 +277,21 @@ const COLS: Col[] = [
   { key: 'qb', label: 'QB entry' },
 ]
 
+/** Header-filter value for "treated at a branch other than the letter's". */
+const TREATED_ELSEWHERE = '__elsewhere'
+/** Where the patient is actually seen: the Treated-at tag, else the letter's own branch. */
+const treatedAt = (r: Row) => r.treatedBranch || r.branch || ''
+/** Tagged to a clinic other than the letter's own branch (e.g. an East GL seen at Greenhills). */
+const treatedElsewhere = (r: Row) => !!r.treatedBranch && r.treatedBranch !== r.branch
+
+/** One header filter against one row. Agency and Treated at match exactly; the rest by substring. */
+function filterHit(r: Row, k: string, raw: string): boolean {
+  const needle = raw.trim().toLowerCase()
+  if (k === 'agency') return cellText(r, 'agency').toLowerCase() === needle
+  if (k === 'treated') return raw === TREATED_ELSEWHERE ? treatedElsewhere(r) : treatedAt(r) === raw
+  return cellText(r, k as ColKey).toLowerCase().includes(needle)
+}
+
 function cellText(r: Row, k: ColKey): string {
   switch (k) {
     case 'stage': return r.glStage || '—'
@@ -282,6 +299,7 @@ function cellText(r: Row, k: ColKey): string {
     case 'agency': return r.agency || '—'
     case 'name': return r.patientName || ''
     case 'branch': return branchLabel(r.branch) || '—'
+    case 'treated': return treatedElsewhere(r) ? `${branchShort(r.treatedBranch)} (${branchShort(r.branch)} GL)` : branchShort(treatedAt(r))
     case 'linked': return r.wallet ? r.wallet.patientName : 'needs GL wallet in POS'
     case 'docsDate': return fmtDate(r.glDocsSubmittedAt) || '—'
     case 'requested': return num(r.glRequestedAmount) ? formatCurrency(num(r.glRequestedAmount)) : '—'
@@ -325,6 +343,8 @@ function sortValue(r: Row, k: ColKey): string | number {
     case 'agency': return agencySortKey(r.agency)
     case 'name': return r.patientName || ''
     case 'branch': return branchLabel(r.branch) || ''
+    // Letters treated at another branch first, then by where they are seen.
+    case 'treated': return `${treatedElsewhere(r) ? 0 : 1}${branchShort(treatedAt(r))}`
     case 'linked': return r.wallet ? 'tagged' : (r.caseId ? 'needs GL wallet in POS' : 'POS')
     case 'docsDate': return dayKey(r.glDocsSubmittedAt) || '￿'
     case 'requested': return num(r.glRequestedAmount)
@@ -381,6 +401,8 @@ export default function DetailedGl({
   // Agency picked in the table, likewise. Paid letters keep theirs editable — the
   // issuing office does not change when the cheque arrives.
   const [agencyEdits, setAgencyEdits] = useState<Record<string, string | null>>({})
+  // Treated-at branch picked in the table, likewise.
+  const [treatedEdits, setTreatedEdits] = useState<Record<string, string | null>>({})
   const [stageError, setStageError] = useState('')
   const stageIdx = useMemo(() => indexStageEvents(stageEvents), [stageEvents])
   const allRows = useMemo(
@@ -391,6 +413,7 @@ export default function DetailedGl({
       const justSet = r.key in stageEdits && !r.paid
       if (justSet) out = { ...out, glStage: stageEdits[r.key] }
       if (r.key in agencyEdits) out = { ...out, agency: agencyEdits[r.key] }
+      if (r.key in treatedEdits) out = { ...out, treatedBranch: treatedEdits[r.key] }
       const stageHistory = eventsForRow(out, stageIdx)
       return {
         ...out,
@@ -400,7 +423,7 @@ export default function DetailedGl({
           : stageSince(out, stageHistory),
       }
     }),
-    [wallets, glCases, stageEdits, agencyEdits, stageIdx],
+    [wallets, glCases, stageEdits, agencyEdits, treatedEdits, stageIdx],
   )
   // The agency list: STAR, ODESFA, LGU plus any agency already on a letter;
   // "+ Add agency…" in a dropdown adds another (Hannah 11/15).
@@ -417,6 +440,20 @@ export default function DetailedGl({
     } catch (e) {
       setAgencyEdits(m => { const n = { ...m }; delete n[r.key]; return n })
       setStageError(`${r.patientName}: ${e instanceof Error ? e.message : 'Could not save the agency'}`)
+    }
+  }
+  const saveTreated = async (r: Row, value: string) => {
+    const treatedBranch = value || null
+    setStageError('')
+    setTreatedEdits(m => ({ ...m, [r.key]: treatedBranch }))
+    try {
+      const res = r.caseId
+        ? await fetch('/api/accounts-receivable/gl-case', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ caseId: r.caseId, treatedBranch }) })
+        : await fetch('/api/accounts-receivable/gl-case', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: r.wallet?.id, treatedBranch }) })
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'Could not save where the patient is treated')
+    } catch (e) {
+      setTreatedEdits(m => { const n = { ...m }; delete n[r.key]; return n })
+      setStageError(`${r.patientName}: ${e instanceof Error ? e.message : 'Could not save where the patient is treated'}`)
     }
   }
   const saveStage = async (r: Row, value: string) => {
@@ -444,6 +481,7 @@ export default function DetailedGl({
   const [picked, setPicked] = useState<string[]>([])
   const [bulkStage, setBulkStage] = useState('')
   const [bulkAgency, setBulkAgency] = useState('')
+  const [bulkTreated, setBulkTreated] = useState('')
   const [bulkRelease, setBulkRelease] = useState('')
   const [bulkSoa, setBulkSoa] = useState('')
   const [bulkResoa, setBulkResoa] = useState('')
@@ -457,9 +495,10 @@ export default function DetailedGl({
     const stageTargets = bulkStage ? targets.filter(r => !r.paid) : []
     const glStage = bulkStage === CLEAR_STAGE ? null : bulkStage
     const agency = bulkAgency === CLEAR_STAGE ? null : bulkAgency
+    const treatedVal = bulkTreated === CLEAR_STAGE ? null : bulkTreated
     const anyDate = !!(bulkRelease || bulkSoa || bulkResoa)
-    if (!targets.length || (!bulkStage && !bulkAgency && !anyDate)) return
-    if (bulkStage && !stageTargets.length && !anyDate && !bulkAgency) {
+    if (!targets.length || (!bulkStage && !bulkAgency && !bulkTreated && !anyDate)) return
+    if (bulkStage && !stageTargets.length && !anyDate && !bulkAgency && !bulkTreated) {
       setStageError('Bulk edit: every ticked letter is paid, and a paid letter keeps PAID as its stage.')
       return
     }
@@ -477,6 +516,7 @@ export default function DetailedGl({
     const lines = [
       ...(bulkStage ? [`• Stage → ${glStage || 'Not set'} on ${stageTargets.length}${paidSkipped ? ` (${paidSkipped} paid keep PAID)` : ''}`] : []),
       ...(bulkAgency ? [`• Agency → ${agency || 'Not set'} on ${targets.length}`] : []),
+      ...(bulkTreated ? [`• Treated at → ${treatedVal ? branchShort(treatedVal) : 'Same branch as the letter'} on ${targets.length}`] : []),
       ...(bulkRelease ? [`• GL released → ${fmtDate(`${bulkRelease}T00:00:00+08:00`)} on ${targets.length}${replacingRel ? ` (replaces the date on ${replacingRel})` : ''}`] : []),
       ...(bulkRelease && bulkRelease > manilaToday() ? ['⚠ the GL release date is in the future'] : []),
       ...(relBeforeDocs ? [`⚠ on ${relBeforeDocs} the GL release would be before the documents were submitted`] : []),
@@ -492,6 +532,8 @@ export default function DetailedGl({
     if (stageTargets.length) setStageEdits(m => ({ ...m, ...Object.fromEntries(stageTargets.map(r => [r.key, glStage])) }))
     const agencyBefore = Object.fromEntries(targets.map(r => [r.key, r.key in agencyEdits ? agencyEdits[r.key] : undefined]))
     if (bulkAgency) setAgencyEdits(m => ({ ...m, ...Object.fromEntries(targets.map(r => [r.key, agency])) }))
+    const treatedBefore = Object.fromEntries(targets.map(r => [r.key, r.key in treatedEdits ? treatedEdits[r.key] : undefined]))
+    if (bulkTreated) setTreatedEdits(m => ({ ...m, ...Object.fromEntries(targets.map(r => [r.key, treatedVal])) }))
     try {
       const res = await fetch('/api/accounts-receivable/gl-case/bulk', {
         method: 'PUT', headers: { 'Content-Type': 'application/json' },
@@ -501,10 +543,11 @@ export default function DetailedGl({
           ...(bulkSoa ? { soaSubmittedAt: { value: bulkSoa, ...idsOf(targets) } } : {}),
           ...(bulkResoa ? { soaResubmittedAt: { value: bulkResoa, ...idsOf(targets) } } : {}),
           ...(bulkAgency ? { agency: { value: agency ?? '', ...idsOf(targets) } } : {}),
+          ...(bulkTreated ? { treatedBranch: { value: treatedVal ?? '', ...idsOf(targets) } } : {}),
         }),
       })
       if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'Could not save')
-      setPicked([]); setBulkStage(''); setBulkAgency(''); setBulkRelease(''); setBulkSoa(''); setBulkResoa('')
+      setPicked([]); setBulkStage(''); setBulkAgency(''); setBulkTreated(''); setBulkRelease(''); setBulkSoa(''); setBulkResoa('')
       if (anyDate) onSaved() // reload: the dates drive their columns, AR days and the row colour
     } catch (e) {
       setStageEdits(m => {
@@ -515,6 +558,11 @@ export default function DetailedGl({
       if (bulkAgency) setAgencyEdits(m => {
         const n = { ...m }
         for (const [k, v] of Object.entries(agencyBefore)) { if (v === undefined) delete n[k]; else n[k] = v }
+        return n
+      })
+      if (bulkTreated) setTreatedEdits(m => {
+        const n = { ...m }
+        for (const [k, v] of Object.entries(treatedBefore)) { if (v === undefined) delete n[k]; else n[k] = v }
         return n
       })
       setStageError(`Bulk edit: ${e instanceof Error ? e.message : 'Could not save'}`)
@@ -566,9 +614,7 @@ export default function DetailedGl({
     for (const [k, v] of Object.entries(filters)) {
       const needle = (v || '').trim().toLowerCase()
       if (!needle) continue
-      out = out.filter(r => (k === 'agency'
-        ? cellText(r, 'agency').toLowerCase() === needle
-        : cellText(r, k as ColKey).toLowerCase().includes(needle)))
+      out = out.filter(r => filterHit(r, k, v || ''))
     }
     if (stageTicks.length) out = out.filter(r => stageTicks.includes(r.glStage || '—'))
     return out
@@ -584,9 +630,7 @@ export default function DetailedGl({
     for (const [k, v] of Object.entries(filters)) {
       const needle = (v || '').trim().toLowerCase()
       if (!needle || k === 'stage') continue
-      out = out.filter(r => (k === 'agency'
-        ? cellText(r, 'agency').toLowerCase() === needle
-        : cellText(r, k as ColKey).toLowerCase().includes(needle)))
+      out = out.filter(r => filterHit(r, k, v || ''))
     }
     return out
   }, [baseRows, allRows, search, filters, ticked, branchOptions, noSoaOnly, stageTicks])
@@ -656,6 +700,15 @@ export default function DetailedGl({
                   {agencies.map(a => <option key={a} value={a}>{a}</option>)}
                   <option value="—">Not set</option>
                 </select>
+              ) : c.key === 'treated' ? (
+                <select value={filters.treated || ''} onChange={e => setFilters(f => ({ ...f, treated: e.target.value }))}
+                  aria-label="Filter by where the patient is treated"
+                  className="mt-1 w-full min-w-[70px] px-1 py-0.5 rounded border text-[10px] outline-none font-normal bg-white"
+                  style={{ borderColor: 'var(--light-gray)', color: filters.treated ? 'var(--charcoal)' : 'var(--mid-gray)' }}>
+                  <option value="">All</option>
+                  <option value={TREATED_ELSEWHERE}>At another branch</option>
+                  {GL_TREATED_BRANCHES.map(b => <option key={b} value={b}>{branchShort(b)}</option>)}
+                </select>
               ) : (
               <input
                 value={filters[c.key] || ''}
@@ -685,7 +738,7 @@ export default function DetailedGl({
                 <span className="flex items-center gap-1">
                   <input type="checkbox" checked={picked.includes(r.key)} disabled={!canTick(r)} onChange={() => togglePick(r.key)}
                     aria-label={`Tick ${r.patientName}`}
-                    title={canTick(r) ? (r.paid ? 'Tick to set the agency or the GL release / SOA dates in bulk (paid — the stage stays PAID)' : 'Tick to set the stage, agency, GL release or SOA dates in bulk') : 'No entry or wallet to save on'}
+                    title={canTick(r) ? (r.paid ? 'Tick to set the agency, treated-at branch or the GL release / SOA dates in bulk (paid — the stage stays PAID)' : 'Tick to set the stage, agency, treated-at branch, GL release or SOA dates in bulk') : 'No entry or wallet to save on'}
                     className="w-3.5 h-3.5 cursor-pointer disabled:cursor-not-allowed disabled:opacity-30" style={{ accentColor: 'var(--teal)' }} />
                   <button
                     onClick={() => (r.source ? setEditingCase(r.source) : setEditing(r.wallet))}
@@ -724,6 +777,17 @@ export default function DetailedGl({
                           className="px-1.5 py-0.5 rounded border text-[11px] font-semibold outline-none bg-white"
                           style={{ borderColor: r.agency ? 'var(--teal)' : 'var(--light-gray)', color: r.agency ? 'var(--deep-teal)' : 'var(--mid-gray)' }} />
                       : <span className="text-[11px] font-semibold">{r.agency || '—'}</span>)
+                  : c.key === 'treated'
+                  ? (canWrite && (r.caseId || r.wallet)
+                      ? <select value={r.treatedBranch || ''} onChange={e => saveTreated(r, e.target.value)}
+                          aria-label={`Treated at, for ${r.patientName}`}
+                          title="Where the patient is actually treated. Leave on Same branch unless, say, an East GL patient is seen at Greenhills."
+                          className="px-1.5 py-0.5 rounded border text-[11px] font-semibold outline-none"
+                          style={treatedElsewhere(r) ? { background: '#fef3c7', color: '#92400e', borderColor: '#d97706' } : { background: 'white', color: 'var(--mid-gray)', borderColor: 'var(--light-gray)' }}>
+                          <option value="">Same branch{r.branch ? ` (${branchShort(r.branch)})` : ''}</option>
+                          {GL_TREATED_BRANCHES.filter(b => b !== r.branch || r.treatedBranch === b).map(b => <option key={b} value={b}>{branchShort(b)}</option>)}
+                        </select>
+                      : <span className="text-[11px] font-semibold" style={treatedElsewhere(r) ? { color: '#92400e' } : undefined}>{cellText(r, 'treated')}</span>)
                   : c.key === 'stageDays'
                   ? <span title={r.stageSince
                       ? (r.stageSince.floor
@@ -1123,6 +1187,16 @@ export default function DetailedGl({
               style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }} />
           </label>
           <label className="flex items-center gap-1.5 text-xs" style={{ color: 'var(--mid-gray)' }}>
+            Treated at
+            <select value={bulkTreated} onChange={e => setBulkTreated(e.target.value)} disabled={bulkBusy}
+              className="px-2 py-1 rounded-lg border text-xs font-semibold outline-none bg-white"
+              style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}>
+              <option value="">— no change —</option>
+              {GL_TREATED_BRANCHES.map(b => <option key={b} value={b}>{branchShort(b)}</option>)}
+              <option value={CLEAR_STAGE}>Same branch as the letter</option>
+            </select>
+          </label>
+          <label className="flex items-center gap-1.5 text-xs" style={{ color: 'var(--mid-gray)' }}>
             GL released
             <input type="date" value={bulkRelease} onChange={e => setBulkRelease(e.target.value)} disabled={bulkBusy}
               title="Status/ GL release date"
@@ -1144,7 +1218,7 @@ export default function DetailedGl({
               style={{ borderColor: 'var(--light-gray)', color: bulkResoa ? 'var(--charcoal)' : 'var(--mid-gray)' }} />
           </label>
           <button onClick={() => saveBulk(pickedRows)}
-            disabled={(!bulkStage && !bulkAgency && !bulkRelease && !bulkSoa && !bulkResoa) || [bulkSoa, bulkResoa].some(d => !!d && d > manilaToday()) || bulkBusy}
+            disabled={(!bulkStage && !bulkAgency && !bulkTreated && !bulkRelease && !bulkSoa && !bulkResoa) || [bulkSoa, bulkResoa].some(d => !!d && d > manilaToday()) || bulkBusy}
             className="px-3 py-1 rounded-lg text-xs font-semibold text-white disabled:opacity-40"
             style={{ background: 'var(--teal)' }}>
             {bulkBusy ? 'Saving…' : 'Apply'}
@@ -1189,6 +1263,21 @@ function AgencyField({ value, onChange }: { value: string; onChange: (v: string)
   )
 }
 
+/** Where the patient is actually treated, when it is not the letter's own branch. */
+function TreatedField({ value, branch, onChange }: { value: string; branch?: string | null; onChange: (v: string) => void }) {
+  return (
+    <div>
+      <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Treated at</label>
+      <select value={value} onChange={e => onChange(e.target.value)}
+        className="w-full px-3 py-2 rounded-xl border text-sm outline-none bg-white" style={{ borderColor: 'var(--light-gray)' }}>
+        <option value="">Same branch{branch ? ` (${branchShort(branch)})` : ''}</option>
+        {GL_TREATED_BRANCHES.filter(b => b !== branch || value === b).map(b => <option key={b} value={b}>{branchShort(b)}</option>)}
+      </select>
+      <p className="text-[10px] mt-0.5" style={{ color: 'var(--mid-gray)' }}>Where the patient is actually seen, e.g. an East GL patient treated at Greenhills</p>
+    </div>
+  )
+}
+
 /* ── Add / edit a standalone entry, including which POS wallet it is tagged to ── */
 function GlEntryModal({
   entry, wallets, claimedWalletIds, onClose, onSaved,
@@ -1216,6 +1305,7 @@ function GlEntryModal({
     qbEntry: entry?.qbEntry || '',
     glLetterNo: entry?.glLetterNo || '',
     agency: entry?.agency || '',
+    treatedBranch: entry?.treatedBranch || '',
     paidAt: dayKey(entry?.paidAt),
     notes: entry?.notes || '',
   })
@@ -1367,6 +1457,7 @@ function GlEntryModal({
           {field('GL release date', 'glReleasedAt', 'date')}
           {field('GL No.', 'glLetterNo', 'text', 'Printed at the bottom of the OP guarantee letter, beside the QR code — e.g. PHD-170925112436-WA7')}
           <AgencyField value={form.agency} onChange={v => set('agency', v)} />
+          <TreatedField value={form.treatedBranch} branch={form.branch} onChange={v => set('treatedBranch', v)} />
           {field('Approved GL (₱)', 'approvedAmount', 'number', 'Ignored once tagged — the wallet’s approved amount wins.')}
           {field('Amount in SOA (₱)', 'soaAmount', 'number')}
           {field('Date submission of SOA', 'soaSubmittedAt', 'date', 'AR running days and Per months count from here')}
@@ -1422,6 +1513,7 @@ function GlCaseModal({ wallet, cases, wallets, onClose, onSaved }: { wallet: GlC
     qbEntry: wallet.qbEntry || '',
     glLetterNo: wallet.glLetterNo || '',
     agency: wallet.agency || '',
+    treatedBranch: wallet.treatedBranch || '',
   })
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
@@ -1558,6 +1650,7 @@ function GlCaseModal({ wallet, cases, wallets, onClose, onSaved }: { wallet: GlC
           {field('GL release date', 'glReleasedAt', 'date')}
           {field('GL No.', 'glLetterNo', 'text', 'Printed at the bottom of the OP guarantee letter, beside the QR code — e.g. PHD-170925112436-WA7')}
           <AgencyField value={form.agency} onChange={v => set('agency', v)} />
+          <TreatedField value={form.treatedBranch} branch={wallet.branch} onChange={v => set('treatedBranch', v)} />
           {field('Amount in SOA (₱)', 'soaAmount', 'number')}
           {field('Date submission of SOA', 'soaSubmittedAt', 'date', 'AR running days and Per months count from here')}
           {field('SOA Resubmission Date', 'soaResubmittedAt', 'date', 'Only for SOAs returned for errors — starts the second AR-days clock')}

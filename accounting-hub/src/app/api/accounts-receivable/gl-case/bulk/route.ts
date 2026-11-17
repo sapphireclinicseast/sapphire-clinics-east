@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { GL_STAGES, parseAgency, AGENCY_ERROR } from '@/lib/gl-stage'
+import { GL_STAGES, parseAgency, AGENCY_ERROR, parseTreatedBranch, TREATED_ERROR } from '@/lib/gl-stage'
 import { stageEventRows } from '@/lib/gl-stage-events'
 
 /**
@@ -10,7 +10,8 @@ import { stageEventRows } from '@/lib/gl-stage-events'
  *     glReleasedAt?:   { value: 'YYYY-MM-DD',    caseIds: [], walletIds: [] },
  *     soaSubmittedAt?: { value: 'YYYY-MM-DD',    caseIds: [], walletIds: [] },
  *     soaResubmittedAt?: { value: 'YYYY-MM-DD',  caseIds: [], walletIds: [] },
- *     agency?:         { value: 'STAR' | 'ODESFA' | 'LGU' | '', caseIds: [], walletIds: [] } }
+ *     agency?:         { value: 'STAR' | 'ODESFA' | 'LGU' | '', caseIds: [], walletIds: [] },
+ *     treatedBranch?:  { value: 'SANDBOX_EAST' | 'SANDBOX_GREENHILLS' | '', caseIds: [], walletIds: [] } }
  *
  * Detailed GL bulk edit for the ticked letters (Hannah 2026-11-11: "allow me to
  * tick all and set the stage in bulk", then "also allow bulk setting the SOA
@@ -67,6 +68,13 @@ export async function PUT(req: Request) {
       if (!ag.ok) return NextResponse.json({ error: AGENCY_ERROR }, { status: 400 })
       agency = ag.value
     }
+    const treatedPart = part(body.treatedBranch)
+    let treatedBranch: string | null = null
+    if (treatedPart) {
+      const tb = parseTreatedBranch(body.treatedBranch.value)
+      if (!tb.ok) return NextResponse.json({ error: TREATED_ERROR }, { status: 400 })
+      treatedBranch = tb.value
+    }
     const todayManila = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' })
     const dates: { field: DateField; day: string; at: Date; ids: Part }[] = []
     for (const field of DATE_FIELDS) {
@@ -79,8 +87,8 @@ export async function PUT(req: Request) {
       }
       dates.push({ field, day, at: new Date(`${day}T00:00:00+08:00`), ids })
     }
-    if (!size(stage) && !size(agencyPart) && !dates.some(d => size(d.ids))) return NextResponse.json({ error: 'Tick at least one letter' }, { status: 400 })
-    if (size(stage) > MAX || size(agencyPart) > MAX || dates.some(d => size(d.ids) > MAX)) return NextResponse.json({ error: `At most ${MAX} letters at a time` }, { status: 400 })
+    if (!size(stage) && !size(agencyPart) && !size(treatedPart) && !dates.some(d => size(d.ids))) return NextResponse.json({ error: 'Tick at least one letter' }, { status: 400 })
+    if (size(stage) > MAX || size(agencyPart) > MAX || size(treatedPart) > MAX || dates.some(d => size(d.ids) > MAX)) return NextResponse.json({ error: `At most ${MAX} letters at a time` }, { status: 400 })
 
     const ops = []
     if (stage) {
@@ -94,6 +102,10 @@ export async function PUT(req: Request) {
     if (agencyPart) {
       ops.push(prisma.glCase.updateMany({ where: { id: { in: agencyPart.caseIds } }, data: { agency } }))
       ops.push(prisma.digitalWallet.updateMany({ where: { id: { in: agencyPart.walletIds }, walletType: 'GL' }, data: { agency } }))
+    }
+    if (treatedPart) {
+      ops.push(prisma.glCase.updateMany({ where: { id: { in: treatedPart.caseIds } }, data: { treatedBranch } }))
+      ops.push(prisma.digitalWallet.updateMany({ where: { id: { in: treatedPart.walletIds }, walletType: 'GL' }, data: { treatedBranch } }))
     }
     // Dated stage history (Hannah 2026-11-17: "track stage dates"): one event per
     // ticked letter whose stage actually changes. Appended last, so the count
@@ -114,22 +126,24 @@ export async function PUT(req: Request) {
       if (events.length) ops.push(prisma.glStageEvent.createMany({ data: events }))
     }
     const counts = await prisma.$transaction(ops)
-    // Two updateMany per part, in push order: stage first (if any), then each date, then agency.
+    // Two updateMany per part, in push order: stage first (if any), then each date, then agency, then treated-at.
     const pair = (i: number) => counts[2 * i].count + counts[2 * i + 1].count
     const stageUpdated = stage ? pair(0) : 0
     const dateUpdated = Object.fromEntries(dates.map((d, i) => [d.field, pair(i + (stage ? 1 : 0))]))
     const agencyUpdated = agencyPart ? pair(dates.length + (stage ? 1 : 0)) : 0
+    const treatedUpdated = treatedPart ? pair(dates.length + (stage ? 1 : 0) + (agencyPart ? 1 : 0)) : 0
     await prisma.auditLog.create({
       data: {
         userId: session.user.id as string, action: 'UPDATE', entity: 'gl_case_bulk', entityId: 'detailed-gl',
         details: {
           ...(stage ? { glStage, stageCaseIds: stage.caseIds, stageWalletIds: stage.walletIds, stageUpdated } : {}),
           ...(agencyPart ? { agency, agencyCaseIds: agencyPart.caseIds, agencyWalletIds: agencyPart.walletIds, agencyUpdated } : {}),
+          ...(treatedPart ? { treatedBranch, treatedCaseIds: treatedPart.caseIds, treatedWalletIds: treatedPart.walletIds, treatedUpdated } : {}),
           ...Object.fromEntries(dates.map(d => [d.field, { day: d.day, caseIds: d.ids.caseIds, walletIds: d.ids.walletIds, updated: dateUpdated[d.field] }])),
         },
       },
     })
-    return NextResponse.json({ ok: true, stageUpdated, dateUpdated, agencyUpdated })
+    return NextResponse.json({ ok: true, stageUpdated, dateUpdated, agencyUpdated, treatedUpdated })
   } catch (e) {
     console.error('GL bulk edit error:', e)
     return NextResponse.json({ error: 'Failed to save' }, { status: 500 })

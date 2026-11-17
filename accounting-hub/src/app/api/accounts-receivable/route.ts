@@ -41,6 +41,7 @@ export async function GET(req: Request) {
         dateObtained: true,
         branch: true,
         agency: true,
+        treatedBranch: true,
         // GL case tracking (Detailed GL)
         glRequestedAmount: true, glDocsSubmittedAt: true, glReleasedAt: true,
         soaAmount: true, soaSubmittedAt: true, soaResubmittedAt: true, guardianName: true,
@@ -498,7 +499,7 @@ export async function GET(req: Request) {
             qbEntry: true, glLetterNo: true, paidAt: true, notes: true,
             // An entry's own stage and agency win over its wallet's (gl-letters rowOf).
             // glStage was missing here, so a stage set on an entry row reverted to "—" on reload.
-            glStage: true, agency: true,
+            glStage: true, agency: true, treatedBranch: true,
             // Processor payout — drives the "already paid" exclusion in the batch.
             processorRfpId: true, processorPaidAt: true, processorProofUrl: true,
           },

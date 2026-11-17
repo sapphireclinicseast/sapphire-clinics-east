@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { GL_STAGES, parseAgency, AGENCY_ERROR } from '@/lib/gl-stage'
+import { GL_STAGES, parseAgency, AGENCY_ERROR, parseTreatedBranch, TREATED_ERROR } from '@/lib/gl-stage'
 import { stageEventRows } from '@/lib/gl-stage-events'
 
 /**
@@ -212,6 +212,11 @@ export async function PATCH(req: Request) {
       if (!ag.ok) return NextResponse.json({ error: AGENCY_ERROR }, { status: 400 })
       data.agency = ag.value
     }
+    if ('treatedBranch' in body) {
+      const tb = parseTreatedBranch(body.treatedBranch)
+      if (!tb.ok) return NextResponse.json({ error: TREATED_ERROR }, { status: 400 })
+      data.treatedBranch = tb.value
+    }
 
     if (Object.keys(data).length === 0) {
       return NextResponse.json({ error: 'Nothing to update' }, { status: 400 })
@@ -229,7 +234,7 @@ export async function PATCH(req: Request) {
         select: {
           id: true, glRequestedAmount: true, glDocsSubmittedAt: true, glReleasedAt: true,
           soaAmount: true, soaSubmittedAt: true, soaResubmittedAt: true, guardianName: true,
-          soaCommissionRate: true, payoutBatch: true, qbEntry: true, glLetterNo: true, glStage: true, agency: true,
+          soaCommissionRate: true, payoutBatch: true, qbEntry: true, glLetterNo: true, glStage: true, agency: true, treatedBranch: true,
         },
       }),
       ...events.map(e => prisma.glStageEvent.create({ data: e })),
@@ -246,7 +251,7 @@ const CASE_SELECT = {
   glRequestedAmount: true, glDocsSubmittedAt: true, glReleasedAt: true,
   approvedAmount: true, soaAmount: true, soaSubmittedAt: true,
   soaResubmittedAt: true, guardianName: true, soaCommissionRate: true, payoutBatch: true,
-  qbEntry: true, glLetterNo: true, paidAt: true, notes: true, createdAt: true, glStage: true, agency: true,
+  qbEntry: true, glLetterNo: true, paidAt: true, notes: true, createdAt: true, glStage: true, agency: true, treatedBranch: true,
   processorRfpId: true, processorPaidAt: true, processorProofUrl: true,
 } as const
 
@@ -302,6 +307,11 @@ export async function POST(req: Request) {
       const ag = parseAgency(body.agency)
       if (!ag.ok) return NextResponse.json({ error: AGENCY_ERROR }, { status: 400 })
       data.agency = ag.value
+    }
+    if ('treatedBranch' in body) {
+      const tb = parseTreatedBranch(body.treatedBranch)
+      if (!tb.ok) return NextResponse.json({ error: TREATED_ERROR }, { status: 400 })
+      data.treatedBranch = tb.value
     }
 
     const created = await prisma.glCase.create({ data, select: CASE_SELECT })
@@ -373,6 +383,11 @@ export async function PUT(req: Request) {
       const ag = parseAgency(body.agency)
       if (!ag.ok) return NextResponse.json({ error: AGENCY_ERROR }, { status: 400 })
       data.agency = ag.value
+    }
+    if ('treatedBranch' in body) {
+      const tb = parseTreatedBranch(body.treatedBranch)
+      if (!tb.ok) return NextResponse.json({ error: TREATED_ERROR }, { status: 400 })
+      data.treatedBranch = tb.value
     }
 
     if (Object.keys(data).length === 0) {

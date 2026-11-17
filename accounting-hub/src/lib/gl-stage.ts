@@ -42,6 +42,18 @@ export function agencyOptions(used: Iterable<string | null | undefined>): string
   return [...GL_AGENCIES, ...[...extra].sort()]
 }
 
+// Where the patient is actually treated (Hannah 11/17: some East GL patients are
+// seen at Greenhills). Blank = at the letter's own branch.
+export const GL_TREATED_BRANCHES = ['SANDBOX_EAST', 'SANDBOX_GREENHILLS'] as const
+export const TREATED_ERROR = 'Treated at must be East, Greenhills or blank'
+
+/** Blank clears (treated at the letter's own branch); otherwise East or Greenhills. */
+export function parseTreatedBranch(v: unknown): { ok: true; value: string | null } | { ok: false } {
+  const s = String(v ?? '').trim()
+  if (!s) return { ok: true, value: null }
+  return (GL_TREATED_BRANCHES as readonly string[]).includes(s) ? { ok: true, value: s } : { ok: false }
+}
+
 /** Sort key for the Agency column: the dropdown's order, letters with no agency last. */
 export function agencySortKey(agency: string | null | undefined): string {
   const s = normalizeAgency(agency)

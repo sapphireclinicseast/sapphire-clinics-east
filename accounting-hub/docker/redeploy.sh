@@ -873,6 +873,9 @@ BEGIN
   ALTER TABLE "GlCase" ADD COLUMN IF NOT EXISTS "processorProofUrl" TEXT;
   -- Detailed GL Agency column (11/15): STAR | ODESFA, for entries with no wallet behind them.
   ALTER TABLE "GlCase" ADD COLUMN IF NOT EXISTS "agency" TEXT;
+  -- Detailed GL "Treated at" (2026-11-17): clinic that actually treats the patient when it is not the branch on the letter.
+  ALTER TABLE "DigitalWallet" ADD COLUMN IF NOT EXISTS "treatedBranch" TEXT;
+  ALTER TABLE "GlCase" ADD COLUMN IF NOT EXISTS "treatedBranch" TEXT;
 
   CREATE INDEX IF NOT EXISTS "GlCase_processorRfpId_idx" ON "GlCase"("processorRfpId");
 

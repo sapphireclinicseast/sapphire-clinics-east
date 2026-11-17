@@ -44,6 +44,8 @@ export interface GlCaseWallet {
   glStage?: string | null
   /** Issuing office: STAR, ODESFA, LGU or any added agency (lib/gl-stage). */
   agency?: string | null
+  /** Clinic that actually treats the patient, when not the wallet's branch. */
+  treatedBranch?: string | null
   /** True when any order has been billed against the letter. */
   hasOrders?: boolean
   dateObtained?: string | null
@@ -76,6 +78,7 @@ export interface GlCaseRow {
   notes?: string | null
   glStage?: string | null
   agency?: string | null
+  treatedBranch?: string | null
 }
 
 export function fileUrls(w: GlCaseWallet): string[] {
@@ -119,6 +122,8 @@ export interface GlLetterRow {
   glStage?: string | null
   /** Issuing office (STAR, ODESFA or LGU); an entry's own value wins over its wallet's. */
   agency?: string | null
+  /** Clinic that actually treats the patient (null = the letter's own branch); entry wins over wallet. */
+  treatedBranch?: string | null
   /** Remaining on the tagged wallet in POS; null when nothing is tagged. */
   posBalance: number | null
   /** Has the letter actually been drawn down — balance below the approved amount. */
@@ -193,6 +198,7 @@ export function rowOf(c: GlCaseRow | null, w: GlCaseWallet | null): GlLetterRow 
     // undoing the payment puts the letter back where it was.
     glStage: paid ? 'PAID' : pick(c?.glStage, w?.glStage),
     agency: pick(c?.agency, w?.agency),
+    treatedBranch: pick(c?.treatedBranch, w?.treatedBranch),
     posBalance: posBalanceOf(w),
     rendered: drawnDown(w),
     paid,
