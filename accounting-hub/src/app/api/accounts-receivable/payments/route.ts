@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { collectionBranch } from '@/lib/ar-payment-branch'
 import { postARPaymentJournal, reverseARPaymentJournal, journalMatchesRecord } from '@/lib/accounting/post-ar-payment'
 
 const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN']
@@ -85,7 +86,8 @@ export async function POST(req: Request) {
             ? `${notes?.trim() || ''} [Bulk payment across ${effectiveWalletIds.length} GL wallets]`.trim()
             : (notes?.trim() || null),
           salesInvoiceNumber: salesInvoiceNumber?.trim() || null,
-          branch: branch || null,
+          // From the collection itself, never the screen's branch filter alone.
+          branch: await collectionBranch(prisma, { walletBranch: wallet.branch as string | null, orderIds: walletOrderIds, cashAccountId, requested: branch }),
           createdById: session.user.id,
           items: walletOrderIds.length ? {
             create: walletOrderIds.map((orderId: string) => ({ orderId })),
@@ -193,6 +195,16 @@ export async function PUT(req: Request) {
     // can still change; anything the journal is made of cannot (Hannah 2026-11-11).
     const c2 = (v: unknown) => Math.round(Number(v || 0) * 100)
     const day = (d: unknown) => new Date(d as string).toISOString().slice(0, 10)
+    // An edit keeps the payment's branch. The form sends the screen's branch
+    // filter, which on "All" used to erase it (AHEA-AR26-0017 lost East on
+    // 2026-10-31 and re-posted under ALL). A payment that never had one gets it
+    // from the collection itself (lib/ar-payment-branch).
+    const branchOut = existing.branch ?? await collectionBranch(prisma, {
+      walletBranch: walletId === existing.walletId
+        ? (existing.wallet.branch as string | null)
+        : ((await prisma.digitalWallet.findUnique({ where: { id: walletId }, select: { branch: true } }))?.branch as string | null),
+      orderIds, cashAccountId, requested: branch,
+    })
     const journalFieldsChanged =
       walletId !== existing.walletId
       || day(paymentDate) !== day(existing.paymentDate)
@@ -202,7 +214,7 @@ export async function PUT(req: Request) {
       || (newDiscount > 0 ? (discountAccountId || null) : null) !== (Number(existing.discount) > 0 ? existing.discountAccountId : null)
       || (cashAccountId || null) !== existing.cashAccountId
       || (newOverpayIn > 0 ? (overpaymentAccountId || null) : null) !== (Number(existing.overpayment || 0) > 0 ? existing.overpaymentAccountId : null)
-      || (branch || null) !== existing.branch
+      || branchOut !== existing.branch
     const matches = await journalMatchesRecord(prisma, id)
     const keepJournal = matches === false
     if (keepJournal && journalFieldsChanged) {
@@ -247,7 +259,7 @@ export async function PUT(req: Request) {
         proofUrl: proofUrl || null,
         notes: notes?.trim() || null,
         salesInvoiceNumber: salesInvoiceNumber?.trim() || null,
-        branch: branch || null,
+        branch: branchOut,
         items: orderIds?.length ? {
           create: orderIds.map((orderId: string) => ({ orderId })),
         } : undefined,
