@@ -226,12 +226,27 @@ const rgb = (hex: string) => ({
 export const INK = { CASH: '#15803D', HMO: '#B45309', GL: '#93460B', NA: '#DC2626' }
 const BLOCK_BG = '#1F3A5F'
 const HEAD_BG = '#E8EDF2'
-const OFF_BG = '#EDEFF1'
-// Sheets cannot fill a cell with a pattern, and =IMAGE takes no data URI — so
-// the hatching is a real image the hub serves. Drawn as slash characters
-// before this, which read as hatching from a distance and as typed text up
-// close.
-const HATCH_URL = `${process.env.NEXTAUTH_URL?.replace(/\/$/, '') || 'https://operations.sapphireclinicseast.org'}/api/public/hatch.png`
+// An hour nobody can be booked into: outside the consultant's span, a spare
+// column, a spare line of a shared hour.
+//
+// A deliberately cool grey, and a shade deeper than it was. Flat grey was
+// once mistaken for a cell somebody had shaded by hand, which is why this
+// used to be drawn as diagonal hatching — but the hatching was an =IMAGE()
+// formula per cell, and that did not work:
+//
+//   one hour outside the span is 3 rows x every column of the block, the
+//   column count comes from the WIDEST consultant in the department, and a
+//   tab ran four to eight hundred of these. Sheets fetches =IMAGE server
+//   side, queued and rate limited per spreadsheet, and the sync rewrites
+//   every formula on every run — which discards whatever had resolved and
+//   starts the queue again. East syncs every five minutes. The queue never
+//   drained, so the hatching never appeared at all and several hundred cells
+//   per tab read "Loading…" for ever.
+//
+// A background colour needs no fetch and cannot be mid-flight. This tone is
+// not one of the greys Sheets offers in its own picker, so it still does not
+// read as hand-applied shading.
+const OFF_BG = '#DEE4EA'
 const PAY_BG = '#E4EEF9'
 const REMARK_BG = '#FBF3E2'
 const PAIR_BG = '#F4F1FB'   // the second child of a paired hour
@@ -267,14 +282,6 @@ const cell = (value: string, fmt: Record<string, unknown> = {}): Cell => ({
   },
 })
 const blank = (): Cell => ({ userEnteredValue: {}, userEnteredFormat: {} })
-/** A cell whose value is a formula rather than text. */
-const formulaCell = (formula: string, fmt: Record<string, unknown> = {}): Cell => ({
-  userEnteredValue: { formulaValue: formula },
-  userEnteredFormat: {
-    horizontalAlignment: 'CENTER', verticalAlignment: 'MIDDLE',
-    borders: BORDER, ...fmt,
-  },
-})
 
 /** One row of a band's time axis. */
 interface AxisSlot { startTime: string; endTime: string; label: string }
@@ -549,12 +556,7 @@ export function buildGrid(
         // time below, because this hour can belong to their Thursday and not
         // to their Friday.
         if (!blk.days.some(d => blk.own.get(d.key)?.has(h.startTime))) {
-          for (let c = 1; c <= k; c++) {
-            // Mode 2 stretches the tile to the cell. The image is already
-            // close to a cell's proportions, so the diagonals stay at 45°
-            // instead of flattening out.
-            put(c, formulaCell(`=IMAGE("${HATCH_URL}",2)`, { backgroundColor: rgb(OFF_BG) }))
-          }
+          for (let c = 1; c <= k; c++) put(c, cell('', { backgroundColor: rgb(OFF_BG) }))
           return
         }
 
@@ -572,7 +574,7 @@ export function buildGrid(
           // a 09:00–19:00 Thursday without either one claiming the other's
           // hours.
           if (!day || !blk.own.get(day.key)?.has(h.startTime)) {
-            put(c, formulaCell(`=IMAGE("${HATCH_URL}",2)`, { backgroundColor: rgb(OFF_BG) }))
+            put(c, cell('', { backgroundColor: rgb(OFF_BG) }))
             continue
           }
 
