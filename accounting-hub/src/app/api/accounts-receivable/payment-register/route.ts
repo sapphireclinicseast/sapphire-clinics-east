@@ -1,19 +1,27 @@
-// GET /api/accounts-receivable/payment-register?branch=
+// GET   /api/accounts-receivable/payment-register?branch=
+// PATCH /api/accounts-receivable/payment-register  { id, ref?, copyPending? }
 //
 // Accounts Receivable → Payment Register (Hannah 2026-11-17: "a payment history
 // (joint) tracker that combines both HMO and GL so we know that a sequence was not
 // missed"). Every recorded AR payment — HMO and Guarantee Letter alike — with the
 // reference at the head of its notes, so the page can lay the numbers out in
 // order and show any number that was skipped, used on more than one row, or
-// never given. Read-only.
+// never given.
+//
+// PATCH writes ONLY the payment's notes: the AR number at their head and/or the
+// "physical copy pending" tag. It never touches tags, amounts or the journal —
+// unlike the Payment History PUT, which rebuilds the payment and re-posts its
+// entry (a new entry id that unhooks the bank-rec match).
 
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { enforceBranch } from '@/lib/branch-scope'
-import { arRefOf, notesWithoutRef, parseArRef } from '@/lib/ar-ref'
+import { branchAllowed, enforceBranch } from '@/lib/branch-scope'
+import { arRefOf, notesWithoutRef, notesWithRef, parseArRef, hasCopyPending, withCopyPending, withoutCopyPending } from '@/lib/ar-ref'
 
 const READ_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'VIEWER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN']
+// Same roles as recording a payment in Payment History.
+const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN']
 
 const n = (v: unknown) => Number(v ?? 0) || 0
 
@@ -74,7 +82,8 @@ export async function GET(req: NextRequest) {
         settled: Math.round((cash + withheld - n(p.overpayment)) * 100) / 100,
         sessions: p._count.items,
         proofUrls: proofUrlsOf(p.proofUrl),
-        notes: notesWithoutRef(p.notes),
+        notes: notesWithoutRef(withoutCopyPending(p.notes)),
+        copyPending: hasCopyPending(p.notes),
         // No cash received: SCI-era ₱0 markers, GL write-offs, and the separate
         // BIR 2307 (TC) entries — they are not collections needing an AR number.
         noCash: cash === 0,
@@ -84,5 +93,69 @@ export async function GET(req: NextRequest) {
   } catch (err) {
     console.error('[AR] payment register failed:', err)
     return NextResponse.json({ error: 'Could not load the payment register' }, { status: 500 })
+  }
+}
+
+export async function PATCH(req: NextRequest) {
+  const session = await auth()
+  if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const user = session.user as { id?: string; role?: string; branch?: string; branches?: string[] }
+  if (!WRITE_ROLES.includes(user.role ?? '')) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+
+  try {
+    const body = await req.json().catch(() => ({}))
+    const id = typeof body.id === 'string' ? body.id : ''
+    const refIn = typeof body.ref === 'string' ? body.ref.trim().toUpperCase() : ''
+    const copyPending = typeof body.copyPending === 'boolean' ? body.copyPending : undefined
+    if (!id || (!refIn && copyPending === undefined)) {
+      return NextResponse.json({ error: 'Send the payment id with an AR number and/or copyPending' }, { status: 400 })
+    }
+
+    const p = await prisma.aRPayment.findUnique({
+      where: { id },
+      select: { id: true, notes: true, branch: true, wallet: { select: { walletType: true } } },
+    })
+    if (!p || !['HMO', 'GL'].includes(p.wallet.walletType)) return NextResponse.json({ error: 'Payment not found' }, { status: 404 })
+    if (p.branch && !branchAllowed(user.branch, p.branch, user.branches)) {
+      return NextResponse.json({ error: 'This payment belongs to another branch' }, { status: 403 })
+    }
+
+    let notes = p.notes || ''
+    if (refIn) {
+      const parsed = parseArRef(refIn)
+      if (!parsed || parsed.kind !== 'AR') {
+        return NextResponse.json({ error: 'Write the AR number like AHEA-AR26-0026 or AR25-0028' }, { status: 400 })
+      }
+      // A number belongs to one collection (a deposit split across wallets is
+      // numbered in Payment History, not here).
+      const yy = String(parsed.yy).padStart(2, '0')
+      const candidates = await prisma.aRPayment.findMany({
+        where: { id: { not: id }, notes: { contains: `AR${yy}-` } },
+        select: { id: true, notes: true },
+      })
+      const clash = candidates.find(c => {
+        const other = parseArRef(arRefOf(c.notes))
+        return other && other.series === parsed.series && other.num === parsed.num
+      })
+      if (clash) return NextResponse.json({ error: `${parsed.ref} is already used by another payment` }, { status: 409 })
+      notes = notesWithRef(parsed.ref, notes)
+    }
+    if (copyPending !== undefined) notes = copyPending ? withCopyPending(notes) : withoutCopyPending(notes)
+
+    if (notes === (p.notes || '')) return NextResponse.json({ ok: true, unchanged: true })
+    await prisma.aRPayment.update({ where: { id }, data: { notes } })
+    await prisma.auditLog.create({
+      data: {
+        userId: user.id as string,
+        action: 'AR_REFERENCE',
+        entity: 'arPayment',
+        entityId: id,
+        details: { before: p.notes, after: notes, ref: refIn || null, copyPending: copyPending ?? null },
+      },
+    })
+    return NextResponse.json({ ok: true, ref: arRefOf(notes), copyPending: hasCopyPending(notes) })
+  } catch (err) {
+    console.error('[AR] payment register PATCH failed:', err)
+    return NextResponse.json({ error: 'Could not update the payment' }, { status: 500 })
   }
 }

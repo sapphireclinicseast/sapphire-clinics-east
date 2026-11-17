@@ -51,3 +51,20 @@ export function parseArRef(ref: string): ParsedArRef | null {
 
 /** The way a number is written in its series, e.g. ("AHEA-AR26", 9) → "AHEA-AR26-0009". */
 export const refInSeries = (series: string, num: number) => `${series}-${String(num).padStart(4, '0')}`
+
+// "Physical copy pending" — an AR number given in the hub after the fact, before
+// the paper copy (OR / acknowledgement filed under that number) was compiled
+// (Hannah 2026-11-18: "make sure they are a different color because a physical
+// copy of them have not been compiled yet"). Kept as a tag in the notes so it
+// needs no column; the Payment Register colours these rows and clears the tag
+// with "Mark compiled".
+export const COPY_PENDING_TAG = '[PHYSICAL COPY PENDING]'
+const COPY_PENDING_TEST = /\[PHYSICAL COPY PENDING\]/i
+const COPY_PENDING_STRIP = /\s*(?:[|;]\s*)?\[PHYSICAL COPY PENDING\]/gi
+
+export const hasCopyPending = (notes?: string | null): boolean => COPY_PENDING_TEST.test(notes || '')
+export const withoutCopyPending = (notes?: string | null): string => (notes || '').replace(COPY_PENDING_STRIP, '').trim()
+export const withCopyPending = (notes?: string | null): string => {
+  const base = withoutCopyPending(notes)
+  return base ? `${base} | ${COPY_PENDING_TAG}` : COPY_PENDING_TAG
+}

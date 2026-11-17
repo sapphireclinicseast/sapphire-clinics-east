@@ -2396,7 +2396,7 @@ export default function AccountsReceivablePage() {
       {tab === 'TUITION' && <TuitionTab branch={branch} canWrite={canWrite && !isHmoOfficer} />}
 
       {/* ── Payment Register: HMO + GL payments in AR reference order, gaps flagged ── */}
-      {tab === 'REGISTER' && <PaymentRegisterTab branch={branch} />}
+      {tab === 'REGISTER' && <PaymentRegisterTab branch={branch} canEdit={['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN'].includes(role)} />}
 
       {/* ── Overview content (AR Dashboard + Filters + Cards + Table + Payment History) ── */}
       {!ownTab && (tab !== 'HMO' || hmoSubTab === 'overview') && (tab !== 'GL' || glSubTab === 'overview') && <>

@@ -9,8 +9,10 @@
 // number that was skipped shows as a red "missing" row in its place. A number on
 // more than one row is flagged: on the same date that is one deposit split across
 // several wallets (one row per patient or HMO); on different dates the number was
-// used twice. Payments with no reference at all are listed underneath. Read-only —
-// references are set in Payment History › Record Payment.
+// used twice. Payments with no reference at all are listed underneath.
+// References are set in Payment History › Record Payment. A number given in the
+// hub after the fact, before its paper copy was compiled, carries the
+// "physical copy pending" tag: those rows are violet until "Mark compiled".
 
 import { Fragment, useCallback, useEffect, useMemo, useState } from 'react'
 import { formatCurrency } from '@/lib/utils'
@@ -38,6 +40,8 @@ interface RegisterRow {
   proofUrls: string[]
   notes: string
   noCash: boolean
+  /** AR number given in the hub before its physical copy was compiled. */
+  copyPending: boolean
 }
 
 type Line =
@@ -65,7 +69,9 @@ const seriesLabel = (s: string) =>
   s.startsWith('AHEA-AR') ? `${s} (East)` : s.startsWith('AHGH-AR') ? `${s} (Greenhills)` : s.startsWith('VER-AR') ? `${s} (Verdana)`
     : isTc(s) ? `${s} (BIR 2307 withholding booked on its own)` : `${s} (QuickBooks era)`
 
-export default function PaymentRegisterTab({ branch }: { branch: string }) {
+const VIOLET = { bar: '#7c3aed', bg: '#f5f3ff', chipBg: '#ede9fe', text: '#5b21b6' }
+
+export default function PaymentRegisterTab({ branch, canEdit = false }: { branch: string; canEdit?: boolean }) {
   const [rows, setRows] = useState<RegisterRow[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -73,6 +79,8 @@ export default function PaymentRegisterTab({ branch }: { branch: string }) {
   const [fType, setFType] = useState<'' | 'HMO' | 'GL'>('')
   const [onlyProblems, setOnlyProblems] = useState(false)
   const [showNoCash, setShowNoCash] = useState(false)
+  const [onlyPending, setOnlyPending] = useState(false)
+  const [busyId, setBusyId] = useState('')
   const [q, setQ] = useState('')
 
   const load = useCallback(async () => {
@@ -87,6 +95,24 @@ export default function PaymentRegisterTab({ branch }: { branch: string }) {
     } finally { setLoading(false) }
   }, [branch])
   useEffect(() => { load() }, [load])
+
+  // Clears the "physical copy pending" tag once the paper copy is compiled.
+  // Writes the payment's notes only — no tags, amounts or journal entry change.
+  const markCompiled = async (r: RegisterRow) => {
+    if (!window.confirm(`Mark ${r.ref} as compiled? Its physical copy is filed.`)) return
+    setBusyId(r.id); setError('')
+    try {
+      const res = await fetch('/api/accounts-receivable/payment-register', {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: r.id, copyPending: false }),
+      })
+      const d = await res.json().catch(() => ({}))
+      if (!res.ok) setError(d.error ?? 'Could not mark it compiled')
+      else setRows(prev => prev.map(x => x.id === r.id ? { ...x, copyPending: false } : x))
+    } catch {
+      setError('Could not mark it compiled.')
+    } finally { setBusyId('') }
+  }
 
   const years = useMemo(() => {
     const s = new Set<number>()
@@ -129,7 +155,8 @@ export default function PaymentRegisterTab({ branch }: { branch: string }) {
   const needle = q.trim().toLowerCase()
   const matches = useCallback((r: RegisterRow) =>
     (!fType || r.type === fType)
-    && (!needle || `${r.ref} ${r.payer} ${r.agency} ${r.notes}`.toLowerCase().includes(needle)), [fType, needle])
+    && (!onlyPending || r.copyPending)
+    && (!needle || `${r.ref} ${r.payer} ${r.agency} ${r.notes}`.toLowerCase().includes(needle)), [fType, needle, onlyPending])
 
   // The numbered list, series by series, with a red row wherever a number is missing.
   const lines = useMemo(() => {
@@ -141,7 +168,7 @@ export default function PaymentRegisterTab({ branch }: { branch: string }) {
       for (let num = 1; num <= info.max; num++) {
         const same = list.filter(r => r.num === num).sort((a, b) => a.paymentDate.localeCompare(b.paymentDate))
         if (!same.length) {
-          if (info.missing.includes(num) && !fType && !needle && !onlyProblems) ls.push({ kind: 'missing', series: info.series, num })
+          if (info.missing.includes(num) && !fType && !needle && !onlyProblems && !onlyPending) ls.push({ kind: 'missing', series: info.series, num })
           continue
         }
         const reused = info.reused.includes(num)
@@ -155,7 +182,7 @@ export default function PaymentRegisterTab({ branch }: { branch: string }) {
       if (ls.length) out.push({ series: info.series, lines: ls })
     }
     return out
-  }, [seriesInfo, rows, inYear, matches, onlyProblems, fType, needle])
+  }, [seriesInfo, rows, inYear, matches, onlyProblems, onlyPending, fType, needle])
 
   const unnumbered = useMemo(() => rows
     .filter(r => !r.ref && inYear('', r.paymentDate) && matches(r) && (showNoCash || !r.noCash))
@@ -167,17 +194,18 @@ export default function PaymentRegisterTab({ branch }: { branch: string }) {
   const reusedCount = yearInfo.reduce((s, i) => s + i.reused.length, 0)
   const numberedCount = yearInfo.filter(i => !isTc(i.series)).reduce((s, i) => s + i.numbers.length, 0)
   const unnumberedCash = rows.filter(r => !r.ref && !r.noCash && inYear('', r.paymentDate))
+  const pendingCount = rows.filter(r => r.ref && r.copyPending && inYear(r.series, r.paymentDate)).length
 
   const exportXlsx = () => {
-    const headers = ['Reference', 'Status', 'Date', 'Type', 'Payer', 'Branch', 'Cash Received', 'Withholding / Discount', 'Excess (held)', 'Sessions', 'Proof', 'Notes']
+    const headers = ['Reference', 'Status', 'Date', 'Type', 'Payer', 'Branch', 'Cash Received', 'Withholding / Discount', 'Excess (held)', 'Sessions', 'Proof', 'Physical copy', 'Notes']
     const out: (string | number)[][] = []
     for (const s of lines) for (const l of s.lines) {
       if (l.kind === 'missing') { out.push([refInSeries(l.series, l.num), 'MISSING — no payment has this number', '', '', '', '', '', '', '', '', '', '']); continue }
       const r = l.row
       const status = l.groupSize > 1 ? (l.reused ? `Number used ${l.groupSize}× on different dates` : `One deposit, row ${l.groupIndex + 1} of ${l.groupSize}`) : 'OK'
-      out.push([r.ref, status, dayOf(r.paymentDate), r.type, r.payer, branchShort(r.branch) || '', r.cash.toFixed(2), r.withheld.toFixed(2), r.overpayment.toFixed(2), r.sessions, r.proofUrls.length ? 'Yes' : 'No', r.notes])
+      out.push([r.ref, status, dayOf(r.paymentDate), r.type, r.payer, branchShort(r.branch) || '', r.cash.toFixed(2), r.withheld.toFixed(2), r.overpayment.toFixed(2), r.sessions, r.proofUrls.length ? 'Yes' : 'No', r.copyPending ? 'Pending' : 'Compiled', r.notes])
     }
-    for (const r of unnumbered) out.push(['', 'NO REFERENCE', dayOf(r.paymentDate), r.type, r.payer, branchShort(r.branch) || '', r.cash.toFixed(2), r.withheld.toFixed(2), r.overpayment.toFixed(2), r.sessions, r.proofUrls.length ? 'Yes' : 'No', r.notes])
+    for (const r of unnumbered) out.push(['', 'NO REFERENCE', dayOf(r.paymentDate), r.type, r.payer, branchShort(r.branch) || '', r.cash.toFixed(2), r.withheld.toFixed(2), r.overpayment.toFixed(2), r.sessions, r.proofUrls.length ? 'Yes' : 'No', '', r.notes])
     downloadXlsx(`Payment Register ${year || 'All years'}.xlsx`, [{ name: 'Payment Register', headers, rows: out }])
   }
 
@@ -268,6 +296,12 @@ export default function PaymentRegisterTab({ branch }: { branch: string }) {
               )}
             </div>
           ))}
+          {pendingCount > 0 && (
+            <div className="text-sm flex flex-wrap items-center gap-x-2" style={{ color: 'var(--charcoal)' }}>
+              <span className="inline-block w-3 h-3 rounded-sm" style={{ background: VIOLET.bar }} />
+              <span><span className="font-semibold">{pendingCount}</span> number{pendingCount === 1 ? '' : 's'} given in the hub — physical copy not compiled yet (violet rows)</span>
+            </div>
+          )}
         </div>
       )}
 
@@ -290,6 +324,12 @@ export default function PaymentRegisterTab({ branch }: { branch: string }) {
           <input type="checkbox" checked={onlyProblems} onChange={e => setOnlyProblems(e.target.checked)} />
           Only numbers on more than one row
         </label>
+        {pendingCount > 0 && (
+          <label className="flex items-center gap-1.5 text-xs cursor-pointer select-none" style={{ color: VIOLET.text }}>
+            <input type="checkbox" checked={onlyPending} onChange={e => setOnlyPending(e.target.checked)} />
+            Only physical copy pending ({pendingCount})
+          </label>
+        )}
         <button onClick={exportXlsx} disabled={loading || (!lines.length && !unnumbered.length)}
           className="ml-auto px-3 py-2 rounded-lg text-sm font-medium border disabled:opacity-50"
           style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)', background: '#fff' }}>
@@ -335,14 +375,26 @@ export default function PaymentRegisterTab({ branch }: { branch: string }) {
                 ) : (
                   <tr key={l.row.id} style={{
                     borderBottom: '1px solid #E9EFDC',
-                    boxShadow: l.groupSize > 1 ? `inset 4px 0 0 ${l.reused ? '#d97706' : '#4A8073'}` : undefined,
-                    background: l.reused ? '#fffbeb' : undefined,
+                    boxShadow: l.row.copyPending ? `inset 4px 0 0 ${VIOLET.bar}` : l.groupSize > 1 ? `inset 4px 0 0 ${l.reused ? '#d97706' : '#4A8073'}` : undefined,
+                    background: l.reused ? '#fffbeb' : l.row.copyPending ? VIOLET.bg : undefined,
                   }}>
                     <td className="px-3 py-2 whitespace-nowrap">
                       <span className="font-semibold tabular-nums" style={{ color: 'var(--charcoal)' }}>{l.row.ref}</span>
                       {l.groupSize > 1 && (
                         <span className="block text-[11px]" style={{ color: l.reused ? '#b45309' : 'var(--mid-gray)' }}>
                           {l.reused ? `used ${l.groupSize}× on different dates` : `one deposit · ${l.groupIndex + 1} of ${l.groupSize}`}
+                        </span>
+                      )}
+                      {l.row.copyPending && (
+                        <span className="mt-1 flex items-center gap-1.5">
+                          <span className="px-1.5 py-0.5 rounded-full text-[10px] font-semibold" style={{ background: VIOLET.chipBg, color: VIOLET.text }}
+                            title="AR number given in the hub; the physical copy has not been compiled yet">Physical copy pending</span>
+                          {canEdit && (
+                            <button type="button" onClick={() => markCompiled(l.row)} disabled={busyId === l.row.id}
+                              className="text-[10.5px] font-semibold underline underline-offset-2 disabled:opacity-50" style={{ color: VIOLET.text }}>
+                              {busyId === l.row.id ? 'Saving…' : 'Mark compiled'}
+                            </button>
+                          )}
                         </span>
                       )}
                     </td>
