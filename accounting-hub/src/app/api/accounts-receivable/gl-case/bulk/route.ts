@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { GL_STAGES, parseAgency, AGENCY_ERROR } from '@/lib/gl-stage'
+import { stageEventRows } from '@/lib/gl-stage-events'
 
 /**
  * PUT /api/accounts-receivable/gl-case/bulk
@@ -93,6 +94,24 @@ export async function PUT(req: Request) {
     if (agencyPart) {
       ops.push(prisma.glCase.updateMany({ where: { id: { in: agencyPart.caseIds } }, data: { agency } }))
       ops.push(prisma.digitalWallet.updateMany({ where: { id: { in: agencyPart.walletIds }, walletType: 'GL' }, data: { agency } }))
+    }
+    // Dated stage history (Hannah 2026-11-17: "track stage dates"): one event per
+    // ticked letter whose stage actually changes. Appended last, so the count
+    // pairs read below keep their positions.
+    if (size(stage)) {
+      const [curCases, curWallets] = await Promise.all([
+        stage!.caseIds.length
+          ? prisma.glCase.findMany({ where: { id: { in: stage!.caseIds } }, select: { id: true, glStage: true, walletId: true } })
+          : Promise.resolve([]),
+        stage!.walletIds.length
+          ? prisma.digitalWallet.findMany({ where: { id: { in: stage!.walletIds }, walletType: 'GL' }, select: { id: true, glStage: true } })
+          : Promise.resolve([]),
+      ])
+      const events = stageEventRows([
+        ...curCases.map(c => ({ glCaseId: c.id, walletId: c.walletId, fromStage: c.glStage, stage: glStage })),
+        ...curWallets.map(w => ({ walletId: w.id, fromStage: w.glStage, stage: glStage })),
+      ], session.user.id as string, 'BULK')
+      if (events.length) ops.push(prisma.glStageEvent.createMany({ data: events }))
     }
     const counts = await prisma.$transaction(ops)
     // Two updateMany per part, in push order: stage first (if any), then each date, then agency.

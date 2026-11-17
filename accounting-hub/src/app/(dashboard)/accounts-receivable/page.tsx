@@ -38,6 +38,7 @@ import ExpandablePanel from './ExpandablePanel'
 import PaymentsCard from './PaymentsCard'
 import { useResizableColumns, ResizableColgroup, ColResizeHandle } from '@/components/useResizableColumns'
 import DetailedGl, { type GlCaseRow, type GlCaseWallet } from './DetailedGl'
+import type { GlStageEvent } from '@/lib/gl-stage-times'
 import { buildRows as buildGlRows, avgArRunningDays } from '@/lib/gl-letters'
 import { agencyOptions } from '@/lib/gl-stage'
 import { HR_PAGE_CLASS, HR_PAGE_STYLE, HrShimmerStyle, hrBtn } from '@/components/ui/hr-look'
@@ -598,6 +599,8 @@ export default function AccountsReceivablePage() {
   const [arPaymentsLoaded, setArPayments] = useState<ARPaymentRecord[]>([])
   // Detailed GL entries created without a POS wallet behind them.
   const [glCasesLoaded, setGlCases] = useState<GlCaseRow[]>([])
+  // Dated stage history behind the Detailed GL's days-at-stage figures (11/17).
+  const [glStageEventsLoaded, setGlStageEvents] = useState<GlStageEvent[]>([])
   // Full-history totals from the API. The `orders` list is capped at 500, so
   // summary figures must come from here or older years drop out silently.
   const [summaryLoaded, setSummary] = useState<ARSummary | null>(null)
@@ -612,6 +615,7 @@ export default function AccountsReceivablePage() {
   const orders = dataReady ? ordersLoaded : NO_ROWS
   const arPayments = dataReady ? arPaymentsLoaded : NO_ROWS
   const glCases = dataReady ? glCasesLoaded : NO_ROWS
+  const glStageEvents = dataReady ? glStageEventsLoaded : NO_ROWS
   const summary = dataReady ? summaryLoaded : null
   // GL "AR Days (Overall)" on the dashboard IS Detailed GL's "Avg AR running days":
   // the same letters and the same clock (lib/gl-letters), so the two always agree
@@ -878,6 +882,7 @@ export default function AccountsReceivablePage() {
       setOrders(data.orders || [])
       setArPayments(data.arPayments || [])
       setGlCases(data.glCases || [])
+      setGlStageEvents(data.glStageEvents || [])
       setSummary(data.summary || null)
       setDataFor(key)
     } catch {
@@ -886,6 +891,7 @@ export default function AccountsReceivablePage() {
       setOrders([])
       setArPayments([])
       setGlCases([])
+      setGlStageEvents([])
       setSummary(null)
       setDataFor(key)
     } finally {
@@ -1918,6 +1924,7 @@ export default function AccountsReceivablePage() {
           onSaved={fetchData}
           focusId={glFocusId}
           glCases={glCases}
+          stageEvents={glStageEvents}
           wallets={wallets.map(w => ({
             ...w,
             // "Rendered service?" — has anything actually been billed to the letter.

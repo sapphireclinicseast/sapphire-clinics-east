@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { GL_STAGES, parseAgency, AGENCY_ERROR } from '@/lib/gl-stage'
+import { stageEventRows } from '@/lib/gl-stage-events'
 
 /**
  * PATCH /api/accounts-receivable/gl-case
@@ -136,7 +137,7 @@ export async function PATCH(req: Request) {
     const { id } = body
     if (!id) return NextResponse.json({ error: 'id is required' }, { status: 400 })
 
-    const wallet = await prisma.digitalWallet.findUnique({ where: { id }, select: { walletType: true } })
+    const wallet = await prisma.digitalWallet.findUnique({ where: { id }, select: { walletType: true, glStage: true } })
     if (!wallet) return NextResponse.json({ error: 'Letter not found' }, { status: 404 })
     if (wallet.walletType !== 'GL') {
       return NextResponse.json({ error: 'Case tracking applies to Guarantee Letters only' }, { status: 400 })
@@ -185,15 +186,23 @@ export async function PATCH(req: Request) {
       return NextResponse.json({ error: 'Nothing to update' }, { status: 400 })
     }
 
-    const updated = await prisma.digitalWallet.update({
-      where: { id },
-      data,
-      select: {
-        id: true, glRequestedAmount: true, glDocsSubmittedAt: true, glReleasedAt: true,
-        soaAmount: true, soaSubmittedAt: true, soaResubmittedAt: true, guardianName: true,
-        soaCommissionRate: true, payoutBatch: true, qbEntry: true, glLetterNo: true, glStage: true, agency: true,
-      },
-    })
+    // A stage change is logged with its date in the same transaction, so the
+    // Detailed GL can time each OP office (Hannah 2026-11-17).
+    const events = 'glStage' in data
+      ? stageEventRows([{ walletId: id, fromStage: wallet.glStage, stage: data.glStage }], session.user.id as string, 'ROW')
+      : []
+    const [updated] = await prisma.$transaction([
+      prisma.digitalWallet.update({
+        where: { id },
+        data,
+        select: {
+          id: true, glRequestedAmount: true, glDocsSubmittedAt: true, glReleasedAt: true,
+          soaAmount: true, soaSubmittedAt: true, soaResubmittedAt: true, guardianName: true,
+          soaCommissionRate: true, payoutBatch: true, qbEntry: true, glLetterNo: true, glStage: true, agency: true,
+        },
+      }),
+      ...events.map(e => prisma.glStageEvent.create({ data: e })),
+    ])
     return NextResponse.json(updated)
   } catch (e) {
     console.error('GL case update error:', e)
@@ -289,7 +298,7 @@ export async function PUT(req: Request) {
     const caseId = String(body.caseId ?? '')
     if (!caseId) return NextResponse.json({ error: 'caseId is required' }, { status: 400 })
 
-    const existing = await prisma.glCase.findUnique({ where: { id: caseId }, select: { id: true } })
+    const existing = await prisma.glCase.findUnique({ where: { id: caseId }, select: { id: true, glStage: true, walletId: true } })
     if (!existing) return NextResponse.json({ error: 'Entry not found' }, { status: 404 })
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -338,7 +347,18 @@ export async function PUT(req: Request) {
     if (Object.keys(data).length === 0) {
       return NextResponse.json({ error: 'Nothing to update' }, { status: 400 })
     }
-    const updated = await prisma.glCase.update({ where: { id: caseId }, data, select: CASE_SELECT })
+    // Dated stage history, logged with the save (Hannah 2026-11-17: "track stage dates").
+    const events = 'glStage' in data
+      ? stageEventRows([{
+          glCaseId: caseId,
+          walletId: 'walletId' in data ? data.walletId : existing.walletId,
+          fromStage: existing.glStage, stage: data.glStage,
+        }], session.user.id as string, 'ROW')
+      : []
+    const [updated] = await prisma.$transaction([
+      prisma.glCase.update({ where: { id: caseId }, data, select: CASE_SELECT }),
+      ...events.map(e => prisma.glStageEvent.create({ data: e })),
+    ])
     return NextResponse.json(updated)
   } catch (e) {
     console.error('GL case save error:', e)

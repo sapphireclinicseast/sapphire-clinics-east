@@ -9,9 +9,18 @@ import ExpandablePanel from './ExpandablePanel'
 import { GL_STAGES, agencySortKey } from '@/lib/gl-stage'
 import { GlAgencySelect, useGlAgencies } from '@/components/GlAgencySelect'
 import { num, buildRows, arRunningDays, soaSubmittedOn, avgArRunningDays, posBalanceOf, drawnDown, type GlCaseWallet, type GlCaseRow, type GlLetterRow } from '@/lib/gl-letters'
+import { indexStageEvents, eventsForRow, stageSince, daysSince, spanBetween, enteredAt, average, DAY_MS, type GlStageEvent } from '@/lib/gl-stage-times'
 
 export type { GlCaseWallet, GlCaseRow } from '@/lib/gl-letters'
-type Row = GlLetterRow
+/**
+ * A letter plus its dated stage history (Hannah 2026-11-17: "track stage dates").
+ * `stageSince` is when it reached the stage it is at now; `floor` means it was
+ * already there when tracking began, so the date is a lower bound.
+ */
+type Row = GlLetterRow & {
+  stageHistory: GlStageEvent[]
+  stageSince: { since: string; floor: boolean } | null
+}
 
 const fmtDate = (v?: string | null) =>
   v ? new Date(v).toLocaleDateString('en-PH', { year: 'numeric', month: 'short', day: 'numeric', timeZone: 'Asia/Manila' }) : ''
@@ -223,7 +232,7 @@ function commissionOf(r: Row): number {
 
 /** Columns in the order the OPGL SUMMARY sheet uses, with Branch added. */
 type ColKey =
-  | 'stage' | 'name' | 'branch' | 'docsDate' | 'requested' | 'released' | 'approved' | 'soaAmount'
+  | 'stage' | 'stageDays' | 'name' | 'branch' | 'docsDate' | 'requested' | 'released' | 'approved' | 'soaAmount'
   | 'posBalance'
   | 'rendered' | 'soaSubmitted' | 'soaDate' | 'soaResubDate' | 'status' | 'paidDate' | 'arDays' | 'arDaysResub' | 'perMonths'
   | 'guardian' | 'drive' | 'commission' | 'payout' | 'qb' | 'linked' | 'glNo' | 'agency'
@@ -233,6 +242,9 @@ interface Col { key: ColKey; label: string; numeric?: boolean }
 const COLS: Col[] = [
   // Hannah, 2026-11-03: which OP office the letter is at, so each stage can be chased.
   { key: 'stage', label: 'Stage' },
+  // Hannah 11/17: how long the letter has been at that office (stage dates are
+  // recorded from 11/17; "≥" = it was already there then).
+  { key: 'stageDays', label: 'Days at stage', numeric: true },
   // Hannah 11/15: which office issued the letter — STAR, ODESFA or LGU.
   { key: 'agency', label: 'Agency' },
   { key: 'name', label: 'Name' },
@@ -266,6 +278,7 @@ const COLS: Col[] = [
 function cellText(r: Row, k: ColKey): string {
   switch (k) {
     case 'stage': return r.glStage || '—'
+    case 'stageDays': return r.stageSince ? `${r.stageSince.floor ? '≥' : ''}${daysSince(r.stageSince.since)}` : '—'
     case 'agency': return r.agency || '—'
     case 'name': return r.patientName || ''
     case 'branch': return branchLabel(r.branch) || '—'
@@ -307,6 +320,7 @@ function sortValue(r: Row, k: ColKey): string | number {
   switch (k) {
     // Process order (STAR OFFICE first, PAID last), letters with no stage after them.
     case 'stage': { const i = (GL_STAGES as readonly string[]).indexOf(r.glStage || ''); return i < 0 ? GL_STAGES.length : i }
+    case 'stageDays': return r.stageSince ? daysSince(r.stageSince.since) : -1
     // STAR, ODESFA, LGU, then any added agency A–Z, then letters with no agency.
     case 'agency': return agencySortKey(r.agency)
     case 'name': return r.patientName || ''
@@ -337,10 +351,12 @@ function sortValue(r: Row, k: ColKey): string | number {
 }
 
 export default function DetailedGl({
-  wallets, glCases = [], canWrite, onSaved, focusId = '',
+  wallets, glCases = [], stageEvents = [], canWrite, onSaved, focusId = '',
 }: {
   wallets: GlCaseWallet[]
   glCases?: GlCaseRow[]
+  /** Dated stage history from the AR endpoint (GlStageEvent), oldest first. */
+  stageEvents?: GlStageEvent[]
   canWrite: boolean
   onSaved: () => void
   /** Row (wallet or case id) a global-search hit wants revealed. */
@@ -366,14 +382,25 @@ export default function DetailedGl({
   // issuing office does not change when the cheque arrives.
   const [agencyEdits, setAgencyEdits] = useState<Record<string, string | null>>({})
   const [stageError, setStageError] = useState('')
+  const stageIdx = useMemo(() => indexStageEvents(stageEvents), [stageEvents])
   const allRows = useMemo(
-    () => buildRows(wallets, glCases).map(r => {
-      let out = r
-      if (r.key in stageEdits && !r.paid) out = { ...out, glStage: stageEdits[r.key] }
+    () => buildRows(wallets, glCases).map((r): Row => {
+      let out: GlLetterRow = r
+      // A stage just picked here is already logged on the server; until the next
+      // reload brings that event back, it reads as reached today.
+      const justSet = r.key in stageEdits && !r.paid
+      if (justSet) out = { ...out, glStage: stageEdits[r.key] }
       if (r.key in agencyEdits) out = { ...out, agency: agencyEdits[r.key] }
-      return out
+      const stageHistory = eventsForRow(out, stageIdx)
+      return {
+        ...out,
+        stageHistory,
+        stageSince: justSet
+          ? (out.glStage ? { since: new Date().toISOString(), floor: false } : null)
+          : stageSince(out, stageHistory),
+      }
     }),
-    [wallets, glCases, stageEdits, agencyEdits],
+    [wallets, glCases, stageEdits, agencyEdits, stageIdx],
   )
   // The agency list: STAR, ODESFA, LGU plus any agency already on a letter;
   // "+ Add agency…" in a dropdown adds another (Hannah 11/15).
@@ -697,6 +724,12 @@ export default function DetailedGl({
                           className="px-1.5 py-0.5 rounded border text-[11px] font-semibold outline-none bg-white"
                           style={{ borderColor: r.agency ? 'var(--teal)' : 'var(--light-gray)', color: r.agency ? 'var(--deep-teal)' : 'var(--mid-gray)' }} />
                       : <span className="text-[11px] font-semibold">{r.agency || '—'}</span>)
+                  : c.key === 'stageDays'
+                  ? <span title={r.stageSince
+                      ? (r.stageSince.floor
+                          ? `Already at ${r.glStage} when stage dates began on ${fmtDate(r.stageSince.since)}, so at least this many days`
+                          : `At ${r.glStage} since ${fmtDate(r.stageSince.since)}`)
+                      : r.paid ? 'Paid' : 'No stage set'}>{cellText(r, c.key)}</span>
                   : c.key === 'drive'
                   ? (r.files.length
                       ? r.files.map((u, i) => (
@@ -749,6 +782,28 @@ export default function DetailedGl({
   // letter has no end point. It is the same span the AR running days column
   // measures once a letter is paid.
   const soaToPayment  = avgSpan(soaSubmittedOn, settledOn)
+
+  // Days between OP offices, from the dated stage history (Hannah 11/17: "how many
+  // days from accounting to cashier?"). Only moves whose start was recorded count:
+  // a letter already at a stage when tracking began has no known arrival date. The
+  // last leg ends at the cheque, as SOA → payment does.
+  const stageLegs: { label: string; from: string; v: { avg: number; n: number } | null }[] = [
+    { label: 'Star Office → Billing', from: 'STAR OFFICE', v: average(rows.map(r => spanBetween(r.stageHistory, 'STAR OFFICE', 'BILLING'))) },
+    { label: 'Billing → Accounting', from: 'BILLING', v: average(rows.map(r => spanBetween(r.stageHistory, 'BILLING', 'ACCOUNTING'))) },
+    { label: 'Accounting → Cashier', from: 'ACCOUNTING', v: average(rows.map(r => spanBetween(r.stageHistory, 'ACCOUNTING', 'CASHIER'))) },
+    { label: 'Cashier → payment', from: 'CASHIER', v: average(rows.map(r => {
+      const at = enteredAt(r.stageHistory, 'CASHIER'), paidOn = settledOn(r)
+      return at && paidOn ? (new Date(paidOn).getTime() - new Date(at).getTime()) / DAY_MS : null
+    })) },
+  ]
+  /** Letters at a stage now, and how long they have been there (≥ when any date is a floor). */
+  const waitingAt = (stage: string) => {
+    const here = rows.filter(r => !r.paid && r.glStage === stage && r.stageSince)
+    if (!here.length) return null
+    const days = here.map(r => daysSince(r.stageSince!.since))
+    return { n: here.length, avg: days.reduce((a, b) => a + b, 0) / days.length, floor: here.some(r => r.stageSince!.floor) }
+  }
+  const trackedSince = stageIdx.trackedSince ? fmtDate(stageIdx.trackedSince) : ''
 
   // Average AR running days over the letters where it is defined — an SOA has to
   // have been submitted for the clock to have started, so letters without one are
@@ -861,6 +916,32 @@ export default function DetailedGl({
             </div>
           </div>
         ))}
+      </div>
+
+      {/* Days between OP offices, from the dated stage history (11/17). */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+        {stageLegs.map(({ label, from, v }) => {
+          const w = waitingAt(from)
+          return (
+            <div key={label} className="rounded-xl px-4 py-3" style={{ border: '1px solid var(--light-gray)', background: '#f8fafc' }}>
+              <div className="text-[11px] font-semibold" style={{ color: 'var(--mid-gray)' }}>{label}</div>
+              <div className="text-lg font-bold tabular-nums" style={{ color: 'var(--charcoal)' }}>
+                {v ? `${v.avg.toFixed(1)} days` : '—'}
+              </div>
+              <div className="text-[10px] tabular-nums" style={{ color: 'var(--mid-gray)' }}>
+                {v
+                  ? `${v.n} letter${v.n === 1 ? '' : 's'} moved`
+                  : `no moves recorded yet${trackedSince ? ` (stage dates from ${trackedSince})` : ''}`}
+              </div>
+              {w && (
+                <div className="text-[10px] tabular-nums" style={{ color: 'var(--mid-gray)' }}
+                  title={w.floor ? `Some were already at ${from} when stage dates began, so their days are at least this many` : undefined}>
+                  {w.n} at {from} now · avg {w.floor ? '≥' : ''}{w.avg.toFixed(1)} days there
+                </div>
+              )}
+            </div>
+          )
+        })}
       </div>
 
       <div className="flex flex-wrap items-center gap-2">

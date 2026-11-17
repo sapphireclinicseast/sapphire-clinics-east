@@ -1139,6 +1139,31 @@ model GlCase {
   @@index([processorRfpId])
 }
 
+/// One row each time a Guarantee Letter's stage changes (Hannah 2026-11-17: "track
+/// stage dates", after asking how long letters take from Accounting to Cashier and
+/// finding nothing recorded it). The stage itself still lives on GlCase/DigitalWallet;
+/// this is only its dated history, so the Detailed GL can show days at each OP office.
+/// Written by the gl-case routes (row and bulk). BASELINE rows mark the stage each
+/// letter already had when tracking began: their date is a floor, not when the
+/// letter really arrived, so spans starting from one are never averaged.
+/// No foreign keys: an event outlives a deleted entry harmlessly, and keeping it
+/// loose means the history can never block a delete.
+model GlStageEvent {
+  id          String   @id @default(cuid())
+  glCaseId    String?
+  walletId    String?
+  fromStage   String?
+  /// The stage entered; null when the stage was cleared.
+  stage       String?
+  changedAt   DateTime @default(now())
+  changedById String?
+  /// ROW (Stage dropdown / edit form) | BULK (ticked letters) | BASELINE (11/17 start)
+  source      String
+
+  @@index([glCaseId])
+  @@index([walletId])
+}
+
 model WalletPackage {
   id            String        @id @default(cuid())
   walletId      String

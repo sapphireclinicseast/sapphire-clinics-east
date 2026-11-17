@@ -887,6 +887,27 @@ BEGIN
 END$$;
 SQL
 
+# ── Detailed GL stage history (Hannah 2026-11-17: "track stage dates") ────────
+# One row per Guarantee Letter stage change; the gl-case routes write it in the
+# same transaction as the stage, so without the table a stage save fails.
+# Applied by hand on prod 11/17 with a BASELINE row per letter (that one-off
+# insert is not repeated here).
+docker exec -i accounting_db psql -U sapphire -d sapphire_accounting <<'SQL'
+CREATE TABLE IF NOT EXISTS "GlStageEvent" (
+  "id"          TEXT NOT NULL,
+  "glCaseId"    TEXT,
+  "walletId"    TEXT,
+  "fromStage"   TEXT,
+  "stage"       TEXT,
+  "changedAt"   TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "changedById" TEXT,
+  "source"      TEXT NOT NULL,
+  CONSTRAINT "GlStageEvent_pkey" PRIMARY KEY ("id")
+);
+CREATE INDEX IF NOT EXISTS "GlStageEvent_glCaseId_idx" ON "GlStageEvent"("glCaseId");
+CREATE INDEX IF NOT EXISTS "GlStageEvent_walletId_idx" ON "GlStageEvent"("walletId");
+SQL
+
 # ── Consumable form-stock tracking (control-number ranges) ────────────────────
 docker exec -i accounting_db psql -U sapphire -d sapphire_accounting <<'SQL'
 CREATE TABLE IF NOT EXISTS "FormReceipt" (

@@ -506,6 +506,16 @@ export async function GET(req: Request) {
         })
       : []
 
+    // Dated stage history (Hannah 2026-11-17: "track stage dates"), so the Detailed
+    // GL can show days at each OP office. Small: one row per stage change. Never
+    // lets the AR page fail (e.g. the table not yet created on an environment).
+    const glStageEvents = type === 'GL'
+      ? await prisma.glStageEvent.findMany({
+          select: { glCaseId: true, walletId: true, fromStage: true, stage: true, changedAt: true, source: true },
+          orderBy: { changedAt: 'asc' },
+        }).catch(err => { console.error('[AR] GL stage history lookup failed:', err); return [] })
+      : []
+
     // Consults the HMO paid straight to the doctor (Payment History → Payments
     // to Doctors): carried so AR can show them as paid direct.
     // Never let this annotation take the AR page down (e.g. table not yet created).
@@ -529,7 +539,7 @@ export async function GET(req: Request) {
       notDuplicateNote: type === 'HMO' ? notDuplicateNote(notes) : null,
     }))
 
-    return NextResponse.json({ wallets: walletsOut, orders: ordersOut, arPayments, summary, glCases })
+    return NextResponse.json({ wallets: walletsOut, orders: ordersOut, arPayments, summary, glCases, glStageEvents })
   } catch (err) {
     console.error('AR API error:', err)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
