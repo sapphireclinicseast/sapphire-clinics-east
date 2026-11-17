@@ -27,8 +27,16 @@ export interface BirthdaySweepResult {
   celebrants: number
   emailSent: number
   smsSent: number
-  /** Already greeted this year before this run — not re-sent. */
-  skipped: number
+  /**
+   * Already greeted this year before this run — not re-sent.
+   *
+   * NOT named `skipped`. The cron wrapper decides whether a run was a real
+   * one by reading this JSON, and an off-hour reply says it was skipped — so
+   * a field called `skipped` on a SUCCESSFUL run made the two
+   * indistinguishable by substring, and every real run was logged as though
+   * nothing had happened. The greetings went out; the log stayed empty.
+   */
+  alreadyGreeted: number
   /** Had neither an email nor a phone number: nothing to send to. */
   noContact: number
   errors: { patientId: string; channel: 'email' | 'sms'; error: string }[]
@@ -61,7 +69,7 @@ export async function runBirthdayGreetings(opts: { dryRun?: boolean } = {}): Pro
   const year = Number(today.iso.slice(0, 4))
 
   const result: BirthdaySweepResult = {
-    date: today.iso, celebrants: 0, emailSent: 0, smsSent: 0, skipped: 0, noContact: 0, errors: [],
+    date: today.iso, celebrants: 0, emailSent: 0, smsSent: 0, alreadyGreeted: 0, noContact: 0, errors: [],
   }
 
   // Raw SQL for the enum array, matching the dashboard's own query: the Prisma
@@ -94,7 +102,7 @@ export async function runBirthdayGreetings(opts: { dryRun?: boolean } = {}): Pro
 
     // Email.
     if (hasEmail) {
-      if (done.has(`email:${p.id}`)) result.skipped += 1
+      if (done.has(`email:${p.id}`)) result.alreadyGreeted += 1
       else if (!opts.dryRun) {
         try {
           await sendBirthdayEmail({ firstName: p.firstName, email: p.email!, branch })
@@ -111,7 +119,7 @@ export async function runBirthdayGreetings(opts: { dryRun?: boolean } = {}): Pro
     // SMS. Sent independently of the email: a gateway outage should not cost
     // the patient the greeting that did work.
     if (hasPhone) {
-      if (done.has(`sms:${p.id}`)) result.skipped += 1
+      if (done.has(`sms:${p.id}`)) result.alreadyGreeted += 1
       else if (!opts.dryRun && branch) {
         try {
           await sendBirthdaySms({
