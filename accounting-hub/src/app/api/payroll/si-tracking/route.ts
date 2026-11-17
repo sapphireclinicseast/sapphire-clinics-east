@@ -40,8 +40,9 @@ const ROLES = ['ADMIN', 'PAYROLL_OFFICER', 'ACCOUNTANT', 'BOOKKEEPER', 'AHEA_ADM
  * has to fetch its own figures:
  *  - payroll: finalized pay per row per cutoff (gross, withholding, net),
  *    from `from` (default: 24 months back). A row is a consultant (all
- *    branches summed) or, for a consultant paid at more than one branch, one
- *    of their branches ("cid@SBGH"), since each branch is invoiced apart;
+ *    branches summed) or, for a consultant paid at more than one branch (or
+ *    only at one of their extra branches), one of their branches
+ *    ("cid@SBGH"), since each branch is invoiced apart;
  *  - splits: consultantId → the branches they are tracked by, for those
  *    consultants only;
  *  - submissions: every recorded invoice row from that month on. A row's
@@ -77,20 +78,26 @@ export async function GET(req: Request) {
         orderBy: [{ month: 'asc' }],
       }),
       prisma.consultantSiAdjustment.findMany({ orderBy: { createdAt: 'asc' } }),
-      prisma.consultant.findMany({ select: { id: true, branch: true } }),
+      prisma.consultant.findMany({ select: { id: true, branch: true, extraBranches: true } }),
     ])
     // Special runs (e.g. "2026-07-GOVCON") are not invoice cutoffs.
     const paid = groups.filter(g => CUTOFF_RX.test(g.cutoffPeriod) && (Number(g._sum.grossPay || 0) || Number(g._sum.taxAmount || 0)))
 
-    // Who is invoiced per branch: paid at (or invoiced to) more than one branch.
+    // Who is invoiced per branch: paid at (or invoiced to) more than one
+    // branch — or only at one of their extra branches, so an invoice they
+    // send there is filed under that branch, not their home one.
     const siBranch = (b: string | null | undefined) => (SI_BRANCHES as readonly string[]).includes(b || '') ? b as string : ''
     const seen = new Map<string, Set<string>>()
     const note = (cid: string, b: string) => { if (b) (seen.get(cid) || seen.set(cid, new Set()).get(cid)!).add(b) }
     for (const g of paid) note(g.consultantId, siBranch(g.branch))
     for (const r of submissionRows) note(r.consultantId, siBranch(r.branch))
-    const splits: Record<string, string[]> = {}
-    for (const [cid, set] of seen) if (set.size > 1) splits[cid] = [...set].sort()
     const home = new Map(homes.map(c => [c.id, c.branch]))
+    const extras = new Map(homes.map(c => [c.id, c.extraBranches || []]))
+    const splits: Record<string, string[]> = {}
+    for (const [cid, set] of seen) {
+      const only = set.size === 1 ? [...set][0] : ''
+      if (set.size > 1 || (only && only !== home.get(cid) && (extras.get(cid) || []).includes(only))) splits[cid] = [...set].sort()
+    }
     /** The row a record belongs to. An untagged record of an interbranch consultant (saved before branches) sits under their home branch. */
     const trackOf = (cid: string, branch: string | null | undefined) => {
       const list = splits[cid]
