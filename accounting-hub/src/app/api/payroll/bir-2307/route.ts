@@ -10,10 +10,13 @@ import { isSignatureBranch, readSignature } from '@/lib/bir2307-signature-store'
  *
  *   GET  ?mode=settings                 → per-branch payor settings (defaults baked in)
  *   POST { branch, ...fields }          → upsert one branch's payor settings
- *   GET  ?mode=amounts&consultantId=&from=YYYY-MM-DD&to=YYYY-MM-DD
+ *   GET  ?mode=amounts&consultantId=&from=YYYY-MM-DD&to=YYYY-MM-DD[&branch=SBEA|SBGH|VERDANA]
  *        → per-month gross/EWT from finalized payroll entries in the period
  *          (the generator pre-fills the income table with these; the user can
- *          override every figure before generating the PDF)
+ *          override every figure before generating the PDF). With `branch`,
+ *          only that branch's payroll counts: each branch is its own payor
+ *          (own TIN branch code), so an interbranch consultant gets one 2307
+ *          per branch. `branches` always gives every branch's period total.
  *   GET  ?mode=asset&name=template|signature[&branch=]
  *        → the BIR 2307 form template / signatory e-signature. Served HERE,
  *          behind auth, instead of from public/ — the signatory's e-signature
@@ -77,6 +80,7 @@ export async function GET(req: Request) {
     const consultantId = url.searchParams.get('consultantId') || ''
     const from = url.searchParams.get('from') || ''
     const to = url.searchParams.get('to') || ''
+    const branch = BRANCH_KEYS.includes(url.searchParams.get('branch') || '') ? url.searchParams.get('branch') as string : ''
     if (!consultantId || !/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to)) {
       return NextResponse.json({ error: 'consultantId, from and to are required' }, { status: 400 })
     }
@@ -97,10 +101,17 @@ export async function GET(req: Request) {
         status: { in: ['LOCKED', 'FINAL'] },
         OR: months.map(k => ({ cutoffPeriod: { startsWith: k } })),
       },
-      select: { cutoffPeriod: true, grossPay: true, taxAmount: true },
+      select: { cutoffPeriod: true, grossPay: true, taxAmount: true, branch: true },
     })
+    const round2 = (n: number) => Math.round(n * 100) / 100
+    const branches: Record<string, { gross: number; tax: number; entries: number }> = {}
+    for (const e of entries) {
+      const t = (branches[e.branch || ''] ||= { gross: 0, tax: 0, entries: 0 })
+      t.gross = round2(t.gross + Number(e.grossPay)); t.tax = round2(t.tax + Number(e.taxAmount)); t.entries++
+    }
+    const counted = branch ? entries.filter(e => e.branch === branch) : entries
     const byMonth = months.map(k => {
-      const rows = entries.filter(e => e.cutoffPeriod.startsWith(k))
+      const rows = counted.filter(e => e.cutoffPeriod.startsWith(k))
       return {
         month: k,
         gross: Math.round(rows.reduce((s, e) => s + Number(e.grossPay), 0) * 100) / 100,
@@ -108,7 +119,7 @@ export async function GET(req: Request) {
         entries: rows.length,
       }
     })
-    return NextResponse.json({ months: byMonth })
+    return NextResponse.json({ months: byMonth, branch, branches })
   }
 
   // mode=settings

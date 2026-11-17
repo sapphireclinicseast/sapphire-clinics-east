@@ -27,6 +27,9 @@ const BRANCHES = [
   { value: 'SBGH', label: 'Greenhills Branch' },
   { value: 'VERDANA', label: 'Verdana Store' },
 ]
+/** "East", "Greenhills", "Verdana" — for notes and file names. */
+const branchShort = (v: string) => (BRANCHES.find(b => b.value === v)?.label || v).replace(/ (Branch|Store)$/, '')
+type BranchPaid = Record<string, { gross: number; tax: number; entries: number }>
 const MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 const monthLabel = (ym: string) => { const [y, m] = ym.split('-'); return `${MON[parseInt(m) - 1]} ${y}` }
 const peso = (n: number) => n.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
@@ -84,6 +87,12 @@ export function Bir2307Generator({ branch, canWrite }: { branch: string; canWrit
   const [to, setTo] = useState('')
   const [payee, setPayee] = useState({ name: '', tin: '', address: '', zip: '' })
   const [payorBranch, setPayorBranch] = useState(BRANCHES.some(b => b.value === branch) ? branch : 'SBEA')
+  // Branches the consultant was paid at in the period. Each branch is its own
+  // payor (own TIN branch code), so an interbranch consultant gets one 2307
+  // per branch, each with that branch's payroll only.
+  const [paidAt, setPaidAt] = useState<BranchPaid>({})
+  // Picked by hand: never switch the branch for them.
+  const [branchTouched, setBranchTouched] = useState(false)
   const [payor, setPayor] = useState({ name: '', tin: '', address: '', zip: '' })
   const [rows, setRows] = useState<IncomeRow[]>([newRow()])
   const [monthCols, setMonthCols] = useState<string[]>([])
@@ -116,6 +125,8 @@ export function Bir2307Generator({ branch, canWrite }: { branch: string; canWrit
     const c = consultants.find(x => x.id === id)
     setPayee({ name: c?.name || '', tin: c?.tinNumber || '', address: c?.birAddress || '', zip: '' })
     if (c && BRANCHES.some(b => b.value === c.branch)) setPayorBranch(c.branch)
+    setBranchTouched(false)
+    setPaidAt({})
     setResult(null)
   }
 
@@ -123,9 +134,15 @@ export function Bir2307Generator({ branch, canWrite }: { branch: string; canWrit
   const loadAmounts = useCallback(async () => {
     if (!consultantId || !from || !to) return
     try {
-      const r = await fetch(`/api/payroll/bir-2307?mode=amounts&consultantId=${consultantId}&from=${from}&to=${to}`)
+      const r = await fetch(`/api/payroll/bir-2307?mode=amounts&consultantId=${consultantId}&from=${from}&to=${to}&branch=${payorBranch}`)
       if (!r.ok) return
       const d = await r.json()
+      const all: BranchPaid = d.branches || {}
+      const paid = BRANCHES.map(b => b.value).filter(b => all[b] && (all[b].gross || all[b].tax))
+      setPaidAt(Object.fromEntries(paid.map(b => [b, all[b]])))
+      // Paid at one branch only, and not the one showing (e.g. an East
+      // consultant who works only at Greenhills): that branch is the payor.
+      if (!branchTouched && paid.length === 1 && paid[0] !== payorBranch) { setPayorBranch(paid[0]); return }
       const months: { month: string; gross: number; entries: number }[] = d.months || []
       setMonthCols(months.map(m => m.month))
       const covered = months.reduce((s, m) => s + m.entries, 0)
@@ -134,11 +151,17 @@ export function Bir2307Generator({ branch, canWrite }: { branch: string; canWrit
         const filled = recalc({ ...first, m1: months[0]?.gross || 0, m2: months[1]?.gross || 0, m3: months[2]?.gross || 0 })
         return [filled, ...prev.slice(1)]
       })
-      setAutoNote(covered
-        ? `Auto-filled from ${covered} finalized payroll entr${covered === 1 ? 'y' : 'ies'} — edit any figure to override.`
-        : 'No finalized payroll found in this period — enter the amounts manually (or finalize payroll first).')
+      const only = paid.length > 1 ? ` ${branchShort(payorBranch)}` : ''
+      // ₱0 lines at a branch that paid nothing (e.g. a closed East cutoff for
+      // someone working only at Greenhills) are not "auto-filled" figures.
+      const nothingHere = paid.length > 0 && !paid.includes(payorBranch)
+      setAutoNote(covered && !nothingHere
+        ? `Auto-filled from ${covered} finalized${only} payroll entr${covered === 1 ? 'y' : 'ies'} — edit any figure to override.`
+        : paid.length
+          ? `No ${branchShort(payorBranch)} payroll in this period — enter the amounts manually or switch branch.`
+          : 'No finalized payroll found in this period — enter the amounts manually (or finalize payroll first).')
     } catch { /* keep manual figures */ }
-  }, [consultantId, from, to])
+  }, [consultantId, from, to, payorBranch, branchTouched])
   useEffect(() => { loadAmounts() }, [loadAmounts])
 
   const setRowField = (id: number, patch: Partial<IncomeRow>) =>
@@ -162,7 +185,8 @@ export function Bir2307Generator({ branch, canWrite }: { branch: string; canWrit
       })
       const blob = new Blob([new Uint8Array(bytes)], { type: 'application/pdf' })
       const safeName = payee.name.replace(/[^a-zA-Z0-9]/g, '_')
-      const filename = `BIR2307_${safeName}_${from ? from.replace(/-/g, '') : 'undated'}.pdf`
+      const branchTag = Object.keys(paidAt).length > 1 ? `_${branchShort(payorBranch)}` : ''
+      const filename = `BIR2307_${safeName}_${from ? from.replace(/-/g, '') : 'undated'}${branchTag}.pdf`
       setResult({ url: URL.createObjectURL(blob), filename })
     } catch (e) {
       alert(`PDF generation failed: ${e instanceof Error ? e.message : ''}`)
@@ -174,7 +198,12 @@ export function Bir2307Generator({ branch, canWrite }: { branch: string; canWrit
     setConsultantId(''); setFrom(''); setTo('')
     setPayee({ name: '', tin: '', address: '', zip: '' })
     setRows([newRow()]); setMonthCols([]); setAutoNote(''); setResult(null)
+    setPaidAt({}); setBranchTouched(false)
   }
+  const pickBranch = (b: string) => { setPayorBranch(b); setBranchTouched(true); setResult(null) }
+  const paidBranches = Object.keys(paidAt)
+  const interbranch = paidBranches.length > 1
+  const otherPaid = paidBranches.filter(b => b !== payorBranch)
 
   const colLabel = (i: number) => monthCols[i] ? `${['1st', '2nd', '3rd'][i]} month · ${monthLabel(monthCols[i])}` : `${['1st', '2nd', '3rd'][i]} month`
   const consultantName = consultants.find(c => c.id === consultantId)?.name || ''
@@ -200,7 +229,7 @@ export function Bir2307Generator({ branch, canWrite }: { branch: string; canWrit
           tone={consultantName ? 'blue' : 'zero'} compact />
         <StatCard label="Period" value={periodText || '—'} sub={monthCols.length ? `${monthCols.length} month${monthCols.length === 1 ? '' : 's'} of payroll` : 'From – to dates'}
           tone={periodText ? 'blue' : 'zero'} compact />
-        <StatCard label="Total income" value={`₱${peso(totals.total)}`} sub={rows.length > 1 ? `${rows.length} income rows` : 'Professional fees'}
+        <StatCard label="Total income" value={`₱${peso(totals.total)}`} sub={rows.length > 1 ? `${rows.length} income rows` : interbranch ? `${branchShort(payorBranch)} payroll only` : 'Professional fees'}
           tone={totals.total ? 'green' : 'zero'} compact />
         <StatCard label="Tax withheld (5%)" value={`₱${peso(totals.tax)}`} sub="ATC WI010 · 5% EWT"
           tone={totals.tax ? 'amber' : 'zero'} compact />
@@ -254,7 +283,7 @@ export function Bir2307Generator({ branch, canWrite }: { branch: string; canWrit
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <label className={labelCls} style={labelStyle}>Branch *</label>
-                <select value={payorBranch} onChange={e => setPayorBranch(e.target.value)} className={inputCls} style={inputStyle}>
+                <select value={payorBranch} onChange={e => pickBranch(e.target.value)} className={inputCls} style={inputStyle}>
                   {BRANCHES.map(b => <option key={b.value} value={b.value}>{b.label}</option>)}
                 </select>
               </div>
@@ -267,7 +296,7 @@ export function Bir2307Generator({ branch, canWrite }: { branch: string; canWrit
             <SignatureStrip branch={payorBranch} info={settings[payorBranch]} status={sig.signatures[payorBranch]}
               canManage={sig.canManage} settings={settings} stamp={stampSignature} onStamp={setStampSignature} onChanged={sig.refresh} />
           </div>
-        ))}
+        ), interbranch ? pill('blue', `Paid at ${paidBranches.map(branchShort).join(' + ')} · one 2307 each`, <Building2 size={11} />) : undefined)}
       </div>
 
       {section(4, 'Part III — Income payments', (
@@ -329,6 +358,20 @@ export function Bir2307Generator({ branch, canWrite }: { branch: string; canWrit
               <RotateCcw size={13} /> Reset to payroll amounts
             </button>
           </div>
+          {otherPaid.length > 0 && (
+            <div className="mt-3 flex items-center gap-2 flex-wrap rounded-lg px-3 py-2 text-xs" style={{ background: '#eff6ff', color: '#1d4ed8' }}>
+              <Building2 size={14} className="shrink-0" />
+              <span className="flex-1 min-w-[240px]">
+                {consultantName || 'This consultant'} was {paidAt[payorBranch] ? 'also ' : ''}paid at {otherPaid.map(b => `${branchShort(b)} (₱${peso(paidAt[b].gross)})`).join(' and ')} in this period.
+                {' '}Each branch issues its own 2307 under its own TIN, so this one {paidAt[payorBranch] ? `covers ${branchShort(payorBranch)} payroll only` : `is for ${branchShort(payorBranch)}, which paid nothing`}.
+              </span>
+              {otherPaid.map(b => (
+                <button key={b} onClick={() => pickBranch(b)} className={hrBtn.ghost} style={{ borderColor: '#bfdbfe', color: '#1d4ed8', background: '#fff' }}>
+                  Make the {branchShort(b)} 2307
+                </button>
+              ))}
+            </div>
+          )}
         </>
       ), autoNote ? (
         <span className="px-2 py-0.5 rounded-full text-[11px] font-semibold" style={autoNote.startsWith('Auto-filled') ? PILL.green : PILL.amber}>
