@@ -13,6 +13,7 @@ import { formatDisplay, displayCode, displayRate, inDisplay } from './display-cu
 import { INCOME_TAX_RATE } from '@/lib/reports/income-statement-totals'
 import type { V2Statements, V2AccountRow, V2CollectedLine } from '@/lib/reports/v2/engine'
 import { mergeLedgerStatements } from '@/lib/reports/v2/merge'
+import { productSubtypeDrillKey, PRODUCT_SUBTYPE_PREFIX } from '@/lib/reports/v2/drill-keys'
 
 // Labels for the income-statement branch tickboxes' combined-view note.
 const BRANCH_NAMES: Record<string, string> = {
@@ -36,6 +37,7 @@ const SOURCE_LABELS: Record<string, string> = {
   'asset-reversal': 'Asset correction / reversal',
   'orders': 'POS sales (from orders)',
   'cogs': 'Cost of goods sold (from orders)',
+  'product-items': 'POS product sales (by item)',
   'ar-collections': 'HMO / guarantee-letter collections',
   'petty-cash': 'Petty cash expenses',
   'petty-cash-ceo': 'CEO petty cash (allocated to branches)',
@@ -264,7 +266,7 @@ function DrillDown({ year, branch, account, title, month, cumulative, onClose, a
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
-    a.download = `${account}-${year}-${branchFileTag(branch)}${month ? '-' + MONTHS[month - 1] : ''}.csv`
+    a.download = `${account.replace(/[^A-Za-z0-9._-]+/g, '-')}-${year}-${branchFileTag(branch)}${month ? '-' + MONTHS[month - 1] : ''}.csv`
     a.click()
     URL.revokeObjectURL(url)
   }
@@ -276,8 +278,11 @@ function DrillDown({ year, branch, account, title, month, cumulative, onClose, a
           <div>
             <p className="font-bold text-[15px]" style={{ color: 'var(--charcoal)', fontFamily: 'var(--font-display)' }}>{title}</p>
             <p className="text-xs" style={{ color: '#6b7280' }}>
-              {month ? (cumulative ? `Through ${MONTHS[month - 1]} — the running balance you clicked` : MONTHS[month - 1]) : 'Whole year'} · every underlying entry, from the ledger dataset
-              {!month && ' · earlier years are listed first as History, and are not included in the totals — they are already embodied in the opening balance'}
+              {month ? (cumulative ? `Through ${MONTHS[month - 1]} — the running balance you clicked` : MONTHS[month - 1]) : 'Whole year'}
+              {account.startsWith(PRODUCT_SUBTYPE_PREFIX)
+                ? ' · every product sold in this category, from POS orders (item amounts before order-level discounts)'
+                : ' · every underlying entry, from the ledger dataset'}
+              {!month && !account.startsWith(PRODUCT_SUBTYPE_PREFIX) && ' · earlier years are listed first as History, and are not included in the totals — they are already embodied in the opening balance'}
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -423,6 +428,9 @@ export default function LedgerStatements({ year, branch, tab, view, readOnly, re
 
   const openDrill = (r: { number: string; title: string }, month: number | null = null, cumulative = false) =>
     setDrill({ account: r.number, title: `${r.number} ${r.title}`, month, cumulative })
+  // 7080 category rows drill to the POS order items behind the amount.
+  const openSubtypeDrill = (label: string, month: number | null = null) =>
+    setDrill({ account: productSubtypeDrillKey(label), title: `7080 Sales of Product Income · ${label}`, month })
 
   const v = data.validation
   const checks: { ok: boolean; label: string }[] = [
@@ -656,7 +664,8 @@ export default function LedgerStatements({ year, branch, tab, view, readOnly, re
                     {r.number === '7080' && subtypeRows((p, mix) => {
                       const cols = toCols(p.monthly)
                       return <MultiRow key={`sub-${p.label}`} label={`${p.label} (${mix})`} indent={2} muted
-                        values={cols} total={p.total} pctBases={vaBases} pctBaseTotal={vaTotal} />
+                        values={cols} total={p.total} pctBases={vaBases} pctBaseTotal={vaTotal}
+                        onClickCell={m => openSubtypeDrill(p.label, cellMonth(m))} />
                     })}
                   </Fragment>))}
                   <MultiRow label="Total Gross Revenue" values={revC} total={grossTotal} bold rule pctBases={vaBases} pctBaseTotal={vaTotal} />
@@ -715,7 +724,8 @@ export default function LedgerStatements({ year, branch, tab, view, readOnly, re
               <Row label={rowLabel(r)}
                 amount={annualVal(r)} indent={1} onClick={() => openDrill(r)} pctBase={vaBase} />
               {r.number === '7080' && subtypeRows((p, mix) => (
-                <Row key={`sub-${p.label}`} label={`${p.label} (${mix})`} amount={p.total} indent={2} muted pctBase={vaBase} />
+                <Row key={`sub-${p.label}`} label={`${p.label} (${mix})`} amount={p.total} indent={2} muted pctBase={vaBase}
+                  onClick={() => openSubtypeDrill(p.label)} />
               ))}
             </div>))}
             <Row label="Total Gross Revenue" amount={sec('REVENUE')!.total} bold rule pctBase={vaBase} />

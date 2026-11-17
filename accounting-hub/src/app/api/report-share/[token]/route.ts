@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma'
 import { computeLedgerStatements, type V2Statements, type V2CollectedLine } from '@/lib/reports/v2/engine'
 import { withholdLineDetails } from '@/lib/reports/v2/privacy'
 import { incomeStatementOnly, parseShareBranch, shareStatus } from '@/lib/reports/share'
+import { productSubtypeDrillKey } from '@/lib/reports/v2/drill-keys'
 
 /* PUBLIC — no login. Serves the one statement a Reports → Share link was made
    for: the link fixes the year and branches (query values for those are
@@ -74,6 +75,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ toke
 
     if (!link.allowDrill) return fail('Entry details are not included in this shared report.', 403)
     const onStatement = statement.incomeStatement.sections.some(s => s.rows.some(r => r.number === account))
+      || statement.incomeStatement.productSubtypes.some(p => productSubtypeDrillKey(p.label) === account)
     if (!onStatement) return fail('That account is not on this statement.', 403)
     const mp = parseInt(sp.get('month') || '')
     const month = mp >= 1 && mp <= 12 ? mp : undefined

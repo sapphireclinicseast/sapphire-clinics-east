@@ -25,6 +25,7 @@ import { branchShort } from '@/lib/branch'
 import { prisma } from '@/lib/prisma'
 import { INCOME_TAX_RATE } from '@/lib/reports/income-statement-totals'
 import { productSubtypeLabel } from '@/lib/sku-taxonomy'
+import { productSubtypeDrillKey } from './drill-keys'
 import { netOfVat } from '@/lib/vat'
 import { hasNoBranch } from '@/lib/reports/audited-expense-rules'
 import { addedCostByAsset } from '@/lib/asset-entry-retag'
@@ -933,6 +934,19 @@ export async function computeLedgerStatements(
         const lbl = productSubtypeLabel(sku.dept, sku.cat)
         if (!productSubtypes.has(lbl)) productSubtypes.set(lbl, Array(12).fill(0))
         productSubtypes.get(lbl)![mIdx] += Number(it.lineTotal)
+        // Category drill-down: the order items behind the category amount.
+        // Item first, customer after " — " so the privacy mask keeps the item.
+        if (collect && collect.account === productSubtypeDrillKey(lbl) && (!collect.month || collect.month === mIdx + 1)) {
+          const amt = Number(it.lineTotal)
+          const qty = Number(it.quantity)
+          if (amt) collected.push({
+            month: mIdx + 1,
+            source: 'product-items',
+            label: `Order #${o.orderNumber} · ${it.name}${qty && qty !== 1 ? ` ×${qty}` : ''}${o.patientName ? ` — ${o.patientName}` : ''}`,
+            debit: amt < 0 ? round2(-amt) : 0,
+            credit: amt > 0 ? round2(amt) : 0,
+          })
+        }
       }
     }
     if (hasRef('POS_ORDER', o.id)) continue
