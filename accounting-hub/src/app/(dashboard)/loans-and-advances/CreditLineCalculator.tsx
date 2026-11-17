@@ -10,7 +10,9 @@
 //
 // Preset = BPI Ka-negosyo Credit Line (KCL) terms: 18% a year (1.5% a month),
 // minimum due on the 5th = interest + 1% of the principal, the rest payable
-// any time before the line expires (1 May 2027), ₱23,400 fees at release.
+// any time before the line expires (1 May 2027). The facility fees (₱23,490 incl.
+// bank charges) were already debited from our BPI account in Nov 2026 (Hannah
+// 11/17: "we no longer need to pay for it again"), so fees default to ₱0.
 
 import { useEffect, useMemo, useState } from 'react'
 import { Calculator, Plus, X } from 'lucide-react'
@@ -31,7 +33,7 @@ const BPI_FEES = [
   { label: 'Notarial fee and DST', amount: 600 },
   { label: 'Checkbook fee', amount: 300 },
 ]
-const BPI = { limit: 1000000, annualPct: 18, minPct: 1, dueDay: 5, expiry: '2027-05-01', fees: BPI_FEES.reduce((s, f) => s + f.amount, 0) }
+const BPI = { limit: 1000000, annualPct: 18, minPct: 1, dueDay: 5, expiry: '2027-05-01', fees: BPI_FEES.reduce((s, f) => s + f.amount, 0), feesPaid: 23490 }
 
 const peso = (n: number) => '₱' + n.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 const peso0 = (n: number) => '₱' + Math.round(n).toLocaleString('en-PH')
@@ -138,7 +140,8 @@ export default function CreditLineCalculator({ lines }: { lines: LineLite[] }) {
   const [dueDay, setDueDay] = useState(String(BPI.dueDay))
   const [expiry, setExpiry] = useState(BPI.expiry)
   const [payoff, setPayoff] = useState(BPI.expiry)
-  const [fees, setFees] = useState(BPI.fees.toLocaleString('en-PH'))
+  // Already paid for the BPI line; type an amount only if a new fee applies.
+  const [fees, setFees] = useState('0')
   const [plan, setPlan] = useState<Plan>('minimum')
   const [fixed, setFixed] = useState('100,000')
   // Small draws at a time — an example to start from; edit, add or remove.
@@ -257,8 +260,8 @@ export default function CreditLineCalculator({ lines }: { lines: LineLite[] }) {
           <div><label className={lbl} style={mg}>Due every</label>
             <div className="flex items-center gap-1.5"><input value={dueDay} onChange={e => setDueDay(e.target.value)} inputMode="numeric" className={inp + ' font-mono !w-16'} style={bc} /><span className="text-xs" style={mg}>of the month</span></div></div>
           <div><label className={lbl} style={mg}>Line expires</label><input type="date" value={expiry} onChange={e => { setExpiry(e.target.value); if (payoff > e.target.value) setPayoff(e.target.value) }} className={inp + ' font-mono'} style={bc} /></div>
-          <div><label className={lbl} style={mg}>Fees at release</label><input value={fees} onChange={e => setFees(e.target.value)} inputMode="decimal" className={inp + ' font-mono'} style={bc} title={BPI_FEES.map(f => `${f.label}: ${peso(f.amount)}`).join('\n')} />
-            <p className="text-[11px] mt-0.5" style={{ color: 'var(--hr-faint)' }}>BPI estimate {peso0(BPI.fees)}</p></div>
+          <div><label className={lbl} style={mg}>Fees still to pay</label><input value={fees} onChange={e => setFees(e.target.value)} inputMode="decimal" className={inp + ' font-mono'} style={bc} title={BPI_FEES.map(f => `${f.label}: ${peso(f.amount)}`).join('\n')} />
+            <p className="text-[11px] mt-0.5" style={{ color: 'var(--hr-faint)' }}>BPI&apos;s {peso0(BPI.feesPaid)} already paid (Nov 2026)</p></div>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -295,7 +298,7 @@ export default function CreditLineCalculator({ lines }: { lines: LineLite[] }) {
             <StatCard compact label="First payment" value={peso(calc.first.payment)} sub={`${fmtDate(calc.first.date)} · ${calc.first.days} days of interest`} accent={{ line: '#4A8073' }} />
             <StatCard compact label={monthlyLabel} value={monthlyValue} sub={monthlySub} tone="blue" />
             <StatCard compact label={bills.length > 1 ? 'Last payment' : 'Payment'} value={peso(calc.last.payment)} sub={`${fmtDate(calc.last.date)}${bigLast ? ' · balance still owed' : ''}`} tone={bigLast ? 'red' : 'green'} />
-            <StatCard compact label="Total cost of the loan" value={peso(calc.interest + feeAmt)} sub={`${peso0(calc.interest)} interest + ${peso0(feeAmt)} fees`} tone="amber" />
+            <StatCard compact label="Total cost of the loan" value={peso(calc.interest + feeAmt)} sub={feeAmt ? `${peso0(calc.interest)} interest + ${peso0(feeAmt)} fees` : `interest only · BPI's ${peso0(BPI.feesPaid)} fees already paid`} tone="amber" />
           </div>
 
           <p className="text-[12.5px]" style={mg}>
@@ -343,7 +346,7 @@ export default function CreditLineCalculator({ lines }: { lines: LineLite[] }) {
 
           <p className="text-[11.5px] leading-relaxed" style={{ color: 'var(--hr-faint)' }}>
             Interest runs only on what you owe, for the days you owe it, and is billed on each due date. The bank asks for at least that interest and {num(minPct)}% of the principal every {Math.round(num(dueDay)) || 5}th; the rest can be paid any time before the line expires, and anything you pay back can be drawn again.
-            If BPI deducts the fees ({peso0(feeAmt)}) from the first release, that draw puts {peso0(feeAmt)} less in the bank.
+            {feeAmt > 0 ? `If the bank deducts the ${peso0(feeAmt)} in fees from the first release, that draw puts ${peso0(feeAmt)} less in the bank. ` : `The facility fees (${peso0(BPI.feesPaid)}) were already debited from our BPI account, so draws are not reduced. `}
             The first BPI statement shows how they count interest; if it differs, switch &ldquo;Interest counted&rdquo;.
           </p>
         </>}
