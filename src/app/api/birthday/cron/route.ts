@@ -31,22 +31,29 @@ export async function POST(req: NextRequest) {
   // checking the thing works without waiting until tomorrow. The unique
   // constraint means forcing it cannot double-send.
   const force = req.nextUrl.searchParams.get('force') === '1'
+  // `ran` is what the cron wrapper keys off, and it is a BOOLEAN on both
+  // replies for a reason: the wrapper used to look for the word "skipped",
+  // which a successful run also carried as a count of patients already
+  // greeted. Every real run read as an off-hour no-op and logged nothing.
   if (!force && now.hour !== SEND_HOUR) {
-    return NextResponse.json({ ok: true, skipped: `Manila hour is ${now.hour}, greetings go out at ${SEND_HOUR}.` })
+    return NextResponse.json({
+      ok: true, ran: false,
+      reason: `Manila hour is ${now.hour}, greetings go out at ${SEND_HOUR}.`,
+    })
   }
 
   try {
     const result = await runBirthdayGreetings()
     console.log(
       `[birthday-cron] ${result.date}: ${result.celebrants} celebrant(s), ` +
-      `${result.emailSent} email, ${result.smsSent} SMS, ${result.skipped} already done, ` +
+      `${result.emailSent} email, ${result.smsSent} SMS, ${result.alreadyGreeted} already done, ` +
       `${result.noContact} with no contact details, ${result.errors.length} error(s)`,
     )
     for (const e of result.errors) console.error(`[birthday-cron] ${e.channel} ${e.patientId}: ${e.error}`)
-    return NextResponse.json({ ok: true, ...result })
+    return NextResponse.json({ ok: true, ran: true, ...result })
   } catch (err) {
     console.error('[birthday-cron]', err)
-    return NextResponse.json({ ok: false, error: (err as Error).message }, { status: 500 })
+    return NextResponse.json({ ok: false, ran: true, error: (err as Error).message }, { status: 500 })
   }
 }
 
