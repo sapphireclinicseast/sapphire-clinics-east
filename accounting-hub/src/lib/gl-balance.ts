@@ -14,6 +14,8 @@ export interface GlOverdraw {
   requested: number
   /** The patient's other letters with money left — where the rest can go. */
   nextGl: { id: string; name: string; balance: number }[]
+  /** Marked used up in Detailed GL (consumed before the hub): nothing is left on it. */
+  usedUp?: boolean
 }
 
 // "MARCOS ROA MENDOZA (2nd Application)" → "MARCOSROAMENDOZA"
@@ -38,16 +40,18 @@ export async function glOverdraws(
   if (!want.size) return []
   const wallets = await db.digitalWallet.findMany({
     where: { id: { in: [...want.keys()] } },
-    select: { id: true, patientName: true, patientId: true, balance: true },
+    select: { id: true, patientName: true, patientId: true, balance: true, usedUpAt: true },
   })
   const out: GlOverdraw[] = []
   for (const w of wallets) {
-    const available = r2(Number(w.balance) + (credit.get(w.id) || 0))
+    // A letter marked used up has nothing left, even on an edit that gives back
+    // what the order held on it.
+    const available = w.usedUpAt ? 0 : r2(Number(w.balance) + (credit.get(w.id) || 0))
     const requested = r2(want.get(w.id) || 0)
     if (requested <= available + 0.005) continue
     const siblings = await db.digitalWallet.findMany({
       where: {
-        walletType: 'GL', isActive: true, id: { not: w.id }, balance: { gt: 0 },
+        walletType: 'GL', isActive: true, id: { not: w.id }, balance: { gt: 0 }, usedUpAt: null,
         ...(w.patientId ? { OR: [{ patientId: w.patientId }, { patientName: { contains: w.patientName.replace(/\s*\([^)]*\)\s*/g, '').trim(), mode: 'insensitive' } }] }
           : { patientName: { contains: w.patientName.replace(/\s*\([^)]*\)\s*/g, '').trim(), mode: 'insensitive' } }),
       },
@@ -55,7 +59,7 @@ export async function glOverdraws(
       orderBy: { createdAt: 'asc' },
     })
     out.push({
-      walletId: w.id, walletName: w.patientName, available: Math.max(0, available), requested,
+      walletId: w.id, walletName: w.patientName, available: Math.max(0, available), requested, usedUp: !!w.usedUpAt,
       nextGl: siblings
         .filter(s => baseName(s.patientName) === baseName(w.patientName))
         .map(s => ({ id: s.id, name: s.patientName, balance: r2(Number(s.balance)) })),
@@ -69,6 +73,10 @@ const peso = (n: number) => `₱${n.toLocaleString('en-PH', { minimumFractionDig
 export function glOverdrawMessage(o: GlOverdraw): string {
   const rest = r2(o.requested - o.available)
   const next = o.nextGl[0]
+  if (o.usedUp) {
+    return `${o.walletName}'s GL is marked used up in Detailed GL (consumed before the hub), so it can't pay for sessions. ` +
+      (next ? `Use ${next.name} (${peso(next.balance)} left) or another payment.` : 'Use another payment.')
+  }
   return `${o.walletName}'s GL has only ${peso(o.available)} left, but this charges ${peso(o.requested)} to it. ` +
     (o.available > 0 ? `Put ${peso(o.available)} on this GL and the remaining ${peso(rest)} ` : `Put the ${peso(rest)} `) +
     (next ? `on ${next.name} (${peso(next.balance)} left) or another payment.` : 'on another payment — OP will not pay beyond the approved amount.')

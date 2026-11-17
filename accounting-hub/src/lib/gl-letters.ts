@@ -37,6 +37,9 @@ export interface GlCaseWallet {
   soaCommissionRate?: number | string | null
   payoutBatch?: string | null
   qbEntry?: string | null
+  /** Marked used up: consumed before the hub, usable balance cleared (see gl-case PATCH usedUp). */
+  usedUpAt?: string | null
+  usedUpNote?: string | null
   glLetterNo?: string | null
   glStage?: string | null
   /** Issuing office: STAR, ODESFA, LGU or any added agency (lib/gl-stage). */

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { syncSalaryRfpRemitted } from '@/lib/payroll/salary-rfp-remit'
 import { isPayrollItem } from '@/lib/payroll-item-guard'
 import { netOfVat } from '@/lib/vat'
 
@@ -235,8 +236,20 @@ export async function PATCH(req: Request) {
           where: { reimbursementId: id },
           data: { status: 'PAID', paymentRoute: 'RFP', paidAt },
         })
+        // A salary RFP paid here pays its payslips too (status only).
+        await syncSalaryRfpRemitted(tx, id, true)
       })
       return NextResponse.json({ success: true })
+    }
+
+    // One-off catch-up for salary RFPs already paid before the line above
+    // existed: their payslips still read unpaid though the money is booked.
+    if (action === 'sync-salary-paid') {
+      const rep = await prisma.reimbursementReport.findUnique({ where: { id }, select: { status: true, module: true } })
+      if (!rep || rep.module !== 'PAYROLL_SALARY') return NextResponse.json({ error: 'Not a salary RFP' }, { status: 400 })
+      if (rep.status !== 'PAID') return NextResponse.json({ error: 'This RFP is not paid yet' }, { status: 400 })
+      const changed = await prisma.$transaction(tx => syncSalaryRfpRemitted(tx, id, true))
+      return NextResponse.json({ success: true, changed })
     }
 
     if (action === 'set-payable') {
@@ -279,6 +292,8 @@ export async function PATCH(req: Request) {
         })
         // A Credit Card SOA behind this RFP returns to IN_RFP (payment reversed).
         await tx.creditCardSOA.updateMany({ where: { reimbursementId: id }, data: { status: 'IN_RFP', paymentRoute: null, paidAt: null } })
+        // Payslips this RFP marked paid go back to unpaid (never ones a salary payment paid).
+        await syncSalaryRfpRemitted(tx, id, false)
       })
       return NextResponse.json({ success: true })
     }

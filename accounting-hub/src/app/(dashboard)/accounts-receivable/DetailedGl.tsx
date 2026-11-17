@@ -739,6 +739,14 @@ export default function DetailedGl({
                           </a>
                         ))
                       : '—')
+                  : c.key === 'name' && r.wallet?.usedUpAt
+                    ? <span className="inline-flex items-center gap-1.5">
+                        {cellText(r, c.key)}
+                        <span className="px-1.5 py-px rounded-full text-[10px] font-semibold" style={{ background: '#e5e7eb', color: '#374151' }}
+                          title={`Marked used up ${fmtDate(r.wallet.usedUpAt)}: consumed before the hub, so POS can't charge it${r.wallet.usedUpNote ? ` — ${r.wallet.usedUpNote}` : ''}`}>
+                          Used up
+                        </span>
+                      </span>
                   : c.key === 'linked'
                     ? (r.wallet
                         ? <span className="inline-flex items-center gap-1 whitespace-nowrap" title={`POS GL wallet: ${r.wallet.patientName} · ${walletTag(r.wallet)}`} style={{ color: 'var(--teal)' }}>
@@ -1461,6 +1469,29 @@ function GlCaseModal({ wallet, cases, wallets, onClose, onSaved }: { wallet: GlC
 
   const set = (k: keyof typeof form, v: string) => setForm(f => ({ ...f, [k]: v }))
 
+  // Used up: consumed before the hub (sessions never migrated). Clears the
+  // usable balance so POS can't charge the letter; Undo puts it back.
+  const left = posBalanceOf(wallet) ?? 0
+  const toggleUsedUp = async (usedUp: boolean) => {
+    let usedUpNote = ''
+    if (usedUp) {
+      const n = prompt(`Mark ${wallet.patientName}'s GL as used up?\n\nIts ${formatCurrency(left)} left is cleared, so POS can no longer charge it, and Detailed GL and the GL overview show it as fully used. Payments and SOA details are not touched; Undo restores the balance.\n\nNote (optional), e.g. "used up in 2025, not migrated":`, 'Used up in 2025; sessions not migrated')
+      if (n === null) return
+      usedUpNote = n
+    } else if (!confirm(`Undo the used-up mark on ${wallet.patientName}'s GL? Its balance before the mark is restored and POS can charge it again.`)) return
+    setBusy(true); setError('')
+    try {
+      const res = await fetch('/api/accounts-receivable/gl-case', {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: wallet.id, usedUp, usedUpNote }),
+      })
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'Could not update')
+      onSaved()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not update')
+    } finally { setBusy(false) }
+  }
+
   const save = async () => {
     setBusy(true); setError('')
     try {
@@ -1548,6 +1579,23 @@ function GlCaseModal({ wallet, cases, wallets, onClose, onSaved }: { wallet: GlC
               ))}
             </select>
             <p className="text-[11px] mt-1" style={{ color: 'var(--mid-gray)' }}>Links a standalone recorded entry to this POS wallet so they show as one row.</p>
+          </div>
+          <div className="sm:col-span-2 rounded-xl p-3 flex flex-wrap items-center justify-between gap-2" style={{ border: '1px solid var(--light-gray)', background: wallet.usedUpAt ? '#f3f4f6' : 'var(--off-white)' }}>
+            <div className="min-w-0">
+              <p className="text-xs font-semibold" style={{ color: 'var(--charcoal)' }}>
+                {wallet.usedUpAt ? `Used up · marked ${fmtDate(wallet.usedUpAt)}` : 'Already used up before the hub?'}
+              </p>
+              <p className="text-[10px]" style={{ color: 'var(--mid-gray)' }}>
+                {wallet.usedUpAt
+                  ? `${wallet.usedUpNote ? `${wallet.usedUpNote}. ` : ''}POS can't charge this letter; it shows as fully used here and in the GL overview.`
+                  : `For a letter consumed before the hub whose sessions were never migrated: clears the ${formatCurrency(left)} left so POS can't use it.`}
+              </p>
+            </div>
+            <button onClick={() => toggleUsedUp(!wallet.usedUpAt)} disabled={busy}
+              className="shrink-0 px-3 py-2 rounded-lg text-xs font-semibold border disabled:opacity-40"
+              style={wallet.usedUpAt ? { borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' } : { borderColor: '#374151', color: '#374151' }}>
+              {wallet.usedUpAt ? 'Undo used up' : 'Mark used up'}
+            </button>
           </div>
           <div className="sm:col-span-2 rounded-xl p-3" style={{ border: '1px solid var(--light-gray)', background: 'var(--off-white)' }}>
             <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>

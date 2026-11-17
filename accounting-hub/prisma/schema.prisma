@@ -1016,6 +1016,12 @@ model DigitalWallet {
   // Number printed at the bottom of the OP guarantee letter (e.g. PHD-170925112436-WA7),
   // beside its QR code; the OP's payment lists name letters by it. Hannah 11/11.
   glLetterNo        String?
+  // A GL the patient consumed before the hub (its sessions were never
+  // migrated): the usable balance is cleared to zero so POS can't charge it
+  // and every view reads it as used; Undo puts usedUpPrevBalance back.
+  usedUpAt          DateTime?
+  usedUpNote        String?
+  usedUpPrevBalance Decimal?
   branch           String       @default("ALL") // SANDBOX_EAST, SANDBOX_GREENHILLS, or ALL
   dateObtained     DateTime? // Date patient originally obtained the wallet/card
   paymentModeId    String? // How the initial load was paid

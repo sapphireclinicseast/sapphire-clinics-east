@@ -143,6 +143,37 @@ export async function PATCH(req: Request) {
       return NextResponse.json({ error: 'Case tracking applies to Guarantee Letters only' }, { status: 400 })
     }
 
+    // Used up: a letter the patient consumed before the hub existed, whose
+    // sessions never came over in the migration (Hannah 2026-11-17: Cloud
+    // Regadillo, Elon Britanico 1st application). The usable balance is cleared
+    // so POS can't charge it and Detailed GL / the GL overview read it as fully
+    // used. No journal entry: the money side (SOA, payment) is untouched, and
+    // Undo restores the balance it had.
+    if (typeof body.usedUp === 'boolean') {
+      const w = await prisma.digitalWallet.findUnique({ where: { id }, select: { balance: true, usedUpAt: true, usedUpPrevBalance: true } })
+      if (!w) return NextResponse.json({ error: 'Letter not found' }, { status: 404 })
+      const by = session.user.id as string
+      if (body.usedUp) {
+        if (w.usedUpAt) return NextResponse.json({ error: 'This letter is already marked used up' }, { status: 409 })
+        const note = String(body.usedUpNote ?? '').trim().slice(0, 300) || null
+        const prev = Number(w.balance) || 0
+        await prisma.$transaction([
+          prisma.digitalWallet.update({ where: { id }, data: { usedUpAt: new Date(), usedUpNote: note, usedUpPrevBalance: prev, balance: 0 } }),
+          prisma.walletLog.create({ data: { walletId: id, action: 'DEDUCTION', createdById: by,
+            description: `Marked used up — consumed before the hub${note ? ` (${note})` : ''}; ₱${prev.toLocaleString('en-PH', { minimumFractionDigits: 2 })} left cleared` } }),
+        ])
+      } else {
+        if (!w.usedUpAt) return NextResponse.json({ error: 'This letter is not marked used up' }, { status: 409 })
+        const back = Number(w.usedUpPrevBalance) || 0
+        await prisma.$transaction([
+          prisma.digitalWallet.update({ where: { id }, data: { usedUpAt: null, usedUpNote: null, usedUpPrevBalance: null, balance: back } }),
+          prisma.walletLog.create({ data: { walletId: id, action: 'RELOAD', createdById: by,
+            description: `Used-up mark undone; ₱${back.toLocaleString('en-PH', { minimumFractionDigits: 2 })} balance restored` } }),
+        ])
+      }
+      return NextResponse.json({ ok: true })
+    }
+
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const data: any = {}
     const soaProblem = futureSoaProblem(body)

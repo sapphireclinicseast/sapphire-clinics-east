@@ -44,7 +44,7 @@ export async function GET(req: Request) {
         // GL case tracking (Detailed GL)
         glRequestedAmount: true, glDocsSubmittedAt: true, glReleasedAt: true,
         soaAmount: true, soaSubmittedAt: true, soaResubmittedAt: true, guardianName: true,
-        soaCommissionRate: true, payoutBatch: true, qbEntry: true, glLetterNo: true, glStage: true,
+        soaCommissionRate: true, payoutBatch: true, qbEntry: true, glLetterNo: true, glStage: true, usedUpAt: true, usedUpNote: true,
         attachmentUrls: true, attachmentUrl: true, soaStatus: true,
         createdAt: true,
         account: { select: { accountNumber: true, accountTitle: true } } },
