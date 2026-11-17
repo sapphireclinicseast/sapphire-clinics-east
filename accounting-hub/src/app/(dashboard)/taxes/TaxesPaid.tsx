@@ -102,21 +102,21 @@ export default function TaxesPaid() {
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <StatCard label={`Paid in ${year}`} value={`₱${peso2(paidTotal)}`} compact
-          sub={paidRfps.length ? `${paidRfps.length} tax RFP${paidRfps.length === 1 ? '' : 's'} paid` : 'Nothing paid yet'}
+        <StatCard label={`Paid in ${year}`} value={loaded ? `₱${peso2(paidTotal)}` : '—'} compact
+          sub={!loaded ? 'Loading…' : paidRfps.length ? `${paidRfps.length} tax RFP${paidRfps.length === 1 ? '' : 's'} paid` : 'Nothing paid yet'}
           tone={paidTotal ? 'green' : 'zero'} active={show === 'paid'}
           onClick={() => setShow(s => (s === 'paid' ? 'all' : 'paid'))} title="Show only what was paid" />
-        <StatCard label="Pending" value={`₱${peso2(pendingTotal)}`} compact
-          sub={pendingRfps.length ? `${pendingRfps.length} tax RFP${pendingRfps.length === 1 ? '' : 's'} not yet paid` : 'Nothing waiting to be paid'}
+        <StatCard label="Pending" value={loaded ? `₱${peso2(pendingTotal)}` : '—'} compact
+          sub={!loaded ? 'Loading…' : pendingRfps.length ? `${pendingRfps.length} tax RFP${pendingRfps.length === 1 ? '' : 's'} not yet paid` : 'Nothing waiting to be paid'}
           tone={pendingTotal ? 'amber' : 'zero'} active={show === 'pending'}
           onClick={() => setShow(s => (s === 'pending' ? 'all' : 'pending'))} title="Show only RFPs not yet paid" />
         <StatCard label="Last payment" compact
           value={lastDate ? lastDate.toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' }) : '—'}
-          sub={last ? `₱${peso2(num(last.grossTotal))} · ${SHORT[typeOf(last)] || typeOf(last)}` : `No tax paid in ${year}`}
+          sub={!loaded ? 'Loading…' : last ? `₱${peso2(num(last.grossTotal))} · ${SHORT[typeOf(last)] || typeOf(last)}` : `No tax paid in ${year}`}
           tone={last ? 'blue' : 'zero'} />
         <StatCard label="Months with a payment" compact
-          value={monthsSoFar ? `${covered} of ${monthsSoFar}` : '—'}
-          sub={monthsSoFar ? `${year === now.getFullYear() ? 'Jan to this month' : `All of ${year}`} with a tax paid` : `${year} hasn't started`}
+          value={loaded && monthsSoFar ? `${covered} of ${monthsSoFar}` : '—'}
+          sub={!loaded ? 'Loading…' : monthsSoFar ? `${year === now.getFullYear() ? 'Jan to this month' : `All of ${year}`} with a tax paid` : `${year} hasn't started`}
           tone={!monthsSoFar || !covered ? 'zero' : covered === monthsSoFar ? 'green' : 'amber'} />
       </div>
 
