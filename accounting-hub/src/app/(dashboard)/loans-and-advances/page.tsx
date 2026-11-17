@@ -7,6 +7,7 @@ import { Landmark, Plus, Loader2, X, Eye, Trash2, Pencil, RotateCcw } from 'luci
 import { ScanUpload } from '@/components/ScanUpload'
 import { useResizableColumns, ResizableColgroup, ColResizeHandle } from '@/components/useResizableColumns'
 import StaffLoansTab from './StaffLoansTab'
+import CreditLineCalculator from './CreditLineCalculator'
 import { HR_PAGE_CLASS, HR_PAGE_STYLE, HrShimmerStyle, StatCard, hrBtn } from '@/components/ui/hr-look'
 import { TH, ShimmerRows } from './hr-bits'
 
@@ -878,6 +879,7 @@ function CreditLineTab({ shareholders, banks, accts }: { shareholders: SH[]; ban
         </tbody></table>
       </div>
       </div>
+      <CreditLineCalculator lines={rows} />
       {addOpen && <CreditLineModal onClose={() => setAddOpen(false)} onSaved={() => { setAddOpen(false); load() }} />}
       {drawFor && <LoanModal row={null} shareholders={shareholders} banks={banks} accts={accts} preset={{ fromCreditLineId: drawFor.id, entityName: drawFor.entityName, annualPct: drawFor.interestPct }} onClose={() => setDrawFor(null)} onSaved={() => { const cl = drawFor; setDrawFor(null); if (cl) markUtilized(cl); else load() }} />}
       {settleFor && <SettleCreditLineModal line={settleFor} banks={banks} accts={accts} onClose={() => setSettleFor(null)} onSaved={() => { setSettleFor(null); load() }} />}
