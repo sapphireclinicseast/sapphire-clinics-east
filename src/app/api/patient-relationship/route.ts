@@ -211,8 +211,12 @@ export async function GET(req: NextRequest) {
         email: p.email,
         branch: p.branches?.[0] || p.branch,
         noShowCount: activeLogs.length,
+        // Every GL no-show is chargeable to the letter. No window, no
+        // allowance, no waiver — the hour was held and the letter paid for it.
+        glChargeable: activeLogs.filter(l => l.paymentType === 'GL').length,
         logs: p.noShowLogs.map(l => ({
           id: l.id,
+          paymentType: l.paymentType,
           remarks: l.remarks,
           createdAt: l.createdAt,
           deletedAt: l.deletedAt,
@@ -287,7 +291,20 @@ export async function GET(req: NextRequest) {
       // entirely rather than given a smaller allowance — otherwise a GL
       // cancellation would also use up a cash session's free slot, charging
       // the patient twice over for one call.
-      const glLogs = windowLogs.filter(l => !hasFreeAllowance(l.paymentType))
+      //
+      // Drawn from activeLogs, NOT from countedLogs, and that difference is
+      // the whole point: countedLogs drops reschedules because a reschedule is
+      // not a cancellation against the PATIENT. It is still a session the
+      // letter paid for and nobody attended, so the LETTER is charged for it —
+      // which is what the Accounting Hub's retroactive billing already did.
+      // Two different questions about the same row.
+      //
+      // Therapist-initiated is excluded, here as everywhere: the clinic moved
+      // it, so there is nothing to bill the letter for.
+      const glLogs = activeLogs.filter(l =>
+        !hasFreeAllowance(l.paymentType)
+        && l.initiatedBy !== 'THERAPIST'
+        && new Date(l.createdAt) >= windowStart)
       const allowanceLogs = windowLogs.filter(l => hasFreeAllowance(l.paymentType))
 
       // Which specific logs a fee is actually owed on: the 3rd onward inside the
@@ -497,6 +514,10 @@ export async function POST(req: NextRequest) {
     if (!patientId || !branch) {
       return NextResponse.json({ error: 'patientId, branch required' }, { status: 400 })
     }
+    // What paid for the missed session. On a guarantee letter this is the
+    // whole question: the letter bought the hour, the clinician held it, and
+    // nobody came — so it is charged, every time.
+    const noShowCoverage = isCoverage(body.paymentType) ? body.paymentType : null
     // Logged from a Clinic Schedule status change: a status can be edited back
     // and forth (mis-click, patient turns up late), and each pass through
     // NO_SHOW must not stack another log on the patient's record. Deleted logs
@@ -508,7 +529,10 @@ export async function POST(req: NextRequest) {
       if (existing) return NextResponse.json({ ok: true, log: existing, deduped: true })
     }
     const log = await prisma.noShowLog.create({
-      data: { patientId, branch, remarks, scheduleId: scheduleId || null },
+      data: {
+        patientId, branch, remarks, scheduleId: scheduleId || null,
+        paymentType: noShowCoverage,
+      },
     })
     return NextResponse.json({ ok: true, log })
   }
