@@ -29,18 +29,26 @@ export async function syncSalaryRfpRemitted(db: Db, rfpId: string, paid: boolean
   const keys = consultants
     ? await db.payrollEntry.findMany({ where: { salaryRfpId: rfpId }, select: { cutoffPeriod: true, branch: true }, distinct: ['cutoffPeriod', 'branch'] })
     : await db.employeePayslip.findMany({ where: { salaryRfpId: rfpId }, select: { cutoffPeriod: true, branch: true }, distinct: ['cutoffPeriod', 'branch'] })
-  for (const { cutoffPeriod, branch } of keys) {
-    const payable = await db.payrollPayableStatus.findFirst({
-      where: { cutoffPeriod, branch, payrollType: consultants ? 'CONSULTANT' : 'EMPLOYEE' },
-    })
-    if (!payable) continue
-    const remaining = consultants
-      ? await db.payrollEntry.count({ where: { cutoffPeriod, branch, salariesRemitted: false, status: { in: ['LOCKED', 'FINAL'] }, netPay: { gt: 0 } } })
-      : await db.employeePayslip.count({ where: { cutoffPeriod, branch, salariesRemitted: false, status: 'LOCKED' } })
-    const allPaid = remaining === 0
-    if (payable.salariesRemitted !== allPaid) {
-      await db.payrollPayableStatus.update({ where: { id: payable.id }, data: { salariesRemitted: allPaid } })
-    }
-  }
+  for (const { cutoffPeriod, branch } of keys) await rollupSalaryPayable(db, cutoffPeriod, branch, consultants ? 'CONSULTANT' : 'EMPLOYEE')
   return changed
+}
+
+// Sets a cutoff's salaries payable to paid exactly when no payslip in it is left
+// unpaid, and back to unpaid otherwise. paymentId is recorded as the payment
+// that closed the cutoff when it newly reads paid; a pointer to a payment that
+// no longer closes it is cleared.
+export async function rollupSalaryPayable(
+  db: Db, cutoffPeriod: string, branch: string, payrollType: 'CONSULTANT' | 'EMPLOYEE', paymentId?: string,
+): Promise<void> {
+  const payable = await db.payrollPayableStatus.findFirst({ where: { cutoffPeriod, branch, payrollType } })
+  if (!payable) return
+  const remaining = payrollType === 'CONSULTANT'
+    ? await db.payrollEntry.count({ where: { cutoffPeriod, branch, salariesRemitted: false, status: { in: ['LOCKED', 'FINAL'] }, netPay: { gt: 0 } } })
+    : await db.employeePayslip.count({ where: { cutoffPeriod, branch, salariesRemitted: false, status: 'LOCKED' } })
+  const allPaid = remaining === 0
+  if (allPaid && !payable.salariesRemitted) {
+    await db.payrollPayableStatus.update({ where: { id: payable.id }, data: { salariesRemitted: true, ...(paymentId ? { salaryPaymentId: paymentId } : {}) } })
+  } else if (!allPaid && payable.salariesRemitted) {
+    await db.payrollPayableStatus.update({ where: { id: payable.id }, data: { salariesRemitted: false, salaryPaymentId: null } })
+  }
 }

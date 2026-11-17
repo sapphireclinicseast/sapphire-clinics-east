@@ -998,7 +998,7 @@ export default function PayrollPage() {
   const [editPaymentConfirmReverse, setEditPaymentConfirmReverse] = useState(false)
   const [reversingPayment, setReversingPayment] = useState(false)
   // Salary payment history
-  const [salaryPayments, setSalaryPayments] = useState<{ id: string; paymentDate: string; totalAmount: number; fromAccount: { accountNumber: string; accountTitle: string }; proofUrl: string | null; notes: string | null; cutoffPeriod: string; branch: string; consultants?: { name: string; department: string; netPay: number; cutoffPeriod: string }[] }[]>([])
+  const [salaryPayments, setSalaryPayments] = useState<{ id: string; paymentDate: string; totalAmount: number; status?: string; fromAccount: { accountNumber: string; accountTitle: string }; proofUrl: string | null; notes: string | null; cutoffPeriod: string; branch: string; consultants?: { name: string; department: string; netPay: number; cutoffPeriod: string }[] }[]>([])
 
   // Tax settings
   const [showTaxSettings, setShowTaxSettings] = useState(false)
@@ -1108,6 +1108,15 @@ export default function PayrollPage() {
   const [showRemitModal, setShowRemitModal] = useState<'salary' | 'benefit' | null>(null)
   // Payable → RFP (Expenses) flow
   const [payableRfp, setPayableRfp] = useState<null | { source: 'salary' | 'benefit'; payableType: 'CONSULTANT' | 'EMPLOYEE'; ids: string[]; branch: string; cutoffPeriod: string; total: number }>(null)
+  // "Already booked": mark payslips paid when the pay is already in the books
+  // (QB payroll import, a manual journal). Status only — no journal entry.
+  const [bookedMark, setBookedMark] = useState<null | { cons: string[]; emps: string[]; total: number; branches: string[]; cutoffs: string[] }>(null)
+  const [bookedDate, setBookedDate] = useState('')
+  const [bookedFromId, setBookedFromId] = useState('')
+  const [bookedBy, setBookedBy] = useState('')
+  const [bookedNote, setBookedNote] = useState('')
+  const [bookedSaving, setBookedSaving] = useState(false)
+  const [bookedErr, setBookedErr] = useState('')
   const [rfpManualSeq, setRfpManualSeq] = useState('')
   const [creatingRfp, setCreatingRfp] = useState(false)
   const payableRfpFees = useRfpOtherFees()
@@ -1640,6 +1649,26 @@ export default function PayrollPage() {
       if (mainTab === 'salaries-payable') { fetchSalariesPayable(); fetchEmpSalPayable() }
       if (mainTab === 'benefits-payable') fetchBenefitsPayable()
     } catch (e) { setError(String(e)) } finally { setCreatingRfp(false) }
+  }
+
+  const markBooked = async () => {
+    if (!bookedMark) return
+    setBookedSaving(true); setBookedErr('')
+    try {
+      const res = await fetch('/api/payroll/salary-payments/booked', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          payrollEntryIds: bookedMark.cons, employeePayslipIds: bookedMark.emps,
+          paymentDate: bookedDate, fromAccountId: bookedFromId, bookedBy, notes: bookedNote,
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok) { setBookedErr(data.error || 'Failed to mark paid'); return }
+      setBookedMark(null); setSelectedSalaryPayableIds([]); setSelectedEmpSalPayableIds([])
+      fetchSalariesPayable(); fetchEmpSalPayable()
+      fetch('/api/payroll/salary-payments?paymentType=CONSULTANT')
+        .then(r => r.json()).then(setSalaryPayments).catch(() => setSalaryPayments([]))
+    } catch (e) { setBookedErr(String(e)) } finally { setBookedSaving(false) }
   }
 
   /* ── Record tax as Other Income ── */
@@ -5869,6 +5898,28 @@ export default function PayrollPage() {
                   <BadgeDollarSign size={14} /> RFP ({bothSelected.length})
                 </button>
               )}
+              {bothSelected.length > 0 && canWrite && (
+                <button onClick={() => {
+                    const pick = (rows: SalaryPayableEntry[], ids: string[]) => rows.flatMap(unitsOf).filter(u => ids.includes(u.id))
+                    const cons = pick(salariesPayables, selectedSalaryPayableIds)
+                    const emps = pick(empSalPayables, selectedEmpSalPayableIds)
+                    const all = [...cons, ...emps]
+                    if (all.some(u => u.seq != null)) { setError('Split instalments can only be paid through an RFP. Untick the instalments to mark the rest as already booked.'); return }
+                    if (all.some(u => u.remitted || u.rfpId)) { setError('Some ticked payslips are already paid or in an RFP. Untick them first.'); return }
+                    setBookedMark({
+                      cons: cons.map(u => u.id), emps: emps.map(u => u.id),
+                      total: all.reduce((s, u) => s + u.amount, 0),
+                      branches: [...new Set(all.map(u => u.row.branch))],
+                      cutoffs: [...new Set(all.map(u => u.row.cutoffPeriod))].sort(),
+                    })
+                    setBookedDate(''); setBookedFromId(''); setBookedBy(''); setBookedNote(''); setBookedErr('')
+                  }}
+                  title="Mark the ticked payslips paid without a new journal entry, because the pay is already in the books"
+                  className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold border"
+                  style={{ borderColor: 'var(--teal)', color: 'var(--deep-teal)', background: 'white' }}>
+                  <CheckCircle2 size={14} /> Already booked ({bothSelected.length})
+                </button>
+              )}
               <label className="flex items-center gap-2 text-xs cursor-pointer" style={{ color: 'var(--mid-gray)' }}>
                 <input type="checkbox"
                   checked={isEmpTab ? showEmpSalRemitted : showSalRemitted}
@@ -6125,6 +6176,10 @@ export default function PayrollPage() {
                         </span>
                       </div>
                       <div className="flex items-center gap-3">
+                        {sp.status === 'BOOKED' && (
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold" title="Marked paid without a journal entry: the pay was already in the books"
+                            style={{ background: '#e0f2fe', color: '#0369a1' }}>Already booked</span>
+                        )}
                         <span className="text-xs font-semibold" style={{ color: '#166534' }}>{formatCurrency(sp.totalAmount)}</span>
                         {sp.proofUrl ? (
                           <a href={sp.proofUrl} target="_blank" rel="noopener noreferrer"
@@ -6448,6 +6503,60 @@ export default function PayrollPage() {
             <input value={rfpManualSeq} onChange={e => setRfpManualSeq(e.target.value.replace(/[^0-9]/g, ''))} placeholder="e.g. 000007" className="w-full px-3 py-2 rounded-xl border text-sm font-mono mb-4" style={{ borderColor: 'var(--light-gray)' }} />
             <RfpOtherFeesSection state={payableRfpFees} branch={payableRfp.branch} />
             <button onClick={createPayableRfp} disabled={creatingRfp} className="w-full py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-50 mt-1" style={{ background: 'var(--teal)' }}>{creatingRfp ? <Loader2 size={15} className="inline animate-spin" /> : `Generate RFP · ${formatCurrency(payableRfp.total + payableRfpFees.feesTotal)}`}</button>
+          </div>
+        </div>
+      )}
+
+      {bookedMark && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30" onClick={() => !bookedSaving && setBookedMark(null)}>
+          <div className="w-full max-w-md rounded-2xl p-6 space-y-4" style={{ background: 'white' }} onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between">
+              <h3 className="text-base font-bold" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>Mark paid — already booked</h3>
+              <button onClick={() => setBookedMark(null)} className="p-1 rounded-lg hover:bg-gray-100"><X size={16} /></button>
+            </div>
+            <div className="px-3 py-2 rounded-xl text-sm font-semibold" style={{ background: '#f0fdfa', color: 'var(--deep-teal)' }}>
+              {bookedMark.cons.length + bookedMark.emps.length} payslip{bookedMark.cons.length + bookedMark.emps.length === 1 ? '' : 's'} · <span style={{ fontFamily: 'Roboto, sans-serif' }}>{formatCurrency(bookedMark.total)}</span>
+              <span className="block text-xs font-normal mt-0.5" style={{ color: 'var(--mid-gray)' }}>
+                {bookedMark.branches.map(b => branchLabel(b)).join(', ')} · {bookedMark.cutoffs.map(c => getCutoffLabel(c)).join(', ')}
+                {bookedMark.cons.length > 0 && bookedMark.emps.length > 0 ? ` · ${bookedMark.cons.length} consultants + ${bookedMark.emps.length} employees` : ''}
+              </span>
+            </div>
+            <div className="rounded-xl border px-3 py-2 text-xs" style={{ borderColor: '#fcd34d', background: '#fffbeb', color: '#92400e' }}>
+              Use this only when the pay is already in the books — for example the QuickBooks payroll import, or a journal that debited Salaries Payable.
+              The payslips are marked paid and <b>no journal entry is made</b>. To record a payment the books don&apos;t have yet, use the RFP instead.
+            </div>
+            <div className="space-y-3">
+              <div>
+                <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Date paid</label>
+                <input type="date" value={bookedDate} onChange={e => setBookedDate(e.target.value)}
+                  className="w-full px-3 py-2 rounded-lg border text-xs" style={{ borderColor: 'var(--light-gray)' }} />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Paid from (bank account)</label>
+                <AccountPicker accounts={allAccounts.filter(a => a.accountType === 'ASSET')}
+                  value={bookedFromId} valueKey="id"
+                  className="w-full px-3 py-2 rounded-lg border text-xs"
+                  placeholder="Type a bank account number or name…"
+                  onChange={v => setBookedFromId(v)} />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Already booked by</label>
+                <input value={bookedBy} onChange={e => setBookedBy(e.target.value)} placeholder="e.g. QB import — April 2nd cutoff payout (BDO batches)"
+                  className="w-full px-3 py-2 rounded-lg border text-xs" style={{ borderColor: 'var(--light-gray)' }} />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Note (optional)</label>
+                <input value={bookedNote} onChange={e => setBookedNote(e.target.value)} placeholder="Bank reference, who confirmed it, etc."
+                  className="w-full px-3 py-2 rounded-lg border text-xs" style={{ borderColor: 'var(--light-gray)' }} />
+              </div>
+            </div>
+            {bookedErr && (
+              <div className="rounded-xl px-3 py-2 text-xs" style={{ background: '#fef2f2', color: '#b91c1c' }}>{bookedErr}</div>
+            )}
+            <button onClick={markBooked} disabled={bookedSaving || !bookedDate || !bookedFromId || bookedBy.trim().length < 4}
+              className="w-full py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-50" style={{ background: 'var(--teal)' }}>
+              {bookedSaving ? <Loader2 size={15} className="inline animate-spin" /> : <>Mark paid · <span style={{ fontFamily: 'Roboto, sans-serif' }}>{formatCurrency(bookedMark.total)}</span></>}
+            </button>
           </div>
         </div>
       )}

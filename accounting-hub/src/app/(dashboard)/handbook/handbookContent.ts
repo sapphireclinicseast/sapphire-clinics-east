@@ -579,7 +579,7 @@ export const SECTIONS: Section[] = [
       { k: 'ul', items: [
         `**Consultants** — sub-tabs include Consultant List, Unit Pay Settings, Clinician Pay Rules, Benefits Setting, **Initial Evaluation** and **Progress Report** (the IE/PR pair), **Payslip Generation**, **Mentorship Meetings** and Staff Directory.`,
         `**Employees** — sub-tabs include Employee List, Employee Settings, Staff Requests, **Timekeeping Upload**, Timekeeping Data, Benefits Setting, Leave Setting, **Allowance/Deduction**, Holiday Setting, **Payslip Generation** and Lates.`,
-        `**Salaries Payable** — remit salaries with proof and raise the RFP.`,
+        `**Salaries Payable** — remit salaries with proof and raise the RFP. **Already booked** marks ticked payslips paid **without a journal entry**, for pay the books already carry (e.g. the April 2026 QuickBooks payroll import). It asks for the date, the bank account and which entry booked it, and shows in Payment History with an **Already booked** tag; **Reverse remittance** there undoes it.`,
         `**Payroll Settings** — the account mapping.`,
       ] },
       { k: 'sub', t: 'Run employee payroll' },

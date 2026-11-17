@@ -2,6 +2,7 @@ import { branchShort } from '@/lib/branch'
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { rollupSalaryPayable } from '@/lib/payroll/salary-rfp-remit'
 
 // Ledger-facing branch codes: JournalEntry.branch must use the chart/report codes
 // (SANDBOX_EAST etc.) so branch-filtered financial statements include these entries.
@@ -21,8 +22,10 @@ export async function GET(req: Request) {
 
   // A MIXED payment covers employees and consultants in one bank transfer, so
   // it belongs in whichever list you are looking at.
+  // An "Already booked" mark (status BOOKED) is listed here whatever it covers,
+  // so a staff-only mark can still be reversed from the one history there is.
   const payments = await prisma.salaryPayment.findMany({
-    where: { paymentType: { in: [paymentType, 'MIXED'] } },
+    where: { OR: [{ paymentType: { in: [paymentType, 'MIXED'] } }, { status: 'BOOKED' }] },
     include: { fromAccount: { select: { id: true, accountNumber: true, accountTitle: true } } },
     orderBy: { paymentDate: 'desc' },
   })
@@ -35,6 +38,18 @@ export async function GET(req: Request) {
         select: { salaryPaymentId: true, id: true, netPay: true, cutoffPeriod: true, consultant: { select: { name: true, department: true } } },
       })
     : []
+
+  // Staff payslips linked to a booked mark are listed by name too.
+  const bookedIds = payments.filter(p => p.status === 'BOOKED').map(p => p.id)
+  const linkedSlips = bookedIds.length > 0
+    ? await prisma.employeePayslip.findMany({
+        where: { salaryPaymentId: { in: bookedIds } },
+        select: { salaryPaymentId: true, id: true, netPay: true, cutoffPeriod: true, employee: { select: { firstName: true, lastName: true, department: true } } },
+      })
+    : []
+  for (const p of linkedSlips) {
+    linkedEntries.push({ salaryPaymentId: p.salaryPaymentId, id: p.id, netPay: p.netPay, cutoffPeriod: p.cutoffPeriod, consultant: { name: `${p.employee.lastName}, ${p.employee.firstName}`, department: p.employee.department } })
+  }
 
   const entriesByPayment = new Map<string, typeof linkedEntries>()
   for (const e of linkedEntries) {
@@ -68,6 +83,8 @@ export async function GET(req: Request) {
     paymentType: p.paymentType,
     cutoffPeriod: p.cutoffPeriod,
     branch: p.branch,
+    status: p.status,
+    journalEntryId: p.journalEntryId,
     createdAt: p.createdAt.toISOString(),
     consultants: (entriesByPayment.get(p.id) || []).map(e => ({
       name: e.consultant.name,
@@ -93,6 +110,12 @@ export async function DELETE(req: Request) {
     if (!payment) return NextResponse.json({ error: 'Payment not found' }, { status: 404 })
 
     await prisma.$transaction(async (tx) => {
+      // The cutoffs this payment touched, so their payable can be re-read after.
+      const [linkedEntries, linkedSlips] = await Promise.all([
+        tx.payrollEntry.findMany({ where: { salaryPaymentId: id }, select: { cutoffPeriod: true, branch: true }, distinct: ['cutoffPeriod', 'branch'] }),
+        tx.employeePayslip.findMany({ where: { salaryPaymentId: id }, select: { cutoffPeriod: true, branch: true }, distinct: ['cutoffPeriod', 'branch'] }),
+      ])
+
       // Un-remit PayrollEntry records linked directly via salaryPaymentId
       await tx.payrollEntry.updateMany({
         where: { salaryPaymentId: id },
@@ -105,15 +128,16 @@ export async function DELETE(req: Request) {
         data: { salariesRemitted: false, salaryPaymentId: null },
       })
 
-      // Also un-remit via fallback (old records matched by branch + cutoffPeriod)
-      if (payment.branch && payment.cutoffPeriod) {
-        const periods = payment.cutoffPeriod.split(', ').map(s => s.trim()).filter(Boolean)
-        if (periods.length) {
-          await tx.payrollEntry.updateMany({
-            where: { branch: payment.branch, cutoffPeriod: { in: periods }, salariesRemitted: true, salaryPaymentId: null },
-            data: { salariesRemitted: false },
-          })
-        }
+      // Old remittances (before salaryPaymentId was tracked) link nothing, so
+      // they are matched by branch + cutoffPeriod. Only for those: a payment
+      // that links its own payslips must not un-pay everyone else in the cutoff
+      // (payslips paid through a salary RFP also carry no salaryPaymentId).
+      const periods = payment.cutoffPeriod ? payment.cutoffPeriod.split(', ').map(s => s.trim()).filter(Boolean) : []
+      if (!linkedEntries.length && !linkedSlips.length && payment.branch && periods.length) {
+        await tx.payrollEntry.updateMany({
+          where: { branch: payment.branch, cutoffPeriod: { in: periods }, salariesRemitted: true, salaryPaymentId: null },
+          data: { salariesRemitted: false },
+        })
       }
 
       // Reset PayrollPayableStatus records that point to this payment
@@ -121,6 +145,9 @@ export async function DELETE(req: Request) {
         where: { salaryPaymentId: id },
         data: { salariesRemitted: false, salaryPaymentId: null },
       })
+      // …and re-read each touched cutoff, which may now be partly paid by others.
+      for (const k of linkedEntries) await rollupSalaryPayable(tx, k.cutoffPeriod, k.branch, 'CONSULTANT')
+      for (const k of linkedSlips) await rollupSalaryPayable(tx, k.cutoffPeriod, k.branch, 'EMPLOYEE')
 
       // Delete the journal entry (cascade deletes lines)
       if (payment.journalEntryId) {
