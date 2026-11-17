@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { isRetroCancellation } from '@/lib/pos/retro-cancellation'
+import { isRetroCancellation, isWaivedRetro } from '@/lib/pos/retro-cancellation'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { obtainedDateError } from '@/lib/wallet-dates'
@@ -247,7 +247,24 @@ export async function GET(
         }
       })
 
-      const glLedger = [...glDeductions, ...glReversals]
+      // Retroactive fees that were voided and waived stay in view, labelled,
+      // on the day they sat — with no effect on the running balance (Hannah,
+      // 2026-11-18: "waive but label").
+      const glWaived = glPayments
+        .filter(p => p.order.status === 'VOIDED' && isWaivedRetro(p.order.notes))
+        .map(p => ({
+          date: new Date(p.order.transactionDate),
+          type: 'WAIVED' as const,
+          description: `Order #${p.order.orderNumber} · ${p.order.notes} (₱${Number(p.amount).toLocaleString('en-PH', { minimumFractionDigits: 2 })} not charged)`,
+          credit: 0,
+          debit: 0,
+          orderNumber: p.order.orderNumber,
+          orderId: p.order.id,
+          voided: true,
+          retro: true,
+        }))
+
+      const glLedger = [...glDeductions, ...glReversals, ...glWaived]
         .sort((a, b) => a.date.getTime() - b.date.getTime())
 
       // Derive starting balance from stored balance and all transaction movements

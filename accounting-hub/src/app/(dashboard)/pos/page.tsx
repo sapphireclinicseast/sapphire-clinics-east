@@ -160,7 +160,7 @@ interface Referrer {
 
 interface WalletLedgerEntry {
   date: string
-  type: 'RELOAD' | 'DEDUCTION' | 'VOID_REVERSAL' | 'STARTING_BALANCE'
+  type: 'RELOAD' | 'DEDUCTION' | 'VOID_REVERSAL' | 'STARTING_BALANCE' | 'WAIVED'
   description: string
   credit: number
   debit: number
@@ -7843,7 +7843,9 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
                         <tbody>
                           {(walletDetail.ledger || []).map((e, i) => {
                             const rowStyle: React.CSSProperties = e.voided ? { opacity: 0.55 } : {}
-                            const typeBadge = e.type === 'DEDUCTION'
+                            const typeBadge = e.type === 'WAIVED'
+                              ? { bg: '#f1f5f9', color: '#475569', label: 'Waived' }
+                              : e.type === 'DEDUCTION'
                               ? { bg: '#fee2e2', color: '#991b1b', label: 'Deduction' }
                               : e.type === 'RELOAD'
                               ? { bg: '#dcfce7', color: '#166534', label: 'Load' }
@@ -7859,7 +7861,11 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
                                 <td className="px-3 py-2" style={{ color: retroColor ?? 'var(--charcoal)', fontWeight: e.retro ? 600 : undefined }}>
                                   <span className="inline-block px-1.5 py-0.5 mr-1.5 rounded text-[10px] font-semibold align-middle" style={{ background: typeBadge.bg, color: typeBadge.color }}>{typeBadge.label}</span>
                                   {e.retro && <span className="inline-block px-1.5 py-0.5 mr-1.5 rounded text-[10px] font-semibold align-middle" style={{ background: '#ede9fe', color: RETRO_CANCEL_COLOR }}>Retroactive</span>}
-                                  {e.description}{e.voided ? ' (voided)' : ''}
+                                  {e.type === 'WAIVED' ? (() => {
+                                    // The original charge struck through; the waiver label readable after it.
+                                    const [orig, label] = e.description.split(' WAIVED — ')
+                                    return <><span style={{ textDecoration: 'line-through' }}>{orig}</span>{label ? <span style={{ color: '#475569' }}> Waived — {label}</span> : null}</>
+                                  })() : e.description}{e.voided && e.type !== 'WAIVED' ? ' (voided)' : ''}
                                 </td>
                                 <td className="px-3 py-2 text-right whitespace-nowrap" style={{ color: 'var(--mid-gray)' }}>{formatCurrency(e.balanceBefore)}</td>
                                 <td className="px-3 py-2 text-right whitespace-nowrap" style={{ color: e.debit > 0 ? '#991b1b' : 'var(--mid-gray)' }}>{e.debit > 0 ? `− ${formatCurrency(e.debit)}` : '—'}</td>
