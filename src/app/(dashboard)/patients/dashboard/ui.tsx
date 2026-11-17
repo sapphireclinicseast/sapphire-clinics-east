@@ -51,16 +51,25 @@ export function DashCard({
 }
 
 export function KpiCard({
-  label, value, sub, accent = 'var(--teal)', icon,
+  label, value, sub, accent = 'var(--teal)', icon, onClick, active = false, title,
 }: {
   label: string
   value: ReactNode
   sub?: ReactNode
   accent?: string
   icon?: ReactNode
+  /** Makes the card a filter toggle. Without it the card stays a plain tile. */
+  onClick?: () => void
+  /** Drawn as switched on: the list below is showing only these. */
+  active?: boolean
+  title?: string
 }) {
-  return (
-    <div className="rounded-xl px-4 py-3.5 min-w-0" style={CARD_STYLE}>
+  // A button only when it does something. A card that looks clickable and
+  // isn't is worse than one that looks inert, and every other place this
+  // component is used wants the plain tile.
+  const Tag = onClick ? 'button' : 'div'
+  const body = (
+    <>
       <div className="flex items-center justify-between gap-2">
         <p className="text-[11px] font-semibold uppercase tracking-wider truncate" style={{ color: 'var(--mid-gray)' }}>
           {label}
@@ -71,7 +80,31 @@ export function KpiCard({
         {value}
       </p>
       {sub && <p className="text-xs mt-0.5" style={{ color: 'var(--mid-gray)' }}>{sub}</p>}
-    </div>
+    </>
+  )
+
+  if (!onClick) {
+    return <div className="rounded-xl px-4 py-3.5 min-w-0" style={CARD_STYLE}>{body}</div>
+  }
+  return (
+    <Tag
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      title={title}
+      className="rounded-xl px-4 py-3.5 min-w-0 text-left w-full transition-shadow hover:shadow-[0_2px_8px_rgba(15,23,42,0.08)] focus-visible:outline-2 focus-visible:outline-offset-2"
+      style={{
+        ...CARD_STYLE,
+        cursor: 'pointer',
+        // The active card is ringed in its own accent rather than tinted: a
+        // tint would fight the accent each card already carries, and on a
+        // strip of four it has to be obvious which one is switched on.
+        boxShadow: active ? `inset 0 0 0 2px ${accent}` : undefined,
+        outlineColor: accent,
+      }}
+    >
+      {body}
+    </Tag>
   )
 }
 

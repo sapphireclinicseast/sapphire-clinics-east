@@ -274,6 +274,12 @@ function Pagination({ total, page, perPage, onPage, onPerPage }: {
 // waitlist, so an ALAGA or psych enquiry is chased from the same place as a
 // plain registration rather than only being found by remembering to click its
 // sub-tab. The single-form tabs stay for when someone wants just one intake.
+const WAITLIST_STATUS_LABEL: Record<string, string> = {
+  open: 'Not yet actioned',
+  converted: 'Converted',
+  declined: 'Will no longer avail',
+}
+
 const WAITLIST_FORMS = [
   { key: 'all', label: 'All Forms' },
   { key: 'registration', label: 'Registration' },
@@ -747,6 +753,13 @@ function WaitlistTab({ branch }: { branch: string }) {
   // Filter row starts hidden: most visits to this tab are a quick look, and a
   // row of empty inputs above every table would be permanent clutter.
   const [showFilters, setShowFilters] = useState(false)
+  const [status, setStatus] = useState<'all' | 'open' | 'converted' | 'declined'>('all')
+  /** Clicking the card the list is already filtered by clears it. */
+  const pickStatus = (next: 'open' | 'converted' | 'declined') => {
+    setStatus(cur => (cur === next ? 'all' : next))
+    setPage(1)
+  }
+
   const [expanded, setExpanded] = useState<string | null>(null)
   const [converting, setConverting] = useState<string | null>(null)
   const [deleting, setDeleting] = useState<string | null>(null)
@@ -889,9 +902,20 @@ function WaitlistTab({ branch }: { branch: string }) {
     return Array.isArray(item?._services) ? item._services : []
   }
 
-  const filtered = search
-    ? responses.filter(r => getName(r).toLowerCase().includes(search.toLowerCase()))
-    : responses
+  /**
+   * Which of the four KPI figures the list is showing.
+   *
+   * The counts were already on screen and already the thing front desk act
+   * on — "who are the 41 who will no longer avail" — but there was no way to
+   * see WHICH 41. The cards are the filter now, because that is where the
+   * number the question is about already is.
+   */
+  const statusOf = (r: any): 'declined' | 'converted' | 'open' =>
+    r._followUp ? 'declined' : isConverted(r) ? 'converted' : 'open'
+
+  const filtered = responses.filter(r =>
+    (status === 'all' || statusOf(r) === status)
+    && (!search || getName(r).toLowerCase().includes(search.toLowerCase())))
 
   const COLS: SortCol[] = [
     { key: 'expand', label: '' },                                   // chevron
@@ -1019,13 +1043,23 @@ function WaitlistTab({ branch }: { branch: string }) {
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <KpiCard label="On the waitlist" value={firstLoad ? '—' : responses.length.toLocaleString()}
-          sub={formKey === 'all' ? 'All intake forms' : WAITLIST_FORMS.find(f => f.key === formKey)?.label} icon={<Inbox size={15} />} />
+          sub={formKey === 'all' ? 'All intake forms' : WAITLIST_FORMS.find(f => f.key === formKey)?.label}
+          icon={<Inbox size={15} />}
+          onClick={() => { setStatus('all'); setPage(1) }}
+          active={status === 'all'}
+          title="Show every response" />
         <KpiCard label="Not yet actioned" value={firstLoad ? '—' : openCount.toLocaleString()}
-          sub="Not converted or tagged" accent="#D97706" icon={<Clock size={15} />} />
+          sub="Not converted or tagged" accent="#D97706" icon={<Clock size={15} />}
+          onClick={() => pickStatus('open')} active={status === 'open'}
+          title="Show only the ones nobody has actioned" />
         <KpiCard label="Converted" value={firstLoad ? '—' : convertedCount.toLocaleString()}
-          sub="Already in the Patient CRM" accent="#15803D" icon={<UserCheck size={15} />} />
+          sub="Already in the Patient CRM" accent="#15803D" icon={<UserCheck size={15} />}
+          onClick={() => pickStatus('converted')} active={status === 'converted'}
+          title="Show only the ones already in the CRM" />
         <KpiCard label="Will no longer avail" value={firstLoad ? '—' : declinedCount.toLocaleString()}
-          sub="Tagged with a remark" accent="#B91C1C" icon={<UserX size={15} />} />
+          sub="Tagged with a remark" accent="#B91C1C" icon={<UserX size={15} />}
+          onClick={() => pickStatus('declined')} active={status === 'declined'}
+          title="Show only the ones tagged as no longer availing" />
       </div>
 
       {loadError && <LoadError message={loadError} />}
@@ -1037,6 +1071,18 @@ function WaitlistTab({ branch }: { branch: string }) {
         <MultiFilter size="md" icon={<Filter size={13} />} label="Services" options={servicesOptions}
           selected={filters.services?.set ?? []} onChange={next => setFilter('services', { set: next })} />
         <FilterToggle open={showFilters} onToggle={() => setShowFilters(v => !v)} activeCount={activeCount} onClear={clearAll} />
+        {/* The ringed card says which filter is on, but only while it is on
+            screen. This stays beside the count, where somebody wondering why
+            the list is short is already looking. */}
+        {status !== 'all' && (
+          <button type="button" onClick={() => { setStatus('all'); setPage(1) }}
+            className="inline-flex items-center gap-1.5 h-8 px-2.5 rounded-lg text-xs font-semibold"
+            style={{ background: '#fff', border: '1px solid var(--light-gray)', color: 'var(--charcoal)' }}
+            title="Show every response again">
+            {WAITLIST_STATUS_LABEL[status]}
+            <X size={12} aria-hidden />
+          </button>
+        )}
         <ResultCount shown={sorted.length} total={responses.length} noun={responses.length === 1 ? 'response' : 'responses'} loading={loading} />
       </div>
 
@@ -1053,7 +1099,10 @@ function WaitlistTab({ branch }: { branch: string }) {
                 cell short and the table visibly ragged. */}
             {firstLoad ? <SkeletonRows cols={COLS.length} /> : paginated.length === 0 ? (
               <tr><td colSpan={COLS.length}>
-                {activeCount > 0
+                {status !== 'all' && activeCount === 0 && !search
+                  ? <EmptyState title={`Nothing tagged "${WAITLIST_STATUS_LABEL[status]}".`}
+                      hint="Click the card again, or “On the waitlist”, to show everything." />
+                  : activeCount > 0
                   ? <EmptyState title="No responses match these filters." hint="Loosen a column filter, or reset them all." />
                   : <EmptyState title="No responses found." hint={search ? 'Nothing on this list matches that name.' : 'New intake form submissions will appear here.'} />}
               </td></tr>
