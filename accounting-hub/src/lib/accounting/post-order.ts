@@ -61,6 +61,18 @@ export interface PostOrderResult {
 }
 
 /**
+ * QuickBooks era (Hannah 2026-11-17): sales dated before 2026 are on the books
+ * through the QuickBooks import (QB_IMPORT_JE) — the 2025 reports read only
+ * that, and a branch's 2026 opening is built from every earlier entry. So a
+ * POS reopen/edit of a 2025 order must never post a hub sale for it: 13 East
+ * orders re-posted that way on 11/15–11/17 counted ₱38,950 of AR and revenue
+ * twice in East's 2026 opening. Reversals are not blocked — they only take
+ * back an entry that stands.
+ */
+export const QB_ERA_END = new Date('2026-01-01T00:00:00+08:00')
+export const QB_ERA_REASON = 'QuickBooks era: sales dated before 2026 are in the QB import, so the hub posts none'
+
+/**
  * Signed GL net for an order, in integer centavos: the line totals of every
  * POS_ORDER forward minus every POS_ORDER_REVERSAL. This is the one question
  * idempotency actually needs answered — "does the ledger currently carry this
@@ -102,6 +114,9 @@ async function postOrderJournalLocked(
   orderId: string,
   createdById: string,
 ): Promise<PostOrderResult> {
+
+  const dated = await prisma.order.findUnique({ where: { id: orderId }, select: { transactionDate: true } })
+  if (dated && dated.transactionDate < QB_ERA_END) return { posted: false, reason: QB_ERA_REASON }
 
   // Idempotency: skip only while the order's GL net actually carries the sale.
   // Two earlier rules read the HISTORY instead of the BALANCE, and each had a

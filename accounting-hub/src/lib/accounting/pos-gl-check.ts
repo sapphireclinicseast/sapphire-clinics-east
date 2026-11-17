@@ -60,7 +60,7 @@ export interface PosGlRun {
 }
 
 /** Reasons postOrderJournal gives for an order that correctly has no entry. */
-export const BENIGN_POST_REASONS = ['MD pass-through', 'no postable lines', 'ENABLE_GL_POSTING flag is off']
+export const BENIGN_POST_REASONS = ['MD pass-through', 'no postable lines', 'ENABLE_GL_POSTING flag is off', 'QuickBooks era']
 export const isBenignReason = (r?: string) => !!r && BENIGN_POST_REASONS.some(b => r.startsWith(b))
 
 export const BRANCH_LABEL: Record<string, string> = {
