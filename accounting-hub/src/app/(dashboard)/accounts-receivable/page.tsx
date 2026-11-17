@@ -33,6 +33,7 @@ import {
 import BreakdownDonut, { type DonutItem } from './BreakdownDonut'
 import { DIRECTORY_WRITE_ROLES } from '@/lib/hmo-directory'
 import { NOT_DUP_ROLES, notDuplicateTwins } from '@/lib/hmo-not-duplicate'
+import { HMO_CHANGE_ROLES, serviceHmoMismatch } from '@/lib/hmo-change'
 import { CANCEL_SESSION_ROLES, AR_CANCEL_PREFIX } from '@/lib/hmo-cancel-shared'
 import ExpandablePanel from './ExpandablePanel'
 import PaymentsCard from './PaymentsCard'
@@ -728,8 +729,12 @@ export default function AccountsReceivablePage() {
     if (isFrontdesk && hmoSubTab === 'overview') setHmoSubTab('per-hmo')
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isFrontdesk, tab, hmoSubTab, visibleTabs.join(',')])
-  // Per HMO sub-tab state
-  const [perHmoWallet, setPerHmoWallet] = useState('')
+  // Per HMO sub-tab state. The HMO Provider filter ticks several HMOs at once
+  // (Hannah 2026-11-17: "so we can easily check because some avega are placed
+  // in intellicare"); none ticked = all providers.
+  const [perHmoWallets, setPerHmoWallets] = useState<string[]>([])
+  const [perHmoProvOpen, setPerHmoProvOpen] = useState(false)
+  const perHmoWalletKey = perHmoWallets.join(',')
   // Fullscreen overlay for the Per HMO table — it carries a lot of columns.
   const [perHmoExpanded, setPerHmoExpanded] = useState(false)
   // Adjustable column widths (px by column label), dragged on the header edge
@@ -849,6 +854,10 @@ export default function AccountsReceivablePage() {
   // Set when the edit is being cancelled (Escape / ✕) so the blur-save skips.
   const clinCancelRef = useRef(false)
   const [clinicianBusy, setClinicianBusy] = useState<string | null>(null)
+  // HMO cell pencil (Hannah 2026-11-17): move a session to another HMO.
+  const [hmoEditId, setHmoEditId] = useState<string | null>(null)
+  const [hmoEditValue, setHmoEditValue] = useState('')
+  const [hmoBusy, setHmoBusy] = useState<string | null>(null)
 
   // Approved-SOA recompute (one-shot data correction for the 2026-04-08
   // migration that clobbered totalGlAmount with the then-current balance).
@@ -931,11 +940,11 @@ export default function AccountsReceivablePage() {
       : hmoSubTab === 'submitted-unpaid' ? (subUnpaidYear ? `${subUnpaidYear}-12-31` : '')
       : hmoSubTab === 'md-consults' ? perHmoTo
       : perHmoTo
-    if (!perHmoWallet && !effFrom && !effTo) { setPerHmoFetched(null); return }
+    if (!perHmoWalletKey && !effFrom && !effTo) { setPerHmoFetched(null); return }
     const ctl = new AbortController()
     const params = new URLSearchParams({ type: 'HMO', sortField, sortDir })
     if (branch) params.set('branch', branch)
-    if (perHmoWallet) params.set('walletId', perHmoWallet)
+    if (perHmoWalletKey) params.set('walletId', perHmoWalletKey)
     if (effFrom) params.set('dateFrom', effFrom)
     if (effTo) params.set('dateTo', effTo)
     setPerHmoLoading(true)
@@ -945,7 +954,7 @@ export default function AccountsReceivablePage() {
       .catch(() => {})
       .finally(() => setPerHmoLoading(false))
     return () => ctl.abort()
-  }, [tab, hmoSubTab, branch, perHmoWallet, perHmoFrom, perHmoTo, followUpYear, subUnpaidYear, sortField, sortDir])
+  }, [tab, hmoSubTab, branch, perHmoWalletKey, perHmoFrom, perHmoTo, followUpYear, subUnpaidYear, sortField, sortDir])
 
   // Fetch aging dashboard data whenever tab / branch / period changes
   useEffect(() => {
@@ -1394,6 +1403,7 @@ export default function AccountsReceivablePage() {
      first, then appended to the order's remarks. Differing remarks clear the
      possible-duplicate flag for the pair (lib/hmo-duplicates). */
   const canClearDup = NOT_DUP_ROLES.includes(role)
+  const canEditHmo = HMO_CHANGE_ROLES.includes(role)
   const [notDupFor, setNotDupFor] = useState<AROrder | null>(null)
   const [notDupRemarks, setNotDupRemarks] = useState('')
   const [notDupBusy, setNotDupBusy] = useState(false)
@@ -1607,6 +1617,46 @@ export default function AccountsReceivablePage() {
       setClinicianBusy(null)
       setClinicianEditId(null)
       setClinicianValue('')
+    }
+  }
+
+  /* ── HMO (Per HMO-like views, Hannah 2026-11-17): move a session to another
+     HMO. The server moves its HMO payment line, takes it off the old HMO's
+     SOA and leaves the journal alone (every HMO posts to 1010). ── */
+  const saveHmo = async (o: AROrder, walletId: string) => {
+    if (hmoBusy) return
+    const from = wallets.find(w => w.id === o.payments[0]?.walletId)?.patientName || 'no HMO'
+    const to = wallets.find(w => w.id === walletId)?.patientName || 'the new HMO'
+    const refs = (o.soaSubmissionItems || []).map(i => i.submission.referenceNo).filter(Boolean)
+    const ask = `Change the HMO of #${o.orderNumber} from ${from} to ${to}?`
+      + (refs.length ? `\n\nIt is on SOA ${refs.join(', ')} — it will be taken off that SOA and wait for a ${to} SOA.` : '')
+    if (!window.confirm(ask)) return
+    setHmoBusy(o.id)
+    try {
+      const res = await fetch('/api/accounts-receivable/hmo', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ orderId: o.id, walletId }),
+      })
+      const d = await res.json().catch(() => ({}))
+      if (!res.ok) { alert(d.error || 'Failed to change the HMO'); return }
+      const offIds = new Set((d.takenOffSoa || []).map((t: { submissionId: string }) => t.submissionId))
+      const apply = (list: AROrder[]) => list.map(x => x.id !== o.id ? x : {
+        ...x,
+        payments: x.payments.map(p => ({ ...p, walletId })),
+        soaSubmissionItems: (x.soaSubmissionItems || []).filter(i => !offIds.has(i.submission.id)),
+        soaApprovalStatus: d.soaApprovalStatus ?? null,
+      })
+      setOrders(apply)
+      setPerHmoFetched(prev => prev ? apply(prev) : prev)
+      setHmoEditId(null)
+      setHmoEditValue('')
+      // Wallet totals and the overview charts follow on the next load.
+      fetchData()
+    } catch {
+      alert('Failed to change the HMO')
+    } finally {
+      setHmoBusy(null)
     }
   }
 
@@ -2954,7 +3004,11 @@ export default function AccountsReceivablePage() {
         let perHmoOrders = perHmoFetched ?? orders
         // Unpaid (with or without an SOA) and aged past 180 days — the worklist
         // only carries claims old enough to chase.
-        if (isFollowUp) perHmoOrders = perHmoOrders.filter(o => o.arPaymentItems.length === 0 && !isDirectToClinician(o) && arDaysOf(o) > 180)
+        // Doctor consults the HMO pays straight to the doctor join while no
+        // doctor PV is recorded for them (Hannah 2026-11-17: "we need to
+        // include them in the collection report") — the report lists them as
+        // the doctor's fee, outside the clinic's total due.
+        if (isFollowUp) perHmoOrders = perHmoOrders.filter(o => o.arPaymentItems.length === 0 && (!isDirectToClinician(o) || !o.clinicianPayment) && arDaysOf(o) > 180)
         // Doctor consults: any item whose service belongs to the MD department.
         if (isMdConsults) perHmoOrders = perHmoOrders.filter(o => o.items.some(i => i.service?.department === 'MD'))
         // Left Out Sessions (Hannah 2026-10-17): sessions skipped by payment
@@ -2984,7 +3038,7 @@ export default function AccountsReceivablePage() {
         // server had deliberately moved into range.
         const periodDate = (o: AROrder) =>
           new Date(o.arCustomDate ?? o.transactionDate).toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' })
-        if (perHmoWallet) perHmoOrders = perHmoOrders.filter(o => o.payments.some(p => p.walletId === perHmoWallet))
+        if (perHmoWallets.length) perHmoOrders = perHmoOrders.filter(o => o.payments.some(p => !!p.walletId && perHmoWallets.includes(p.walletId)))
         if (fFrom) perHmoOrders = perHmoOrders.filter(o => periodDate(o) >= fFrom)
         if (fTo) perHmoOrders = perHmoOrders.filter(o => periodDate(o) <= fTo)
         // Apply column searches
@@ -3166,6 +3220,7 @@ export default function AccountsReceivablePage() {
                 doctorPayment: cp
                   ? `${cp.coursedThroughClinic ? 'Paid to clinic · ' : ''}${/^PV/i.test(cp.pvNumber || '') ? cp.pvNumber : `PV ${cp.pvNumber || '-'}`}\n${shortDate(cp.pvDate)}`
                   : isDirectToClinician(o) ? 'HMO pays the doctor' : '',
+                payDoctor: isDirectToClinician(o),
               })
             }
             const list = [...groups.values()].sort((a, b) => a.settings.branch.localeCompare(b.settings.branch) || a.hmoName.localeCompare(b.hmoName))
@@ -3214,6 +3269,7 @@ export default function AccountsReceivablePage() {
                 'Date SOA Submitted': soaDates.length ? formatDate(soaDates[soaDates.length - 1]) : '',
                 'SOA Ref': (() => { const subs = [...(o.soaSubmissionItems || [])].sort((a, b) => a.submission.submittedDate.localeCompare(b.submission.submittedDate)); return subs.length ? (subs[subs.length - 1].submission.referenceNo || '') : '' })(),
                 ...(isFollowUp ? { 'Running AR Days': arDaysOf(o) } : {}),
+                ...(isFollowUp ? { 'Payable To': isDirectToClinician(o) ? "Doctor (HMO pays the doctor's fee)" : 'Clinic' } : {}),
                 ...(isSubUnpaid ? { 'Days Since SOA': soaDaysOf(o) } : {}),
                 'Submission Status': o.arPaymentItems.length > 0 ? 'Approved'
                   : o.soaApprovalStatus === 'APPROVED' ? 'Approved'
@@ -3239,11 +3295,35 @@ export default function AccountsReceivablePage() {
             <div className="flex flex-wrap items-end gap-3">
               <div>
                 <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>HMO Provider</label>
-                <select value={perHmoWallet} onChange={e => setPerHmoWallet(e.target.value)}
-                  className="px-3 py-2 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }}>
-                  <option value="">All Providers</option>
-                  {wallets.map(w => <option key={w.id} value={w.id}>{w.patientName}</option>)}
-                </select>
+                <div className="relative">
+                  <button type="button" onClick={() => setPerHmoProvOpen(v => !v)}
+                    className="flex items-center justify-between gap-2 px-3 py-2 rounded-xl border text-sm text-left bg-white"
+                    style={{ borderColor: perHmoWallets.length ? 'var(--teal)' : 'var(--light-gray)', color: perHmoWallets.length ? 'var(--teal)' : 'var(--charcoal)', minWidth: 190, maxWidth: 280 }}>
+                    <span className="truncate">
+                      {perHmoWallets.length === 0 ? 'All Providers'
+                        : perHmoWallets.length <= 2 ? perHmoWallets.map(id => wallets.find(w => w.id === id)?.patientName || '?').join(', ')
+                        : `${perHmoWallets.length} HMOs ticked`}
+                    </span>
+                    <ChevronDown size={14} />
+                  </button>
+                  {perHmoProvOpen && (<>
+                    <div className="fixed inset-0 z-40" onClick={() => setPerHmoProvOpen(false)} />
+                    <div className="absolute left-0 top-full mt-1 z-50 rounded-xl border bg-white shadow-lg py-1 max-h-80 overflow-y-auto"
+                      style={{ borderColor: 'var(--light-gray)', minWidth: 230 }}>
+                      <button type="button" onClick={() => setPerHmoWallets([])}
+                        className="w-full text-left px-3 py-1.5 text-sm hover:bg-gray-50 font-semibold" style={{ color: 'var(--teal)' }}>
+                        All Providers{perHmoWallets.length > 0 ? ' (clear ticks)' : ''}
+                      </button>
+                      {wallets.map(w => (
+                        <label key={w.id} className="flex items-center gap-2 px-3 py-1.5 text-sm hover:bg-gray-50 cursor-pointer" style={{ color: 'var(--charcoal)' }}>
+                          <input type="checkbox" checked={perHmoWallets.includes(w.id)}
+                            onChange={() => setPerHmoWallets(prev => prev.includes(w.id) ? prev.filter(x => x !== w.id) : [...prev, w.id])} />
+                          <span>{w.patientName}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </>)}
+                </div>
               </div>
               {(isFollowUp || isSubUnpaid) ? (
                 <div>
@@ -3353,12 +3433,27 @@ export default function AccountsReceivablePage() {
                       : isSubUnpaid ? `Left out sessions — ${subUnpaidYear || 'all years'}`
                       : 'Consults with doctors only — MD-department sessions'}
                   </p>
-                  <p className="text-2xl font-bold" style={{ color: isMdConsults ? 'var(--charcoal)' : '#b91c1c' }}>{formatCurrency(perHmoOrders.reduce((s2, o) => s2 + o.payments.reduce((s3, p2) => s3 + toNum(p2.amount), 0), 0))}</p>
+                  <p className="text-2xl font-bold" style={{ color: isMdConsults ? 'var(--charcoal)' : '#b91c1c' }}>{formatCurrency(perHmoOrders.filter(o => !isFollowUp || !isDirectToClinician(o)).reduce((s2, o) => s2 + o.payments.reduce((s3, p2) => s3 + toNum(p2.amount), 0), 0))}</p>
                 </div>
                 <div>
                   <p className="text-xs font-semibold" style={{ color: 'var(--mid-gray)' }}>Sessions</p>
-                  <p className="text-2xl font-bold" style={{ color: 'var(--charcoal)' }}>{perHmoOrders.length}</p>
+                  <p className="text-2xl font-bold" style={{ color: 'var(--charcoal)' }}>{perHmoOrders.filter(o => !isFollowUp || !isDirectToClinician(o)).length}</p>
                 </div>
+                {isFollowUp && (() => {
+                  // Doctor consults the HMO pays to the doctor, no doctor PV yet:
+                  // chased on the same report, but not money due to the clinic.
+                  const docs = perHmoOrders.filter(o => isDirectToClinician(o))
+                  if (!docs.length) return null
+                  return (
+                    <div title="Consults the HMO pays straight to the doctor, with no doctor PV recorded in Payment History → Payments to Doctors. They go on the collection report as the doctor's fee, outside the clinic's total.">
+                      <p className="text-xs font-semibold" style={{ color: 'var(--mid-gray)' }}>Doctor&apos;s fees · HMO pays the doctor</p>
+                      <p className="text-2xl font-bold" style={{ color: '#c2410c' }}>
+                        {formatCurrency(docs.reduce((s2, o) => s2 + o.payments.reduce((s3, p2) => s3 + toNum(p2.amount), 0), 0))}
+                        <span className="ml-2 text-sm font-semibold" style={{ color: 'var(--mid-gray)' }}>{docs.length} consult{docs.length === 1 ? '' : 's'}</span>
+                      </p>
+                    </div>
+                  )
+                })()}
                 {isSubUnpaid && (
                   <p className="text-xs leading-relaxed basis-full md:basis-auto md:max-w-md" style={{ color: 'var(--mid-gray)' }}>
                     <span className="font-semibold" style={{ color: 'var(--charcoal)' }}>What counts as left out:</span>{' '}
@@ -3792,7 +3887,69 @@ export default function AccountsReceivablePage() {
                             </span>
                           )}
                         </td>
-                        <td className="px-3 py-2 text-xs" style={{ color: 'var(--mid-gray)' }}>{wallet?.patientName || '—'}</td>
+                        {/* HMO — editable (Hannah 2026-11-17): services re-tagged to
+                            another HMO left the session under the old one. */}
+                        <td className="px-3 py-2 text-xs" style={{ color: 'var(--mid-gray)' }}>
+                          {hmoEditId === o.id ? (
+                            <div className="flex items-center gap-1">
+                              <select autoFocus value={hmoEditValue}
+                                onChange={e => setHmoEditValue(e.target.value)}
+                                onKeyDown={e => { if (e.key === 'Escape') { setHmoEditId(null); setHmoEditValue('') } }}
+                                className="px-1.5 py-1 rounded-lg border text-xs outline-none bg-white"
+                                style={{ borderColor: 'var(--teal)', maxWidth: 150 }}>
+                                {wallets.map(w => <option key={w.id} value={w.id}>{w.patientName}</option>)}
+                              </select>
+                              <button
+                                disabled={hmoBusy === o.id || !hmoEditValue || hmoEditValue === wallet?.id}
+                                onClick={() => saveHmo(o, hmoEditValue)}
+                                className="text-[10px] px-1.5 py-0.5 rounded font-semibold text-white disabled:opacity-50"
+                                style={{ background: 'var(--teal)' }}>
+                                {hmoBusy === o.id ? '…' : '✓'}
+                              </button>
+                              <button
+                                onClick={() => { setHmoEditId(null); setHmoEditValue('') }}
+                                className="text-[10px] px-1 py-0.5 rounded"
+                                style={{ color: 'var(--mid-gray)' }}>
+                                ✕
+                              </button>
+                            </div>
+                          ) : (() => {
+                            // Services naming a different HMO than the one billed.
+                            const named = serviceHmoMismatch(o.items.map(i => i.name), wallets, wallet?.id)
+                            const editable = canEditHmo && !isPaid
+                            return (
+                              <>
+                                <span className="inline-flex items-center gap-1">
+                                  {wallet?.patientName || '—'}
+                                  {editable && (
+                                    <button
+                                      title="Change HMO"
+                                      onClick={() => { setHmoEditId(o.id); setHmoEditValue(named?.id || wallet?.id || '') }}
+                                      className="p-0.5 rounded hover:bg-teal-50"
+                                      style={{ color: 'var(--teal)' }}>
+                                      <Pencil size={10} />
+                                    </button>
+                                  )}
+                                </span>
+                                {named && (editable ? (
+                                  <button type="button" disabled={hmoBusy === o.id}
+                                    onClick={() => saveHmo(o, named.id)}
+                                    title={`The services are ${named.patientName} services but the session is billed to ${wallet?.patientName || 'no HMO'}. Click to move it to ${named.patientName}.`}
+                                    className="block mt-1 px-1.5 py-0.5 rounded-full text-[9px] font-semibold whitespace-nowrap border hover:bg-amber-50 disabled:opacity-50"
+                                    style={{ borderColor: '#fcd34d', color: '#92400e', background: '#fffbeb' }}>
+                                    Service says {named.patientName} → set
+                                  </button>
+                                ) : (
+                                  <span className="block mt-1 px-1.5 py-0.5 rounded-full text-[9px] font-semibold whitespace-nowrap w-fit"
+                                    title={`The services are ${named.patientName} services but the session is billed to ${wallet?.patientName || 'no HMO'}.`}
+                                    style={{ color: '#92400e', background: '#fef3c7' }}>
+                                    Service says {named.patientName}
+                                  </span>
+                                ))}
+                              </>
+                            )
+                          })()}
+                        </td>
                         <td className="px-3 py-2 text-xs text-right font-medium" style={{ color: 'var(--charcoal)' }}>
                           <div className="relative group inline-block cursor-default">
                             {formatCurrency(amt)}

@@ -28,6 +28,9 @@ export async function GET(req: Request) {
   const dateFrom = searchParams.get('dateFrom') || ''
   const dateTo = searchParams.get('dateTo') || ''
   const walletId = searchParams.get('walletId') || ''
+  // Per HMO's provider filter ticks several HMOs at once (Hannah 2026-11-17),
+  // sent comma-separated; one id still works as before.
+  const walletFilterIds = walletId.split(',').map(s => s.trim()).filter(Boolean)
   const sortField = searchParams.get('sortField') || 'transactionDate'
   const sortDir = searchParams.get('sortDir') === 'asc' ? 'asc' : 'desc'
 
@@ -84,7 +87,7 @@ export async function GET(req: Request) {
     // Build order filter
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const paymentFilter: any = { method: type }
-    if (walletId) paymentFilter.walletId = walletId
+    if (walletFilterIds.length) paymentFilter.walletId = walletFilterIds.length === 1 ? walletFilterIds[0] : { in: walletFilterIds }
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const orderWhere: any = {
       status: { not: 'VOIDED' },
@@ -454,7 +457,7 @@ export async function GET(req: Request) {
     const arPayments = await prisma.aRPayment.findMany({
       where: {
         wallet: { walletType: type as 'HMO' | 'GL' },
-        ...(walletId ? { walletId } : {}),
+        ...(walletFilterIds.length ? { walletId: { in: walletFilterIds } } : {}),
       },
       orderBy: { paymentDate: 'desc' },
       // The history is meant to show everything recorded, so the cap is a

@@ -123,6 +123,9 @@ export interface CollectionClaim {
   paid?: boolean // tagged to an HMO payment
   soaDays?: number // days since the latest SOA covering it
   doctorPayment?: string // PV for a consult the HMO paid to the doctor
+  // The HMO pays this consult's fee to the doctor, not the clinic. The
+  // collection report lists it as the doctor's fee, outside the total due.
+  payDoctor?: boolean
 }
 
 export interface CollectionGroup {
@@ -170,6 +173,8 @@ interface KindSpec {
   highlight: (g: CollectionGroup) => { label: string; value: string; sub: string }
   remit: (g: CollectionGroup) => boolean
   totalLabel: string
+  // Table footer rows; default one row: totalLabel and the sum of every claim.
+  foot?: (g: CollectionGroup) => [string, number][]
 }
 
 const sum = (g: CollectionGroup, pick: (c: CollectionClaim) => boolean = () => true) => g.claims.filter(pick).reduce((t, c) => t + c.amount, 0)
@@ -185,18 +190,37 @@ const BASE_COLUMNS: Column[] = [
   { head: 'Clinician', width: 34, cell: c => c.clinician },
 ]
 const AMOUNT: Column = { head: 'Amount (PHP)', width: 25, align: 'right', cell: c => money(c.amount) }
+const DOCTOR_FEE_NOTE = "DOCTOR'S FEE - payable to the doctor, not the clinic"
+const clinicDue = (c: CollectionClaim) => !c.payDoctor
+const doctorFees = (c: CollectionClaim) => !!c.payDoctor
+// Collection columns: a doctor's-fee consult says so under its service.
+const COLLECTION_BASE: Column[] = BASE_COLUMNS.map(col => col.head !== 'Service Rendered' ? col
+  : { ...col, cell: c => (c.payDoctor ? `${c.service}\n${DOCTOR_FEE_NOTE}` : c.service) })
 
 export const HMO_REPORTS: Record<HmoReportKind, KindSpec> = {
   collection: {
     title: 'HMO COLLECTION REPORT',
     refPrefix: 'CR',
     footerName: 'Collection Report',
-    columns: [...BASE_COLUMNS, { head: 'SOA Ref / Date', width: 42, cell: soaCell }, { head: 'AR Days', width: 15, align: 'right', cell: c => c.arDays.toLocaleString('en-PH') }, AMOUNT],
-    intro: (_g, place) => `We respectfully request settlement of the claims below, rendered to your members at ${place}. Each has been unpaid for more than 180 days from the date of service. Please process payment at the soonest possible time, or let us know if any claim needs additional documents.`,
+    columns: [...COLLECTION_BASE, { head: 'SOA Ref / Date', width: 42, cell: soaCell }, { head: 'AR Days', width: 15, align: 'right', cell: c => c.arDays.toLocaleString('en-PH') }, AMOUNT],
+    intro: (g, place) => `We respectfully request settlement of the claims below, rendered to your members at ${place}. Each has been unpaid for more than 180 days from the date of service. Please process payment at the soonest possible time, or let us know if any claim needs additional documents.`
+      + (g.claims.some(doctorFees) ? " Claims marked Doctor's fee are payable to the attending doctor, not to the clinic, and are not part of the total amount due to us." : ''),
     summary: (g, coverage) => [['Claims for collection', String(g.claims.length)], ['Oldest claim', `${Math.max(0, ...g.claims.map(c => c.arDays)).toLocaleString('en-PH')} days`], ['Coverage', coverage]],
-    highlight: g => ({ label: 'TOTAL AMOUNT DUE', value: `PHP ${money(sum(g))}`, sub: plural(g.claims.length, 'claim') }),
-    remit: () => true,
+    highlight: g => {
+      const docs = g.claims.filter(doctorFees)
+      return {
+        label: 'TOTAL AMOUNT DUE',
+        value: `PHP ${money(sum(g, clinicDue))}`,
+        sub: docs.length
+          ? `${plural(g.claims.length - docs.length, 'claim')}, + PHP ${money(sum(g, doctorFees))} doctor's fees`
+          : plural(g.claims.length, 'claim'),
+      }
+    },
+    remit: g => g.claims.some(clinicDue),
     totalLabel: 'TOTAL AMOUNT DUE',
+    foot: g => g.claims.some(doctorFees)
+      ? [['TOTAL AMOUNT DUE (TO THE CLINIC)', sum(g, clinicDue)], ["DOCTOR'S FEES (PAYABLE TO THE DOCTOR)", sum(g, doctorFees)]]
+      : [['TOTAL AMOUNT DUE', sum(g)]],
   },
   'left-out': {
     title: 'HMO COLLECTION REPORT',
@@ -365,7 +389,8 @@ export function drawHmoReport(
       margin: { left: M, right: M, top: 26, bottom: 16 },
       head: [cols.map(c => c.head)],
       body: sorted.map((c, i) => cols.map((col, ci) => (ci === 0 ? String(i + 1) : T(col.cell(c))))),
-      foot: [[{ content: spec.totalLabel, colSpan: cols.length - 1, styles: { halign: 'right' } }, money(sum(g))]],
+      foot: (spec.foot ? spec.foot(g) : [[spec.totalLabel, sum(g)] as [string, number]])
+        .map(([label, amount]) => [{ content: label, colSpan: cols.length - 1, styles: { halign: 'right' } }, money(amount)]),
       showFoot: 'lastPage',
       theme: 'grid',
       styles: { font: 'helvetica', fontSize: 7.8, textColor: C_INK, cellPadding: { top: 2, bottom: 2, left: 2.2, right: 2.2 }, lineColor: C_RULE, lineWidth: 0.15, valign: 'top', overflow: 'linebreak' },
