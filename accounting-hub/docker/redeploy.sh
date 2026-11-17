@@ -1256,4 +1256,14 @@ BEGIN
 END$$;
 SQL
 
+# ── Service Invoices per branch for interbranch consultants (Taxes → Service Invoice), 2026-11-17 ──
+# '' = all branches together (single-branch consultants). The old one-per-month
+# unique index is dropped only after code that writes the new one is live.
+docker exec -i accounting_db psql -U sapphire -d sapphire_accounting <<'SQL'
+ALTER TABLE "ConsultantSiSubmission" ADD COLUMN IF NOT EXISTS "branch" TEXT NOT NULL DEFAULT '';
+ALTER TABLE "ConsultantSiAdjustment" ADD COLUMN IF NOT EXISTS "branch" TEXT NOT NULL DEFAULT '';
+CREATE UNIQUE INDEX IF NOT EXISTS "ConsultantSiSubmission_consultantId_branch_month_key" ON "ConsultantSiSubmission"("consultantId", "branch", "month");
+DROP INDEX IF EXISTS "ConsultantSiSubmission_consultantId_month_key";
+SQL
+
 echo "Redeploy complete."

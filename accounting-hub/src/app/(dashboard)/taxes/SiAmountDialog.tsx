@@ -11,8 +11,8 @@ import { carriedInto, describeCutoffs, type CutoffPay, type SiAdjustment } from 
 import { SiAmountCheck, amountPayload, evaluateAmount, type AmountState } from './SiAmountCheck'
 
 export function SiAmountDialog({ consultant, invoice, pay, covered, adjustments, onClose, onSaved }: {
-  consultant: { id: string; name: string }
-  invoice: { keys: string[]; cutoffs: string[]; siUrl: string | null; siNumber: string | null; invoiceAmount: number | null }
+  consultant: { id: string; name: string; realId?: string }
+  invoice: { keys: string[]; cutoffs: string[]; siUrl: string | null; siNumber: string | null; invoiceAmount: number | null; branch?: string }
   pay: Record<string, CutoffPay>
   covered: Set<string>
   adjustments: SiAdjustment[]
@@ -43,7 +43,7 @@ export function SiAmountDialog({ consultant, invoice, pay, covered, adjustments,
     try {
       const r = await fetch('/api/payroll/si-submissions', {
         method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ consultantId: consultant.id, keys: invoice.keys, ...amountPayload(amt, ev) }),
+        body: JSON.stringify({ consultantId: consultant.realId || consultant.id, branch: invoice.branch || '', keys: invoice.keys, ...amountPayload(amt, ev) }),
       })
       const d = await r.json().catch(() => ({}))
       if (!r.ok) { setError(d.error || 'Failed to save the amount'); setBusy(false); return }

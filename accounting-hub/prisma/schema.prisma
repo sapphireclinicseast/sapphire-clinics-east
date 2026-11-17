@@ -2063,8 +2063,12 @@ model ConsultantSiSubmission {
   siNumber      String?
   invoiceAmount Decimal?   // gross on the invoice (Total Sales)
   expectedAmount Decimal?  // finalized payroll for the cutoffs, less any differences carried into them, when recorded
+  // The branch the invoice was issued to, for a consultant paid at more than
+  // one branch (each branch gets its own invoices, checked against that
+  // branch's payroll). '' = all branches together (single-branch consultants).
+  branch        String     @default("")
 
-  @@unique([consultantId, month])
+  @@unique([consultantId, branch, month])
   @@index([month])
 }
 
@@ -2084,6 +2088,7 @@ model ConsultantSiAdjustment {
   expectedAmount Decimal
   amount         Decimal
   targetCutoff   String?    // "YYYY-MM-1" / "YYYY-MM-2"
+  branch         String     @default("") // same as the invoice's ConsultantSiSubmission.branch
   status         String     @default("OPEN") // OPEN (waiting for the target's invoice) | APPLIED | FLAGGED (no carry) | WAIVED
   appliedKeys    String[]   @default([])
   appliedSiUrl   String?

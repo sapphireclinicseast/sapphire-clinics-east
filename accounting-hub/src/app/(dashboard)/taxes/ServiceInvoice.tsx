@@ -10,6 +10,11 @@
  * figures from finalized payroll for that range; the reminders work the same
  * way. All figures load in one call (si-tracking), so no row waits on its own
  * fetch.
+ *
+ * A consultant paid at more than one branch invoices each branch separately
+ * (Hannah 11/17: "eunice should have a different set for east and
+ * greenhills"), so Tracking and Compliance list them once per branch, each row
+ * with that branch's payroll and invoices only.
  */
 
 import { useState, useEffect, useCallback, useMemo, Fragment } from 'react'
@@ -22,7 +27,7 @@ import { SiAmountDialog } from './SiAmountDialog'
 import { isHrCorUrl } from '@/lib/payroll/hr-cor'
 import {
   carryChoices, cutoffOf, cutoffShort, cutoffsOfKey, describeAdjustment, describeCutoffs, isCovered, monthCoverage, recentCutoffs,
-  type CutoffPay, type SiAdjustment,
+  siBranchName, type CutoffPay, type SiAdjustment,
 } from '@/lib/payroll/si-coverage'
 
 // Payroll stores the legacy Sandbox branch codes (SBEA/SBGH); everything the
@@ -30,6 +35,13 @@ import {
 // (same ones on control numbers and PCVs) without touching the stored values.
 const BRANCH_DISPLAY: Record<string, string> = { SBEA: 'AHEA', SBGH: 'AHGH', VERDANA: 'VER', AHI: 'AHI' }
 const branchCode = (b: string) => BRANCH_DISPLAY[b] || b
+/** Marks a per-branch row of an interbranch consultant: "Greenhills invoices". */
+const BranchSetPill = ({ b }: { b?: string }) => b ? (
+  <span className="px-1.5 py-px rounded-full text-[10px] font-bold whitespace-nowrap" title="Works at more than one branch — each branch is invoiced separately"
+    style={b === 'SBGH' ? { background: '#ede9fe', color: '#5b21b6' } : { background: '#e0f2fe', color: '#075985' }}>
+    {siBranchName(b)} invoices
+  </span>
+) : null
 /** HR Hub start date ("YYYY-MM-DD" or "YYYY-MM") as "Jul 15, 2026" / "Jul 2026". */
 const fmtStart = (v: string) => {
   const [y, m, d] = v.split('-').map(Number)
@@ -51,14 +63,23 @@ interface Consultant {
   no2303At?: string | null
   isActive?: boolean
   taxDeduction?: string
+  /** On a per-branch row of an interbranch consultant: the consultant's own id (`id` is then "cid@SBGH"). */
+  realId?: string
+  /** On a per-branch row: the branch its invoices are issued to. */
+  siBranch?: string
 }
 interface Submission {
   consultantId: string; month: string; siUrl: string | null; uploadedAt: string
   siNumber?: string | null; invoiceAmount?: number | null; expectedAmount?: number | null
+  /** branch the invoice was issued to ('' = all branches) and the row it shows under */
+  branch?: string; track?: string
 }
 interface Tracking {
   from: string
+  /** row key ("cid", or "cid@SBGH" for one branch of an interbranch consultant) → cutoff → pay */
   payroll: Record<string, Record<string, CutoffPay>>
+  /** consultantId → branches, for consultants invoiced per branch */
+  splits?: Record<string, string[]>
   submissions: Submission[]
   adjustments?: SiAdjustment[]
   /** consultantId → start date from HR Hub Staff Profiles ("YYYY-MM-DD" or "YYYY-MM") */
@@ -68,6 +89,8 @@ interface Tracking {
 interface Invoice {
   keys: string[]; cutoffs: string[]; siUrl: string | null; uploadedAt: string
   siNumber: string | null; invoiceAmount: number | null; expectedAmount: number | null
+  /** the stored branch of its rows ('' = all branches) */
+  branch: string
 }
 
 const MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
@@ -150,8 +173,9 @@ export default function ServiceInvoiceTab({ branch: branchProp, canWrite }: { br
   const keysBy = useMemo(() => {
     const m = new Map<string, Set<string>>()
     for (const s of tracking?.submissions || []) {
-      if (!m.has(s.consultantId)) m.set(s.consultantId, new Set())
-      m.get(s.consultantId)!.add(s.month)
+      const t = s.track || s.consultantId
+      if (!m.has(t)) m.set(t, new Set())
+      m.get(t)!.add(s.month)
     }
     return m
   }, [tracking])
@@ -162,10 +186,12 @@ export default function ServiceInvoiceTab({ branch: branchProp, canWrite }: { br
       // One uploaded copy (and SI number) is one invoice — two invoices photographed
       // together share a copy but not a number. Rows kept without a copy share
       // the time they were saved (older saves stamped each month separately).
-      const g = s.siUrl ? `${s.consultantId}|${s.siUrl}|${s.siNumber || ''}` : `${s.consultantId}||${s.uploadedAt}`
+      const t = s.track || s.consultantId
+      const g = s.siUrl ? `${t}|${s.branch || ''}|${s.siUrl}|${s.siNumber || ''}` : `${t}|${s.branch || ''}||${s.uploadedAt}`
       if (!groups.has(g)) groups.set(g, {
-        cid: s.consultantId, keys: [], cutoffs: [], siUrl: s.siUrl, uploadedAt: s.uploadedAt,
+        cid: t, keys: [], cutoffs: [], siUrl: s.siUrl, uploadedAt: s.uploadedAt,
         siNumber: s.siNumber ?? null, invoiceAmount: s.invoiceAmount ?? null, expectedAmount: s.expectedAmount ?? null,
+        branch: s.branch || '',
       })
       const inv = groups.get(g)!
       inv.keys.push(s.month)
@@ -184,8 +210,9 @@ export default function ServiceInvoiceTab({ branch: branchProp, canWrite }: { br
   const adjBy = useMemo(() => {
     const m = new Map<string, SiAdjustment[]>()
     for (const a of tracking?.adjustments || []) {
-      if (!m.has(a.consultantId)) m.set(a.consultantId, [])
-      m.get(a.consultantId)!.push(a)
+      const t = a.track || a.consultantId
+      if (!m.has(t)) m.set(t, [])
+      m.get(t)!.push(a)
     }
     return m
   }, [tracking])
@@ -209,8 +236,8 @@ export default function ServiceInvoiceTab({ branch: branchProp, canWrite }: { br
   }
 
   const removeInvoice = async (c: Consultant, inv: Invoice) => {
-    if (!confirm(`Remove ${c.name}'s invoice for ${describeCutoffs(inv.cutoffs)}?`)) return
-    const r = await fetch(`/api/payroll/si-submissions?consultantId=${c.id}&keys=${inv.keys.join(',')}`, { method: 'DELETE' })
+    if (!confirm(`Remove ${c.name}'s ${c.siBranch ? `${siBranchName(c.siBranch)} ` : ''}invoice for ${describeCutoffs(inv.cutoffs)}?`)) return
+    const r = await fetch(`/api/payroll/si-submissions?consultantId=${c.realId || c.id}&keys=${inv.keys.join(',')}${inv.branch ? `&branch=${inv.branch}` : ''}`, { method: 'DELETE' })
     if (!r.ok) { alert('Failed to remove the invoice'); return }
     loadTracking(tracking?.from)
   }
@@ -244,7 +271,17 @@ export default function ServiceInvoiceTab({ branch: branchProp, canWrite }: { br
     const list = needle ? consultants.filter(c => c.name.toLowerCase().includes(needle) || c.department.toLowerCase().includes(needle)) : consultants
     return [...list].sort((a, b) => a.name.localeCompare(b.name))
   }, [consultants, q])
-  const withCor = filtered.filter(c => c.corUrl)
+  // Tracking and Compliance rows: one per consultant, or one per branch for a
+  // consultant paid at more than one (each branch is invoiced on its own).
+  // With a branch picked, only that branch's row shows.
+  const trackList = useMemo(() => filtered.flatMap(c => {
+    const list = tracking?.splits?.[c.id]
+    if (!list) return [c]
+    return list.filter(b => !branch || b === branch).map(b => ({ ...c, id: `${c.id}@${b}`, realId: c.id, siBranch: b, branch: b }))
+  }), [filtered, tracking, branch])
+  const withCor = trackList.filter(c => c.corUrl)
+  const corPeople = filtered.filter(c => c.corUrl).length
+  const splitRows = withCor.filter(c => c.siBranch).length
   const withoutCor = filtered.filter(c => !c.corUrl && !c.no2303At)
   const no2303 = filtered.filter(c => !c.corUrl && c.no2303At)
   // COR sub-tab: on file or not, read from the upload itself so it can't go stale.
@@ -290,7 +327,7 @@ export default function ServiceInvoiceTab({ branch: branchProp, canWrite }: { br
     // Months before they started (HR Hub "Date Hired") are N/A, not missing —
     // unless that month has an invoice or finalized pay anyway (a renewal can
     // overwrite Date Hired), which proves they were already with us.
-    const start = tracking?.startDates?.[c.id] || null
+    const start = tracking?.startDates?.[c.realId || c.id] || null
     const startMonth = start ? start.slice(0, 7) : null
     const pay = tracking?.payroll[c.id] || {}
     const na = new Set(matrixMonths.filter(m => !!startMonth && m < startMonth && monthCoverage(m, keys) === 'none' && !pay[`${m}-1`] && !pay[`${m}-2`]))
@@ -344,6 +381,7 @@ export default function ServiceInvoiceTab({ branch: branchProp, canWrite }: { br
             </button>
             <span className="flex items-center gap-1.5 text-[11px] pl-5 mt-0.5" style={{ color: 'var(--mid-gray)' }}>
               {c.department} · {branchCode(c.branch)}
+              <BranchSetPill b={c.siBranch} />
               <a href={c.corUrl || '#'} target="_blank" rel="noopener noreferrer" title="View their BIR 2303 (COR)"
                 className="px-1.5 py-px rounded-full text-[10px] font-bold hover:underline" style={{ background: 'var(--pale-teal)', color: 'var(--deep-teal)' }}>COR</a>
             </span>
@@ -748,7 +786,7 @@ export default function ServiceInvoiceTab({ branch: branchProp, canWrite }: { br
         // toolbar, soft chips instead of solid red/green blocks.
         <>
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-            <StatCard label="Consultants with COR" value={String(matrixRows.length)} sub="Tracked in this period"
+            <StatCard label="Consultants with COR" value={String(corPeople)} sub={splitRows ? `${matrixRows.length} rows · interbranch per branch` : 'Tracked in this period'}
               tone={matrixRows.length ? 'blue' : 'zero'}
               onClick={() => setMatrixShow('all')} title="Show everyone" />
             <StatCard label="Fully invoiced" value={String(fullyCompliant)} sub="Every due month invoiced"
@@ -823,8 +861,9 @@ export default function ServiceInvoiceTab({ branch: branchProp, canWrite }: { br
                         <tr key={c.id} className="group" style={{ borderTop: '1px solid var(--hr-line)' }}>
                           <td className="px-4 py-2.5 sticky left-0 z-10 bg-white group-hover:bg-[var(--off-white)]" style={{ boxShadow: `inset 3px 0 0 ${tone}` }}>
                             <span className="block text-[13px] font-semibold leading-tight" style={{ color: 'var(--charcoal)' }}>{c.name}</span>
-                            <span className="block text-[11px] mt-0.5" style={{ color: 'var(--mid-gray)' }}>
+                            <span className="flex items-center gap-1.5 flex-wrap text-[11px] mt-0.5" style={{ color: 'var(--mid-gray)' }}>
                               {[c.department, branchCode(c.branch), start ? `started ${fmtStart(start)}` : null].filter(Boolean).join(' · ')}
+                              <BranchSetPill b={c.siBranch} />
                             </span>
                           </td>
                           {matrixMonths.map(m => {
@@ -907,7 +946,7 @@ export default function ServiceInvoiceTab({ branch: branchProp, canWrite }: { br
         // (Hannah 11/16: "Make the Tracking & Reminders view look like this too").
         <>
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-            <StatCard label="With COR" value={String(withCor.length)} sub="Asked for a service invoice"
+            <StatCard label="With COR" value={String(corPeople)} sub={splitRows ? `${withCor.length} rows · interbranch per branch` : 'Asked for a service invoice'}
               tone={withCor.length ? 'blue' : 'zero'} loading={loading}
               onClick={() => setTrackShow('all')} title="Show everyone with a COR" />
             <StatCard label="Not yet invoiced" value={tracking ? String(owing) : '—'}

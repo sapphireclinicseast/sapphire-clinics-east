@@ -11,7 +11,7 @@ import { useMemo, useState } from 'react'
 import { Loader2, X, AlertTriangle, CheckCircle2 } from 'lucide-react'
 import { ScanUpload } from '@/components/ScanUpload'
 import {
-  carriedInto, coverageKeys, cutoffShort, cutoffsBetween, describeCutoffs, expectedInvoice, isCovered, recentCutoffs, siFigures,
+  carriedInto, coverageKeys, cutoffShort, cutoffsBetween, describeCutoffs, expectedInvoice, isCovered, recentCutoffs, siBranchName, siFigures,
   type CutoffPay, type SiAdjustment,
 } from '@/lib/payroll/si-coverage'
 import { SiAmountCheck, amountPayload, emptyAmount, evaluateAmount, type AmountState } from './SiAmountCheck'
@@ -22,6 +22,9 @@ export interface SiDialogConsultant {
   department: string
   email?: string | null
   phone?: string | null
+  /** On one branch's row of an interbranch consultant: their own id (`id` is then "cid@SBGH") and that branch. */
+  realId?: string
+  siBranch?: string
 }
 
 const peso = (n: number) => n.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
@@ -62,7 +65,7 @@ export function SiInvoiceDialog({
   // 18 months of cutoffs, newest first.
   const choices = useMemo(() => recentCutoffs(nowCutoff.endsWith('-1') ? `${nowCutoff.slice(0, 7)}-2` : nowCutoff, 36), [nowCutoff])
   const range = useMemo(() => cutoffsBetween(from, to), [from, to])
-  const fig = useMemo(() => siFigures(consultant.department, range, pay), [consultant.department, range, pay])
+  const fig = useMemo(() => siFigures(consultant.department, range, pay, consultant.siBranch || ''), [consultant.department, range, pay, consultant.siBranch])
   const already = range.filter(cp => isCovered(cp, covered))
   const carriedIn = useMemo(() => carriedInto(range, adjustments), [range, adjustments])
   const ev = useMemo(() => evaluateAmount(amt, range, pay, adjustments, covered), [amt, range, pay, adjustments, covered])
@@ -81,7 +84,7 @@ export function SiInvoiceDialog({
     try {
       const r = await fetch('/api/payroll/si-submissions', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ consultantId: consultant.id, keys: coverageKeys(range), siUrl, ...amountPayload(amt, ev) }),
+        body: JSON.stringify({ consultantId: consultant.realId || consultant.id, branch: consultant.siBranch || '', keys: coverageKeys(range), siUrl, ...amountPayload(amt, ev) }),
       })
       if (!r.ok) { setError((await r.json().catch(() => ({}))).error || 'Failed to record the invoice'); setBusy(false); return }
       onRecorded()
@@ -93,7 +96,7 @@ export function SiInvoiceDialog({
     try {
       const r = await fetch('/api/payroll/si-reminder', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ consultantId: consultant.id, cutoffPeriods: range, channel: mode }),
+        body: JSON.stringify({ consultantId: consultant.realId || consultant.id, branch: consultant.siBranch || '', cutoffPeriods: range, channel: mode }),
       })
       const d = await r.json().catch(() => ({}))
       if (!r.ok) { setError(d.error || 'Failed to send the reminder'); setBusy(false); return }
@@ -114,6 +117,11 @@ export function SiInvoiceDialog({
             <p className="text-sm" style={{ color: 'var(--mid-gray)' }}>
               {consultant.name}{contact ? ` · ${contact}` : ''}
             </p>
+            {consultant.siBranch && (
+              <p className="mt-1 inline-block px-2 py-0.5 rounded-full text-[11px] font-semibold" style={{ background: '#fef3c7', color: '#92400e' }}>
+                {siBranchName(consultant.siBranch)} invoice only — figures are {siBranchName(consultant.siBranch)} payroll
+              </p>
+            )}
           </div>
           <button onClick={onClose} aria-label="Close"><X size={18} style={{ color: 'var(--mid-gray)' }} /></button>
         </div>

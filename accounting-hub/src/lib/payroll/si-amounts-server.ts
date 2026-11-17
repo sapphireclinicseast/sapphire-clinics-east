@@ -30,14 +30,18 @@ export function toAdjustment(r: any): SiAdjustment {
     appliedKeys: r.appliedKeys || [],
     note: r.note ?? null,
     createdAt: new Date(r.createdAt).toISOString(),
+    branch: r.branch || '',
   }
 }
 
-/** Finalized gross pay for the cutoffs, summed across branches (same as si-tracking). */
-export async function payrollGrossFor(db: Tx | typeof prisma, consultantId: string, cutoffs: string[]): Promise<number> {
+/**
+ * Finalized gross pay for the cutoffs (same as si-tracking): at one branch for
+ * an interbranch consultant's branch invoice, else summed across branches.
+ */
+export async function payrollGrossFor(db: Tx | typeof prisma, consultantId: string, cutoffs: string[], branch = ''): Promise<number> {
   if (!cutoffs.length) return 0
   const agg = await db.payrollEntry.aggregate({
-    where: { consultantId, cutoffPeriod: { in: cutoffs }, status: { in: ['LOCKED', 'FINAL'] } },
+    where: { consultantId, cutoffPeriod: { in: cutoffs }, status: { in: ['LOCKED', 'FINAL'] }, ...(branch ? { branch } : {}) },
     _sum: { grossPay: true },
   })
   return Math.round(Number(agg._sum?.grossPay || 0) * 100) / 100
@@ -48,11 +52,11 @@ export async function payrollGrossFor(db: Tx | typeof prisma, consultantId: stri
  * it raised are deleted, differences it absorbed go back to waiting.
  * Run before an invoice is replaced, re-amounted or removed.
  */
-export async function undoInvoiceEffects(tx: Tx, consultantId: string, keys: string[]) {
+export async function undoInvoiceEffects(tx: Tx, consultantId: string, keys: string[], branch = '') {
   if (!keys.length) return
-  await tx.consultantSiAdjustment.deleteMany({ where: { consultantId, sourceKeys: { hasSome: keys } } })
+  await tx.consultantSiAdjustment.deleteMany({ where: { consultantId, branch, sourceKeys: { hasSome: keys } } })
   await tx.consultantSiAdjustment.updateMany({
-    where: { consultantId, status: 'APPLIED', appliedKeys: { hasSome: keys } },
+    where: { consultantId, branch, status: 'APPLIED', appliedKeys: { hasSome: keys } },
     data: { status: 'OPEN', appliedKeys: [], appliedSiUrl: null, appliedAt: null },
   })
 }
@@ -76,14 +80,17 @@ export class AmountError extends Error {
  */
 export async function applyInvoiceAmount(tx: Tx, args: {
   consultantId: string; keys: string[]; siUrl: string | null; userId: string; input: AmountInput
+  /** branch the invoice was issued to ('' = all branches together) */
+  branch?: string
 }) {
   const { consultantId, keys, siUrl, userId, input } = args
+  const branch = args.branch || ''
   const cutoffs = keys.flatMap(cutoffsOfKey).sort()
   const invoice = Math.round(Number(input.invoiceAmount) * 100) / 100
   if (!Number.isFinite(invoice) || invoice < 0) throw new AmountError('Enter the amount on the invoice')
 
-  const payroll = await payrollGrossFor(tx, consultantId, cutoffs)
-  const open = (await tx.consultantSiAdjustment.findMany({ where: { consultantId, status: 'OPEN' } })).map(toAdjustment)
+  const payroll = await payrollGrossFor(tx, consultantId, cutoffs, branch)
+  const open = (await tx.consultantSiAdjustment.findMany({ where: { consultantId, branch, status: 'OPEN' } })).map(toAdjustment)
   const skip = new Set(input.skipAdjustmentIds || [])
   const carried = carriedInto(cutoffs, open).filter(a => !skip.has(a.id))
   const expected = expectedInvoice(payroll, carried)
@@ -108,7 +115,7 @@ export async function applyInvoiceAmount(tx: Tx, args: {
 
   const siNumber = (input.siNumber || '').trim() || null
   await tx.consultantSiSubmission.updateMany({
-    where: { consultantId, month: { in: keys } },
+    where: { consultantId, branch, month: { in: keys } },
     data: { siNumber, invoiceAmount: invoice, expectedAmount: noFigures ? null : expected },
   })
   if (carried.length) {
@@ -120,7 +127,7 @@ export async function applyInvoiceAmount(tx: Tx, args: {
   if (check.result === 'over' || check.result === 'under') {
     await tx.consultantSiAdjustment.create({
       data: {
-        consultantId, sourceKeys: keys, sourceSiUrl: siUrl, sourceSiNumber: siNumber,
+        consultantId, branch, sourceKeys: keys, sourceSiUrl: siUrl, sourceSiNumber: siNumber,
         invoiceAmount: invoice, expectedAmount: expected, amount: check.diff,
         targetCutoff: target, status: target ? 'OPEN' : 'FLAGGED',
         note: (input.carry?.note || '').trim() || null, createdById: userId,

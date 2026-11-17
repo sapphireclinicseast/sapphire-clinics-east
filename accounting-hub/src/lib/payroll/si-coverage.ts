@@ -12,6 +12,19 @@
  */
 
 export const CUTOFF_RX = /^\d{4}-\d{2}-[12]$/
+
+// ── Branches: a consultant paid at more than one branch invoices each branch
+// separately, and each branch's invoices are checked against that branch's
+// payroll. Their rows carry the branch; everyone else's carry '' (all
+// branches together), so single-branch consultants work exactly as before.
+export const SI_BRANCHES = ['SBEA', 'SBGH', 'VERDANA'] as const
+const SI_BRANCH_NAME: Record<string, string> = { SBEA: 'East', SBGH: 'Greenhills', VERDANA: 'Verdana' }
+/** "SBGH" → "Greenhills"; '' → ''. */
+export const siBranchName = (b: string | null | undefined) => (b ? SI_BRANCH_NAME[b] || b : '')
+/** A request's branch, or '' when absent or not a branch. */
+export const readSiBranch = (v: unknown): string => (typeof v === 'string' && (SI_BRANCHES as readonly string[]).includes(v) ? v : '')
+/** The key a consultant's invoices and payroll are tracked under: "cid", or "cid@SBGH" for one branch of an interbranch consultant. */
+export const siTrackKey = (consultantId: string, branch: string) => (branch ? `${consultantId}@${branch}` : consultantId)
 export const COVERAGE_KEY_RX = /^\d{4}-\d{2}(-[12])?$/
 
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
@@ -145,7 +158,7 @@ const r2 = (n: number) => Math.round(n * 100) / 100
  * per cutoff. Net is gross less the withholding payroll actually deducted,
  * matching what the reminder email quotes.
  */
-export function siFigures(department: string, cutoffs: string[], pay: Record<string, CutoffPay | undefined>): SiFigures {
+export function siFigures(department: string, cutoffs: string[], pay: Record<string, CutoffPay | undefined>, branch = ''): SiFigures {
   const paidCutoffs = cutoffs.filter(cp => pay[cp] && (pay[cp]!.gross || pay[cp]!.tax)).sort()
   const gross = paidCutoffs.reduce((s, cp) => s + pay[cp]!.gross, 0)
   const ewt = paidCutoffs.reduce((s, cp) => s + pay[cp]!.tax, 0)
@@ -158,7 +171,7 @@ export function siFigures(department: string, cutoffs: string[], pay: Record<str
     ewtRate: gross > 0 ? Math.round((ewt / gross) * 1000) / 10 : 0,
     net: r2(gross - ewt),
     periodLabels,
-    description: `Professional fees — ${service} rendered to Aura Health Rehab, ${periodLabels}`,
+    description: `Professional fees — ${service} rendered to Aura Health Rehab${branch ? ` ${siBranchName(branch)}` : ''}, ${periodLabels}`,
   }
 }
 
@@ -182,6 +195,10 @@ export interface SiAdjustment {
   appliedKeys: string[]
   note: string | null
   createdAt: string
+  /** branch of the invoice it came from ('' = all branches) */
+  branch?: string
+  /** row it is shown under: siTrackKey(consultantId, branch) */
+  track?: string
 }
 
 /** Differences waiting to be absorbed by the invoice that covers any of `cutoffs`. */
