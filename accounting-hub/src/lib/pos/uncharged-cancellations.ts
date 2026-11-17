@@ -77,6 +77,8 @@ interface HubAbsence {
   scheduleId: string; patientId: string; patientName: string; date: string; startTime: string
   status: 'CANCELLED' | 'RESCHEDULED' | 'NO_SHOW'; sessionType: string; branch: string | null
   therapist: string; department: string | null; confirmedSameDay: number
+  /** Bookings this therapist had called off that day, across all patients. */
+  therapistDayAbsences?: number
   log: {
     id: string; type: string; isValid: boolean; sourceStatus: string | null; countsToward: boolean
     excludeReason: string | null; initiatedBy: string | null; paymentType: string | null
@@ -254,8 +256,10 @@ export async function loadFeeBearingAbsences(db: Db, opts: UnchargedOptions = {}
     const k = `${a.therapist.toUpperCase()}|${a.date}`
     perTherapistDay.set(k, (perTherapistDay.get(k) ?? 0) + 1)
   }
+  // The Operations Hub counts across all patients (a one-patient read can't);
+  // the local count is only a fallback.
   const therapistOut = (a: HubAbsence) => a.date < FLAG_CUTOVER && a.log?.initiatedBy !== 'PATIENT'
-    && (perTherapistDay.get(`${a.therapist.toUpperCase()}|${a.date}`) ?? 0) >= THERAPIST_OUT_THRESHOLD
+    && (a.therapistDayAbsences ?? perTherapistDay.get(`${a.therapist.toUpperCase()}|${a.date}`) ?? 0) >= THERAPIST_OUT_THRESHOLD
 
   const out: FlaggedAbsence[] = []
   const byPatient = new Map<string, HubAbsence[]>()

@@ -49,7 +49,7 @@ export async function GET(req: NextRequest) {
       date: { gte: from, lte: to },
     },
     select: {
-      id: true, patientId: true, date: true, startTime: true, status: true, sessionType: true, branch: true,
+      id: true, patientId: true, staffId: true, date: true, startTime: true, status: true, sessionType: true, branch: true,
       patient: { select: { firstName: true, lastName: true, branches: true, branch: true } },
       staff: { select: { firstName: true, lastName: true, department: true, branch: true } },
     },
@@ -91,6 +91,23 @@ export async function GET(req: NextRequest) {
     confirmedByDay.set(k, (confirmedByDay.get(k) ?? 0) + 1)
   }
 
+  // How many bookings each therapist had called off that day, across ALL
+  // patients. The Accounting Hub reads several on one day as the therapist
+  // being out (for bookings before 2026-11-18), and it can't count that
+  // itself when it asks about a single patient.
+  const staffDays = schedules.length
+    ? await prisma.schedule.groupBy({
+        by: ['staffId', 'date'],
+        where: {
+          status: { in: ['CANCELLED', 'RESCHEDULED', 'NO_SHOW'] },
+          staffId: { in: [...new Set(schedules.map(s => s.staffId))] },
+          date: { gte: schedules[0].date, lte: schedules[schedules.length - 1].date },
+        },
+        _count: { _all: true },
+      })
+    : []
+  const perStaffDay = new Map(staffDays.map(g => [`${g.staffId}|${manilaDay(g.date)}`, g._count._all]))
+
   const name = (p: { firstName: string | null; lastName: string | null } | null) =>
     p ? `${p.firstName ?? ''} ${p.lastName ?? ''}`.replace(/\s+/g, ' ').trim() : ''
 
@@ -111,6 +128,7 @@ export async function GET(req: NextRequest) {
         therapist: name(s.staff),
         department: s.staff?.department ?? null,
         confirmedSameDay: confirmedByDay.get(`${s.patientId}|${manilaDay(s.date)}`) ?? 0,
+        therapistDayAbsences: perStaffDay.get(`${s.staffId}|${manilaDay(s.date)}`) ?? 1,
         log: log ? {
           id: log.id, type: log.type, isValid: log.isValid, sourceStatus: log.sourceStatus,
           countsToward: log.countsToward, excludeReason: log.excludeReason, initiatedBy: log.initiatedBy,
