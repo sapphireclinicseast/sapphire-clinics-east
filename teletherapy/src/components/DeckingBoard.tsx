@@ -131,6 +131,29 @@ function hourParts(t: string): { h: string; ap: string } {
 function fmtDate(iso: string): string {
   return new Date(`${iso}T12:00:00`).toLocaleDateString('en-PH', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })
 }
+
+/**
+ * "Today", "Tomorrow", "in 3 days" — or nothing, past a fortnight.
+ *
+ * A one-off date is the half of this page that is not a weekly habit, so it
+ * is the half somebody has to actually diarise. "Tue, 24 Nov 2026" makes a
+ * clinician count on a calendar to find out whether that is this week.
+ *
+ * Both sides parsed at UTC midnight so the difference is whole days, never
+ * 23 or 25 hours across a clock change.
+ */
+function relativeDay(iso: string, todayIso: string): string | null {
+  const a = new Date(`${iso}T00:00:00Z`).getTime()
+  const b = new Date(`${todayIso}T00:00:00Z`).getTime()
+  if (Number.isNaN(a) || Number.isNaN(b)) return null
+  const days = Math.round((a - b) / 86_400_000)
+  if (days === 0) return 'Today'
+  if (days === 1) return 'Tomorrow'
+  // Past a fortnight the count stops helping — "in 46 days" is a number you
+  // have to think about, and the date itself already says it better.
+  if (days > 1 && days <= 14) return `in ${days} days`
+  return null
+}
 const cfgKey = (c: ConfigOut) => `${c.staffId}|${c.branch}|${c.department}|${c.deliveryMode ?? ''}`
 
 /**
@@ -254,7 +277,10 @@ export default function DeckingBoard() {
           {data!.dated.length > 0 && (
             <ListCard icon={<CalendarPlus size={13} />} iconColor={MAKEUP_FG} title="Coming dates" note="single dates only — these do not repeat">
               {[...data!.dated].sort((a, b) => (a.date ?? '').localeCompare(b.date ?? '') || a.startTime.localeCompare(b.startTime))
-                .map(s => <SlotLine key={s.id} slot={s} lead={fmtDate(s.date!)} wideLead showBranch={multiBranch} />)}
+                .map(s => (
+                  <SlotLine key={s.id} slot={s} lead={fmtDate(s.date!)} wideLead showBranch={multiBranch}
+                    relative={relativeDay(s.date!, data!.today ?? '')} />
+                ))}
             </ListCard>
           )}
         </>
@@ -533,7 +559,7 @@ function ListCard({ icon, iconColor, title, note, children }: { icon: React.Reac
 }
 
 /** One listed hour, in the hub's custom-slot row style: day or date, time, who, how paid. */
-function SlotLine({ slot, lead, wideLead = false, showBranch = false }: { slot: SlotOut; lead: string; wideLead?: boolean; showBranch?: boolean }) {
+function SlotLine({ slot, lead, wideLead = false, showBranch = false, relative = null }: { slot: SlotOut; lead: string; wideLead?: boolean; showBranch?: boolean; relative?: string | null }) {
   const st = slot.isClass ? CLASS_STYLE : PAY_STYLE[payOf(slot)]
   return (
     <li className="rounded-lg px-2.5 py-2" style={{ border: `1px solid ${slot.isMakeup ? '#FBD5BC' : '#EEF2F1'}`, background: slot.isMakeup ? '#FFFBF8' : '#fff' }}>
@@ -542,6 +568,14 @@ function SlotLine({ slot, lead, wideLead = false, showBranch = false }: { slot: 
           style={{ minWidth: wideLead ? '8.5rem' : '2.6rem', height: '1.6rem', padding: '0 0.45rem', letterSpacing: '0.04em', color: 'var(--teal)', background: 'var(--pale-teal)' }}>
           {lead}
         </span>
+        {/* How soon, beside the date rather than inside its pill: the pill is
+            a fixed width that the longest date already fills. */}
+        {relative && (
+          <span className="flex-shrink-0 text-[10.5px] font-bold px-1.5 py-0.5 rounded whitespace-nowrap"
+            style={{ background: '#FFF1E8', color: MAKEUP_FG, border: '1px solid #FBD5BC' }}>
+            {relative}
+          </span>
+        )}
         <span className="flex-shrink-0 text-[13px] font-semibold tabular-nums whitespace-nowrap" style={{ color: 'var(--charcoal)' }}>
           {formatTime(slot.startTime)} – {formatTime(slot.endTime)}
         </span>
