@@ -645,14 +645,20 @@ export async function PUT(
     // A session already tagged as paid in AR (Payment History → Record Payment)
     // belongs to the HMO / agency that paid it. Moving its HMO or GL payment to
     // another wallet here would leave that payment pointing at a session it no
-    // longer covers — untag it in Payment History first.
+    // longer covers — untag it in Payment History first. Moving it INTO the
+    // HMO that paid it is the opposite: it puts the session where its payment
+    // already is (Hannah 2026-11-17, #31274: billed to Intellicare, paid by Avega).
     if (payments?.length) {
-      const tagged = await prisma.aRPaymentItem.count({ where: { orderId: id } })
-      if (tagged) {
-        const walletsOf = (rows: { method: string; walletId?: string | null }[]) =>
-          rows.filter(r => r.method === 'HMO' || r.method === 'GL').map(r => r.walletId || '').sort().join(',')
+      const tagged = await prisma.aRPaymentItem.findMany({ where: { orderId: id }, select: { payment: { select: { walletId: true } } } })
+      if (tagged.length) {
+        const walletRows = (rows: { method: string; walletId?: string | null }[]) =>
+          rows.filter(r => r.method === 'HMO' || r.method === 'GL').map(r => r.walletId || '')
+        const walletsOf = (rows: { method: string; walletId?: string | null }[]) => walletRows(rows).sort().join(',')
         const before = walletsOf(await prisma.orderPayment.findMany({ where: { orderId: id }, select: { method: true, walletId: true } }))
-        if (walletsOf(payments) !== before) {
+        const payers = new Set(tagged.map(t => t.payment.walletId))
+        const next = walletRows(payments)
+        const intoPayer = next.length > 0 && next.every(w => payers.has(w))
+        if (walletsOf(payments) !== before && !intoPayer) {
           return NextResponse.json({ error: 'This session is already tagged as paid in AR → Payment History, so its HMO / GL cannot be switched here. Untag it in Payment History first, then change the HMO.' }, { status: 409 })
         }
       }

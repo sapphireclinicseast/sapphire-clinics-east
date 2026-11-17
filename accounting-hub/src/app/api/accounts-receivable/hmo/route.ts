@@ -21,7 +21,8 @@ const peso = (n: number) => `₱${n.toLocaleString('en-PH', { minimumFractionDig
  * - no journal entry: every HMO posts to the same receivable account
  *   (1010, "AR — HMO") — Hannah: "no JE needed". If two HMOs ever differ,
  *   the change is refused instead.
- * Refused for a session already tagged paid, and for a voided or reopened one.
+ * Refused for a session tagged paid by another HMO (moving it into the HMO
+ * that paid it is allowed), and for a voided or reopened one.
  */
 export async function PATCH(req: Request) {
   const session = await auth()
@@ -40,7 +41,7 @@ export async function PATCH(req: Request) {
           where: { method: 'HMO' },
           select: { id: true, amount: true, walletId: true, wallet: { select: { patientName: true, accountId: true } } },
         },
-        arPaymentItems: { select: { paymentId: true }, take: 1 },
+        arPaymentItems: { select: { payment: { select: { walletId: true } } } },
         soaSubmissionItems: { select: { id: true, submission: { select: { id: true, referenceNo: true, walletId: true } } } },
       },
     })
@@ -58,8 +59,10 @@ export async function PATCH(req: Request) {
     }
     const line = order.payments[0]
     if (line.walletId === walletId) return NextResponse.json({ error: 'The session is already under that HMO.' }, { status: 400 })
-    if (order.arPaymentItems.length) {
-      return NextResponse.json({ error: 'This session is already tagged as paid in AR → Payment History, so its HMO cannot be switched. Untag it in Payment History first, then change the HMO.' }, { status: 409 })
+    // A paid session stays with the HMO that paid it — unless the move is INTO
+    // that HMO (billed to one HMO, paid by another: #31274).
+    if (order.arPaymentItems.length && !order.arPaymentItems.every(t => t.payment.walletId === walletId)) {
+      return NextResponse.json({ error: 'This session is already tagged as paid in AR → Payment History by another HMO, so it cannot be moved here. Untag it in Payment History first, then change the HMO.' }, { status: 409 })
     }
 
     const target = await prisma.digitalWallet.findUnique({
