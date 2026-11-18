@@ -32,12 +32,14 @@ interface VariantRow {
 interface Row {
   id: string; sku: string; name: string; branch: string; department: string; isBundle: boolean
   cogs: number | null; cogsSource: 'unitCost' | 'bundle'; currentPrice: number | null; tiers: Tiers | null
+  /** Merchandise / books: own set price, outside the tier rule. */
+  setPrice: boolean
   tier: TierKey
   unitsSold: number; lastSold: string | null; sold: boolean; copies: number; variants: VariantRow[]
 }
 interface Change { kind: 'item' | 'copy' | 'variant'; id: string; sku: string; cogs: number | null; oldPrice: number | null; newPrice: number; tier: TierKey }
 
-type View = 'priced' | 'changes' | 'nocogs' | 'notsold'
+type View = 'priced' | 'changes' | 'nocogs' | 'setprice' | 'notsold'
 type SortKey = 'name' | 'sku' | 'cogs' | 'lowest' | 'standard' | 'highest' | 'current' | 'sold'
 
 const peso = (n: number | null | undefined, dp = 0) =>
@@ -81,7 +83,8 @@ export default function PriceListPanel({ canWrite }: { canWrite: boolean }) {
   const sold = useMemo(() => rows.filter(r => r.sold), [rows])
   const counts = useMemo(() => ({
     priced: sold.filter(r => r.tiers).length,
-    nocogs: sold.filter(r => !r.tiers).length,
+    nocogs: sold.filter(r => !r.tiers && !r.setPrice).length,
+    setprice: sold.filter(r => r.setPrice).length,
     changes: sold.filter(isChanged).length,
     notsold: rows.length - sold.length,
   }), [rows, sold])
@@ -90,7 +93,8 @@ export default function PriceListPanel({ canWrite }: { canWrite: boolean }) {
 
   const shown = useMemo(() => {
     const base = view === 'notsold' ? rows.filter(r => !r.sold)
-      : view === 'nocogs' ? sold.filter(r => !r.tiers)
+      : view === 'nocogs' ? sold.filter(r => !r.tiers && !r.setPrice)
+      : view === 'setprice' ? sold.filter(r => r.setPrice)
       : view === 'changes' ? sold.filter(isChanged)
       : sold.filter(r => r.tiers)
     const q = search.trim().toLowerCase()
@@ -220,11 +224,14 @@ export default function PriceListPanel({ canWrite }: { canWrite: boolean }) {
             amt(v.cogs), amt(v.tiers?.lowest), amt(v.tiers?.standard), amt(v.tiers?.highest), TIER_LABEL[r.tier], amt(v.currentPrice ?? r.currentPrice), ''])
         }
       }
-      const missing = sold.filter(r => !r.tiers).sort((a, b) => a.name.localeCompare(b.name))
+      const missing = sold.filter(r => !r.tiers && !r.setPrice).sort((a, b) => a.name.localeCompare(b.name))
         .map(r => [r.sku, r.name, branchShort(r.branch), SKU_HIERARCHY[r.department]?.label || r.department, amt(r.currentPrice), r.unitsSold])
+      const setPrices = sold.filter(r => r.setPrice).sort((a, b) => a.name.localeCompare(b.name))
+        .map(r => [r.sku, r.name, branchShort(r.branch), SKU_HIERARCHY[r.department]?.label || r.department, amt(r.cogs), amt(r.currentPrice), r.unitsSold])
       downloadXlsx(`Price-List-${stamp}`, [
         { name: 'Price List', headers: ['SKU', 'Product', 'Branch', 'Department', 'COGS', 'Lowest (COGS×3)', 'Standard (COGS×7)', 'Highest (COGS×9)', 'Chosen Tier', 'POS Price Now', 'Units Sold'], rows: lines },
         { name: 'Missing COGS', headers: ['SKU', 'Product', 'Branch', 'Department', 'POS Price Now', 'Units Sold'], rows: missing },
+        { name: 'Set Prices', headers: ['SKU', 'Product', 'Branch', 'Department', 'COGS', 'Set Price (POS)', 'Units Sold'], rows: setPrices },
       ])
     } else {
       const lines: (string | number | null)[][] = []
@@ -257,13 +264,14 @@ export default function PriceListPanel({ canWrite }: { canWrite: boolean }) {
     priced: 'products priced from COGS',
     changes: 'products whose POS price is not their chosen price',
     nocogs: 'sold products with no COGS — set a unit cost to price them',
+    setprice: 'merchandise and books — they keep their own set price, outside the tier rule',
     notsold: 'products we don’t sell (no selling price and no sales) — internal use',
   }
 
   return (
     <div>
       {/* Cards (quick filters) */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 mb-4">
         <StatCard label="Products priced" value={loading ? '…' : counts.priced.toLocaleString()} sub="Sold products with a COGS"
           accent={{ line: 'var(--teal)' }} active={view === 'priced'} activeSub="Showing these below"
           onClick={() => setView('priced')} loading={loading} />
@@ -273,6 +281,9 @@ export default function PriceListPanel({ canWrite }: { canWrite: boolean }) {
         <StatCard label="Missing COGS" value={counts.nocogs.toLocaleString()} sub="Sold, but no unit cost to price from"
           tone={counts.nocogs ? 'red' : 'zero'} active={view === 'nocogs'} activeSub="Showing these below"
           onClick={() => setView(v => (v === 'nocogs' ? 'priced' : 'nocogs'))} loading={loading} />
+        <StatCard label="Set price" value={counts.setprice.toLocaleString()} sub="Merchandise & books — own price, no tiers"
+          tone="zero" active={view === 'setprice'} activeSub="Showing these below"
+          onClick={() => setView(v => (v === 'setprice' ? 'priced' : 'setprice'))} loading={loading} />
         <StatCard label="Not sold" value={counts.notsold.toLocaleString()} sub="No selling price, no sales — skipped"
           tone="zero" active={view === 'notsold'} activeSub="Showing these below"
           onClick={() => setView(v => (v === 'notsold' ? 'priced' : 'notsold'))} loading={loading} />
@@ -366,7 +377,7 @@ export default function PriceListPanel({ canWrite }: { canWrite: boolean }) {
               {!loading && shown.map(r => {
                 const changed = isChanged(r)
                 const diff = r.tiers && r.currentPrice != null ? r.currentPrice - r.tiers[r.tier] : null
-                const edge = !r.tiers ? (r.sold ? '#dc2626' : 'transparent') : changed ? '#d97706' : '#059669'
+                const edge = r.setPrice ? 'var(--light-gray)' : !r.tiers ? (r.sold ? '#dc2626' : 'transparent') : changed ? '#d97706' : '#059669'
                 return (
                   <Fragment key={r.id}>
                     <tr className="border-b hover:bg-[#fafcf6]" style={{ borderColor: 'var(--hr-line)', boxShadow: `inset 3px 0 0 ${edge}` }}>
@@ -384,10 +395,11 @@ export default function PriceListPanel({ canWrite }: { canWrite: boolean }) {
                           <span className="tabular-nums">{r.sku}</span>
                           <span>· {branchShort(r.branch)}</span>
                           {r.isBundle && <span className="px-1.5 rounded-full text-[10px] font-semibold" style={{ background: '#eff6ff', color: '#1d4ed8' }}>Bundle{r.cogsSource === 'bundle' ? ' · COGS from parts' : ''}</span>}
+                          {r.setPrice && <span className="px-1.5 rounded-full text-[10px] font-semibold" style={{ background: '#f3f4f6', color: '#4b5563' }} title="Merchandise and books keep their own set price — no tiers">Set price</span>}
                           {r.copies > 0 && <span title="Branch consignment copies follow this price">· {r.copies} branch cop{r.copies === 1 ? 'y' : 'ies'}</span>}
                         </p>
                       </td>
-                      <td className="px-3 py-2 text-right tabular-nums whitespace-nowrap" style={{ color: 'var(--mid-gray)' }}>{!r.cogs ? <span style={{ color: '#b91c1c' }}>No COGS</span> : peso(r.cogs, 2)}</td>
+                      <td className="px-3 py-2 text-right tabular-nums whitespace-nowrap" style={{ color: 'var(--mid-gray)' }}>{!r.cogs ? (r.setPrice ? '—' : <span style={{ color: '#b91c1c' }}>No COGS</span>) : peso(r.cogs, 2)}</td>
                       {tierCell(r, 'lowest')}
                       {tierCell(r, 'standard')}
                       {tierCell(r, 'highest')}

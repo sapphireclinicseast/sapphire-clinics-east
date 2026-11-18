@@ -18,6 +18,16 @@ export const PRICE_TIERS = [
   { key: 'highest', label: 'Highest', multiple: 9, rule: 'COGS + 8× COGS' },
 ] as const
 
+/**
+ * Departments with their own set prices, outside the tier rule (Hannah 2026-11-18:
+ * "do not affect the merchandise with the rule because we have a set pricing for
+ * this already. they dont have the tier pricing"): MER merchandise and EDU books.
+ * They get no tiers, no "vs Standard" warning, and Apply / tier clicks skip them.
+ */
+export const SET_PRICE_DEPARTMENTS = ['MER', 'EDU']
+export const hasSetPrice = (department: string | null | undefined): boolean =>
+  SET_PRICE_DEPARTMENTS.includes((department || '').trim().toUpperCase())
+
 export type TierKey = (typeof PRICE_TIERS)[number]['key']
 export type Tiers = Record<TierKey, number>
 

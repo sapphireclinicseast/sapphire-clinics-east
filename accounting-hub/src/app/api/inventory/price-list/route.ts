@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { PRICE_TIERS, priceTiers, type TierKey, type Tiers } from '@/lib/price-tiers'
+import { PRICE_TIERS, priceTiers, hasSetPrice, type TierKey, type Tiers } from '@/lib/price-tiers'
 
 /**
  * Price list — three tiers per product we sell, from the CURRENT COGS
@@ -59,6 +59,8 @@ export interface PriceListRow {
   cogsSource: 'unitCost' | 'bundle'
   currentPrice: number | null
   tiers: Tiers | null
+  /** Merchandise / books with their own set price: no tiers, never re-priced here. */
+  setPrice: boolean
   /** The tier this product is priced at (chosen on the list; Standard by default). */
   tier: TierKey
   unitsSold: number
@@ -129,7 +131,8 @@ async function loadRows(): Promise<PriceListRow[]> {
       ? r2(it.bundleComponents.reduce((s, bc) => s + Number(bc.component.unitCost || 0) * bc.quantity, 0))
       : null
     const cogs = bundleCost && bundleCost > 0 ? bundleCost : (Number(it.unitCost) > 0 ? r2(Number(it.unitCost)) : null)
-    const tiers = priceTiers(cogs)
+    const setPrice = hasSetPrice(it.skuDepartment)
+    const tiers = setPrice ? null : priceTiers(cogs)
     const currentPrice = num(it.sellingPrice)
     const s = soldBy.get(it.id)
     const variants: VariantRow[] = it.variants.map(v => {
@@ -137,7 +140,7 @@ async function loadRows(): Promise<PriceListRow[]> {
       const vCogs = own ? r2(Number(v.unitCost)) : cogs
       return {
         id: v.id, label: v.variantLabel, sku: v.variantSku, ownCost: own, cogs: vCogs,
-        currentPrice: num(v.sellingPrice), tiers: own ? priceTiers(vCogs) : tiers,
+        currentPrice: num(v.sellingPrice), tiers: setPrice ? null : own ? priceTiers(vCogs) : tiers,
       }
     })
     const hasPrice = (currentPrice ?? 0) > 0 || variants.some(v => (v.currentPrice ?? 0) > 0)
@@ -145,7 +148,7 @@ async function loadRows(): Promise<PriceListRow[]> {
       id: it.id, sku: it.sku, name: it.name, branch: it.branch, department: it.skuDepartment,
       isBundle: it.isBundle, imageUrl: it.imageUrl,
       cogs, cogsSource: bundleCost && bundleCost > 0 ? 'bundle' : 'unitCost',
-      currentPrice, tiers, tier: asTier(it.priceTier) ?? 'standard',
+      currentPrice, tiers, setPrice, tier: asTier(it.priceTier) ?? 'standard',
       unitsSold: s?.units || 0,
       lastSold: s?.last ? s.last.toISOString() : null,
       // "Sold" = something we sell: priced for POS or with sales on record.
@@ -178,6 +181,10 @@ export async function POST(req: Request) {
   if (pick && !ids?.length) return NextResponse.json({ error: 'Pick the products to price' }, { status: 400 })
 
   const rows = await loadRows()
+  if (pick && rows.some(r => r.setPrice && ids!.includes(r.id))) {
+    return NextResponse.json({ error: 'Merchandise and books keep their set price — change it on the product instead' }, { status: 400 })
+  }
+  // Set-price departments have no tiers, so they never enter this list.
   const target = rows.filter(r => r.sold && r.tiers && (ids ? ids.includes(r.id) : true))
   const tierOf = (r: PriceListRow): TierKey => pick ?? r.tier
 

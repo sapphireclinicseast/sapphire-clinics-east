@@ -13,7 +13,7 @@ import { useEffect } from 'react'
 import { Package, Pencil, History, Layers, X } from 'lucide-react'
 import { HR_VARS } from '@/components/ui/hr-look'
 import { SKU_HIERARCHY } from '@/lib/sku-taxonomy'
-import { priceTiers } from '@/lib/price-tiers'
+import { priceTiers, hasSetPrice } from '@/lib/price-tiers'
 import { formatCurrency } from '@/lib/utils'
 
 type Acct = { accountNumber: string; accountTitle: string } | null | undefined
@@ -99,7 +99,8 @@ export default function ItemDetailsModal({ item, stock, branchLabel, canWrite, o
   const dept = SKU_HIERARCHY[item.skuDepartment]
   const cat = dept?.categories?.[item.skuCategory]
   const sub = cat?.subcategories?.[item.skuSubcategory]
-  const tiers = priceTiers(Number(item.unitCost))
+  // Merchandise and books keep their own set price: no tiers to show.
+  const tiers = hasSetPrice(item.skuDepartment) ? null : priceTiers(Number(item.unitCost))
   const onHand = stock ? stock.total : item.quantity
   const low = item.reorderLevel != null && onHand <= item.reorderLevel
   const dims = [n(item.dimensionLength), n(item.dimensionWidth), n(item.dimensionHeight)]

@@ -46,7 +46,7 @@ import { ScanUpload } from '@/components/ScanUpload'
 import BranchStockPanel from './BranchStockPanel'
 import SkuGuidePanel from './SkuGuidePanel'
 import PriceListPanel from './PriceListPanel'
-import { priceTiers } from '@/lib/price-tiers'
+import { priceTiers, hasSetPrice } from '@/lib/price-tiers'
 import PsychTestsPanel from './PsychTestsPanel'
 import ItemDetailsModal from './ItemDetailsModal'
 import { SKU_HIERARCHY } from '@/lib/sku-taxonomy'
@@ -3486,7 +3486,8 @@ setTimeout(()=>window.print(),500);
                         className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
                       {(() => {
                         // Price tiers from the cost typed above (rule in lib/price-tiers.ts).
-                        const t = priceTiers(parseFloat(fUnitCost))
+                        // Merchandise and books have set prices: no tier hint.
+                        const t = hasSetPrice(fSkuDept) ? null : priceTiers(parseFloat(fUnitCost))
                         if (!t) return null
                         const isStd = Number(fSellingPrice) === t.standard
                         return (
