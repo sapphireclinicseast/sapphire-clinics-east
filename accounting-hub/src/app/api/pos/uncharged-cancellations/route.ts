@@ -1,9 +1,11 @@
 // POS → Uncharged Cancellations, and the New Payment reminder
 // (lib/pos/uncharged-cancellations).
 //
-//   GET  ?branch=&patientId=&since=YYYY-MM-DD[&all=1]
+//   GET  ?branch=&patientId=&since=YYYY-MM-DD[&all=1][&fresh=1]
 //        the fee-bearing missed bookings nobody charged (all=1: with the
-//        settled, parked and waived ones too)
+//        settled, parked and waived ones too). Without patientId the schedule
+//        read is held for a few minutes (fresh=1 skips that); scheduleAsOf
+//        says when it was read.
 //   POST { action: 'charge-gl', patientId, scheduleId, walletId? }
 //        put the fee on the patient's guarantee letter (parked if none has room)
 //   POST { action: 'waive', patientId, scheduleId, reason }   admins/accountants
@@ -12,7 +14,7 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { loadFeeBearingAbsences } from '@/lib/pos/uncharged-cancellations'
+import { loadFeeBearingAbsencesWithAsOf } from '@/lib/pos/uncharged-cancellations'
 import { chargeAbsenceToGl, waiveAbsence, recordAbsenceFees } from '@/lib/pos/uncharged-cancellation-actions'
 import { PARKED_FEE_WAIVE_ROLES } from '@/lib/pos/retro-cancellation'
 
@@ -25,15 +27,17 @@ export async function GET(req: Request) {
   if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   const q = new URL(req.url).searchParams
   try {
-    const rows = await loadFeeBearingAbsences(prisma, {
+    const { rows, scheduleAsOf } = await loadFeeBearingAbsencesWithAsOf(prisma, {
       branch: q.get('branch') || undefined,
       patientId: q.get('patientId') || undefined,
       since: q.get('since') || undefined,
+      fresh: q.get('fresh') === '1',
     })
     const list = q.get('all') === '1' ? rows : rows.filter(r => r.state === 'UNCHARGED')
     const uncharged = rows.filter(r => r.state === 'UNCHARGED')
     return NextResponse.json({
       rows: list,
+      scheduleAsOf: scheduleAsOf.toISOString(),
       summary: {
         uncharged: uncharged.length,
         amount: uncharged.reduce((s, r) => s + r.amount, 0),

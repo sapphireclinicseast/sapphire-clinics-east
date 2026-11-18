@@ -49,16 +49,20 @@ export default function UnchargedCancellations({ branch, canSelectBranch, role }
   const [waiveError, setWaiveError] = useState<string | null>(null)
   const canWaive = PARKED_FEE_WAIVE_ROLES.includes(role)
 
-  const load = useCallback(async () => {
+  // The schedule read behind the list is held on the server for a few minutes
+  // (it is the slow part); Refresh asks for a fresh one.
+  const [scheduleAsOf, setScheduleAsOf] = useState<string | null>(null)
+  const load = useCallback(async (fresh = false) => {
     setRows(null); setError(null)
     try {
       const qs = new URLSearchParams()
       if (branchFilter) qs.set('branch', branchFilter)
       if (showSettled) qs.set('all', '1')
+      if (fresh) qs.set('fresh', '1')
       const r = await fetch(`/api/pos/uncharged-cancellations?${qs}`, { cache: 'no-store' })
       const d = await r.json().catch(() => ({}))
       if (!r.ok) { setError(d.error || `Could not load (${r.status})`); setRows([]); return }
-      setRows(d.rows || []); setSummary(d.summary || null)
+      setRows(d.rows || []); setSummary(d.summary || null); setScheduleAsOf(d.scheduleAsOf || null)
     } catch {
       setError('Could not reach the server.'); setRows([])
     }
@@ -153,7 +157,13 @@ export default function UnchargedCancellations({ branch, canSelectBranch, role }
             <input type="checkbox" checked={showSettled} onChange={e => setShowSettled(e.target.checked)} />
             Also show charged, parked and waived
           </label>
-          <button onClick={load} className={hrBtn.ghost} style={{ borderColor: 'var(--light-gray)' }}><RefreshCw size={12} /> Refresh</button>
+          <button onClick={() => load(true)} disabled={rows === null} className={hrBtn.ghost} style={{ borderColor: 'var(--light-gray)' }}
+            title="Read the clinic schedule again now"><RefreshCw size={12} /> Refresh</button>
+          {scheduleAsOf && rows !== null && (
+            <span className="text-[11px]" style={{ color: 'var(--mid-gray)' }}>
+              Schedule as of <span className="font-mono">{new Date(scheduleAsOf).toLocaleTimeString('en-PH', { timeZone: 'Asia/Manila', hour: 'numeric', minute: '2-digit' })}</span>
+            </span>
+          )}
         </div>
       </div>
 

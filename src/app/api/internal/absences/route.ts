@@ -25,8 +25,11 @@ function authorised(req: NextRequest): boolean {
   return req.headers.get('x-api-key') === key
 }
 
-/** Schedule.date is the session's local (Manila) midnight. */
-const manilaDay = (d: Date) => d.toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' })
+/** Schedule.date is the session's local (Manila) midnight. One shared
+ *  formatter: toLocaleDateString builds a new one per call, and this runs for
+ *  every row (tens of thousands on a full read), which was most of its time. */
+const MANILA_DAY = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Manila' })
+const manilaDay = (d: Date) => MANILA_DAY.format(d)
 const dayStart = (ymd: string) => new Date(`${ymd}T00:00:00+08:00`)
 const isYmd = (v: string | null): v is string => !!v && /^\d{4}-\d{2}-\d{2}$/.test(v)
 

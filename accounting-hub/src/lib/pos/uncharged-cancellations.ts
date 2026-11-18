@@ -114,8 +114,12 @@ export interface FlaggedAbsence {
   gl: { walletId: string; letter: string; balance: number; canCharge: boolean } | null
 }
 
-const longDate = (ymd: string) => new Date(`${ymd}T00:00:00+08:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'Asia/Manila' })
-const ymdManila = (d: Date) => d.toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' })
+// Shared formatters: toLocaleDateString builds a new one on every call, and
+// these run once per order and booking on the all-patients read.
+const LONG_DATE = new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'Asia/Manila' })
+const MANILA_DAY = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Manila' })
+const longDate = (ymd: string) => LONG_DATE.format(new Date(`${ymd}T00:00:00+08:00`))
+const ymdManila = (d: Date) => MANILA_DAY.format(d)
 const daysBetween = (a: string, b: string) => Math.round((new Date(`${b}T00:00:00Z`).getTime() - new Date(`${a}T00:00:00Z`).getTime()) / 86400000)
 const addDays = (ymd: string, n: number) => new Date(new Date(`${ymd}T00:00:00Z`).getTime() + n * 86400000).toISOString().slice(0, 10)
 const ordinal = (n: number) => `${n}${n % 10 === 1 && n % 100 !== 11 ? 'st' : n % 10 === 2 && n % 100 !== 12 ? 'nd' : n % 10 === 3 && n % 100 !== 13 ? 'rd' : 'th'}`
@@ -138,16 +142,53 @@ function feeNameFor(a: HubAbsence, dept: string): string {
   return dept === 'PT' ? `${base} - PT PEDIA` : base
 }
 
-async function fetchAbsences(fromYmd: string, patientId?: string): Promise<HubAbsence[]> {
+async function readHubAbsences(fromYmd: string, patientId?: string): Promise<HubAbsence[]> {
   const key = process.env.EXTERNAL_API_KEY ?? ''
   if (!key) throw new Error('The Operations Hub link is not configured on this server.')
   const qs = new URLSearchParams({ from: fromYmd })
   if (patientId) qs.set('patientId', patientId)
   const res = await fetch(`${HUB}/api/internal/absences?${qs}`, {
-    headers: { 'x-api-key': key }, cache: 'no-store', signal: AbortSignal.timeout(20_000),
+    headers: { 'x-api-key': key }, cache: 'no-store', signal: AbortSignal.timeout(30_000),
   })
   if (!res.ok) throw new Error(`The Operations Hub answered ${res.status}`)
   return ((await res.json()).absences ?? []) as HubAbsence[]
+}
+
+// The all-patients read is the slow part of the tab (~9s: every missed booking
+// since mid-2025, with each therapist's daily count), and the schedule behind it
+// changes slowly. So it is kept in memory: a read under 2 minutes old is used as
+// is; one up to 30 minutes old is shown at once while a fresh read runs behind it
+// (the next load gets that one); older than that, the tab waits for a fresh read.
+// Only the schedule is held — charges, parked and waived fees are always read
+// live from this database, so a fee charged in the tab drops off straight away.
+// One-patient reads (the New Payment reminder, Charge to letter) never use it:
+// they are quick and must see a cancellation made a minute ago.
+const ABSENCES_FRESH_MS = 2 * 60 * 1000
+const ABSENCES_STALE_MS = 30 * 60 * 1000
+const absencesCache = new Map<string, { at: number; data: HubAbsence[] }>()
+const absencesInFlight = new Map<string, Promise<HubAbsence[]>>()
+
+function refreshAbsences(fromYmd: string): Promise<HubAbsence[]> {
+  const running = absencesInFlight.get(fromYmd)
+  if (running) return running
+  const p = readHubAbsences(fromYmd)
+    .then(data => { absencesCache.set(fromYmd, { at: Date.now(), data }); return data })
+    .finally(() => absencesInFlight.delete(fromYmd))
+  absencesInFlight.set(fromYmd, p)
+  return p
+}
+
+async function fetchAbsences(fromYmd: string, patientId?: string, fresh = false): Promise<{ absences: HubAbsence[]; asOf: Date }> {
+  if (patientId) return { absences: await readHubAbsences(fromYmd, patientId), asOf: new Date() }
+  const hit = absencesCache.get(fromYmd)
+  const age = hit ? Date.now() - hit.at : Infinity
+  if (hit && !fresh && age < ABSENCES_FRESH_MS) return { absences: hit.data, asOf: new Date(hit.at) }
+  if (hit && !fresh && age < ABSENCES_STALE_MS) {
+    refreshAbsences(fromYmd).catch(() => { /* keep serving the last good read */ })
+    return { absences: hit.data, asOf: new Date(hit.at) }
+  }
+  const absences = await refreshAbsences(fromYmd)
+  return { absences, asOf: new Date(absencesCache.get(fromYmd)?.at ?? Date.now()) }
 }
 
 export interface UnchargedOptions {
@@ -156,6 +197,8 @@ export interface UnchargedOptions {
   patientId?: string
   /** Branch filter on the booking's branch (SANDBOX_EAST / SANDBOX_GREENHILLS). */
   branch?: string
+  /** Skip the held schedule read (the tab's Refresh button). */
+  fresh?: boolean
 }
 
 /**
@@ -164,11 +207,16 @@ export interface UnchargedOptions {
  * was settled and how.
  */
 export async function loadFeeBearingAbsences(db: Db, opts: UnchargedOptions = {}): Promise<FlaggedAbsence[]> {
+  return (await loadFeeBearingAbsencesWithAsOf(db, opts)).rows
+}
+
+/** As loadFeeBearingAbsences, plus when the schedule behind it was read. */
+export async function loadFeeBearingAbsencesWithAsOf(db: Db, opts: UnchargedOptions = {}): Promise<{ rows: FlaggedAbsence[]; scheduleAsOf: Date }> {
   const since = opts.since && /^\d{4}-\d{2}-\d{2}$/.test(opts.since) ? opts.since : FLAG_START
   // The allowance looks back 180 days from each booking, so read that much earlier.
   const lookFrom = addDays(since, -WINDOW_DAYS)
-  const absences = await fetchAbsences(lookFrom, opts.patientId)
-  if (!absences.length) return []
+  const { absences, asOf: scheduleAsOf } = await fetchAbsences(lookFrom, opts.patientId, opts.fresh)
+  if (!absences.length) return { rows: [], scheduleAsOf }
   const patientIds = [...new Set(absences.map(a => a.patientId))]
 
   const [orders, feeServices, records, wallets] = await Promise.all([
@@ -347,5 +395,8 @@ export async function loadFeeBearingAbsences(db: Db, opts: UnchargedOptions = {}
     }
   }
   const scoped = opts.branch ? out.filter(r => r.branch === opts.branch) : out
-  return scoped.sort((x, y) => x.patientName.localeCompare(y.patientName) || x.date.localeCompare(y.date))
+  return {
+    rows: scoped.sort((x, y) => x.patientName.localeCompare(y.patientName) || x.date.localeCompare(y.date)),
+    scheduleAsOf,
+  }
 }
