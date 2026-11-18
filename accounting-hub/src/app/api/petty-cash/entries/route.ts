@@ -16,7 +16,13 @@ const EDITABLE = [
   'accountTitle', 'referenceNumber', 'proofUrl', 'proofUrls', 'validity', 'finalized',
   'recurFrequency', 'recurDeadlineDay', 'distributeMonthly', 'amountVaries', 'distributeStart', 'distributeEnd',
   'hasEwt', 'ewtRate', 'departments',
+  'currency', 'foreignAmount', 'fxRate',
 ] as const
+
+// One-time expenses may be in another currency (Hannah 11/18). The same list
+// as Accounts Payable; grossAmount stays in PHP = foreignAmount × fxRate.
+const CURRENCIES = ['PHP', 'CNY', 'USD', 'EUR', 'JPY', 'KRW', 'SGD', 'HKD', 'GBP']
+const round2 = (n: number) => Math.round(n * 100) / 100
 
 // Departments this expense belongs to, for the contribution-margin analysis.
 // Empty array = "All" (allocated by the configured rent percentages).
@@ -240,6 +246,16 @@ export async function PUT(req: Request) {
         else if (f === 'recurDeadlineDay') data[f] = (body[f] === '' || body[f] == null) ? null : Number(body[f])
         else if (f === 'distributeMonthly' || f === 'amountVaries' || f === 'hasEwt') data[f] = !!body[f]
         else if (f === 'ewtRate') data[f] = (body[f] === '' || body[f] == null) ? null : Number(body[f])
+        else if (f === 'currency') {
+          const c = String(body.currency || 'PHP').trim().toUpperCase()
+          if (!CURRENCIES.includes(c)) return NextResponse.json({ error: `Currency must be one of: ${CURRENCIES.join(', ')}` }, { status: 400 })
+          data.currency = c
+        }
+        else if (f === 'foreignAmount' || f === 'fxRate') {
+          const v = body[f] === '' || body[f] == null ? null : Number(body[f])
+          if (v !== null && (!isFinite(v) || v < 0)) return NextResponse.json({ error: `${f} must be a positive number` }, { status: 400 })
+          data[f] = v
+        }
         else if (f === 'departments') {
           const raw: unknown = body.departments
           data.departments = Array.isArray(raw)
@@ -252,6 +268,17 @@ export async function PUT(req: Request) {
       }
     }
     // A near-miss of a supplier we already have is saved under that supplier (lib/supplier-snap).
+    // Foreign currency: the PHP gross is the foreign amount at the rate, worked
+    // out here so it can never disagree with them. Back to PHP clears both.
+    if ('currency' in data || 'foreignAmount' in data || 'fxRate' in data) {
+      const cur = 'currency' in data ? data.currency : (existing.currency || 'PHP')
+      if (cur === 'PHP') { data.foreignAmount = null; data.fxRate = null }
+      else {
+        const fa = 'foreignAmount' in data ? data.foreignAmount : (existing.foreignAmount == null ? null : Number(existing.foreignAmount))
+        const rate = 'fxRate' in data ? data.fxRate : (existing.fxRate == null ? null : Number(existing.fxRate))
+        if (fa != null && rate != null && rate > 0) data.grossAmount = round2(fa * rate)
+      }
+    }
     if (data.registeredName) data.registeredName = snapRegisteredName(data.registeredName, await loadSupplierNameIndex(prisma)).name
     if ('branchAllocations' in body) data.branchAllocations = body.branchAllocations ?? null
     // Branch shares always add up to the entry (lib/petty-cash-shares): sent shares

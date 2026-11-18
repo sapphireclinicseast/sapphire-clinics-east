@@ -146,6 +146,10 @@ interface Entry {
   registeredName: string | null
   registeredAddress: string | null
   grossAmount: string | number
+  /** One-time only: another currency. grossAmount stays PHP = foreignAmount × fxRate. */
+  currency?: string | null
+  foreignAmount?: string | number | null
+  fxRate?: string | number | null
   accountTitle: string | null
   proofUrl: string | null
   proofUrls: string[] | null
@@ -210,6 +214,18 @@ const descForHub = (e: Entry) => (e.description ? `${e.pcvNumber}; ${e.descripti
 const validitySfx = (e: Entry) => e.validity === 'Valid' ? '-VAL' : e.validity === 'Invalid' ? '-INV' : ''
 const refOf = (e: Entry) => e.reimbursement?.refNumber || `${e.pcvNumber}${validitySfx(e)}`
 const peso = (n: number) => n.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+
+// One-time expenses in another currency (Hannah 11/18) — the list Accounts
+// Payable offers. The rate on file is the same one A/P suggests.
+const CURRENCIES = ['PHP', 'USD', 'CNY', 'EUR', 'JPY', 'KRW', 'SGD', 'HKD', 'GBP']
+const round2 = (n: number) => Math.round(n * 100) / 100
+async function rateOnFile(currency: string, date: string | null): Promise<number | null> {
+  try {
+    const r = await fetch(`/api/reports/fx-rate?currency=${currency}${date ? `&asOf=${String(date).slice(0, 10)}` : ''}`)
+    const d = r.ok ? await r.json() : null
+    return Number(d?.phpPerUnit) > 0 ? Number(d.phpPerUnit) : null
+  } catch { return null }
+}
 const cardLabel = (c: Card) => `${c.bank} •••• ${c.cardNumber.slice(-4)} (${c.bankCode})`
 const fetchDataUrl = async (url: string): Promise<string | null> => {
   try {
@@ -287,7 +303,7 @@ const expenseGridCols = (tab: string): GridCol[] => {
 const EXP_COL_W: Record<string, number> = {
   refNumber: 236, requestor: 190, department: 108, date: 136, description: 260, descHub: 280, validity: 108, vatable: 140,
   siNumber: 132, tinNumber: 164, tinNumber2: 116, branchCode: 96, registeredName: 224, registeredAddress: 240,
-  grossAmount: 128, netOfVat: 116, vatAmount: 108, accountTitle: 256, hasEwt: 96, ewtRate: 88,
+  grossAmount: 236, netOfVat: 116, vatAmount: 108, accountTitle: 256, hasEwt: 96, ewtRate: 88,
   recurFrequency: 124, recurDeadlineDay: 112, amountVaries: 150, distributeMonthly: 140, monthlyAmount: 128,
   distributeStart: 136, distributeEnd: 136, payment: 230, proof: 184, audited: 100,
 }
@@ -766,6 +782,24 @@ function ExpensesInner() {
     else doSave()
   }
 
+  // Currency on a One-time row. Switching to a foreign currency keeps the peso
+  // amount already there and shows it in the new currency at the rate on file,
+  // so nothing in the totals moves until the real foreign amount is typed.
+  const changeCurrency = async (e: Entry, next: string) => {
+    if (next === 'PHP') { saveField(e.id, { currency: 'PHP', foreignAmount: null, fxRate: null }, false); return }
+    const keepRate = (e.currency || 'PHP') === next && num(e.fxRate ?? null) > 0 ? num(e.fxRate ?? null) : null
+    const rate = keepRate ?? await rateOnFile(next, e.date)
+    const gross = num(e.grossAmount)
+    const fa = (e.currency || 'PHP') === next ? (num(e.foreignAmount ?? null) || null) : (gross > 0 && rate ? round2(gross / rate) : null)
+    saveField(e.id, { currency: next, fxRate: rate, foreignAmount: fa }, false)
+  }
+  /** Save the foreign amount or the rate, with the PHP gross they make. */
+  const saveFx = (e: Entry, patch: { foreignAmount?: number | null; fxRate?: number | null }) => {
+    const fa = 'foreignAmount' in patch ? patch.foreignAmount : (e.foreignAmount == null || e.foreignAmount === '' ? null : num(e.foreignAmount))
+    const rate = 'fxRate' in patch ? patch.fxRate : (e.fxRate == null || e.fxRate === '' ? null : num(e.fxRate))
+    saveField(e.id, { ...patch, ...(fa != null && rate ? { grossAmount: round2(fa * rate) } : {}) }, false)
+  }
+
   const addRow = async () => {
     setAdding(true)
     try {
@@ -790,7 +824,7 @@ function ExpensesInner() {
       const r = await fetch('/api/petty-cash/entries', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ branch, recordType }) })
       if (!r.ok) { alert((await r.json()).error || 'Failed to add row'); return }
       const e = await r.json()
-      const copy = { requestor: src.requestor, department: src.department, date: src.date, description: src.description, vatable: src.vatable, vatPortion: src.vatPortion, siNumber: src.siNumber, tinNumber: src.tinNumber, registeredName: src.registeredName, registeredAddress: src.registeredAddress, grossAmount: src.grossAmount, accountTitle: src.accountTitle, validity: src.validity, hasEwt: src.hasEwt, ewtRate: src.ewtRate }
+      const copy = { requestor: src.requestor, department: src.department, date: src.date, description: src.description, vatable: src.vatable, vatPortion: src.vatPortion, siNumber: src.siNumber, tinNumber: src.tinNumber, registeredName: src.registeredName, registeredAddress: src.registeredAddress, grossAmount: src.grossAmount, currency: src.currency || 'PHP', foreignAmount: src.foreignAmount ?? null, fxRate: src.fxRate ?? null, accountTitle: src.accountTitle, validity: src.validity, hasEwt: src.hasEwt, ewtRate: src.ewtRate }
       const pr = await fetch('/api/petty-cash/entries', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: e.id, ...copy }) })
       const updated = pr.ok ? await pr.json() : { ...e, ...copy }
       setEntries(prev => [...prev, updated]); setNextPcvSeq(s => s + 1)
@@ -1798,11 +1832,56 @@ function ExpensesInner() {
                             onBlur={ev => saveField(e.id, { registeredAddress: ev.target.value.trim().toUpperCase() }, false)} />
                         </td>
                         <td className={tdCls} style={{ borderColor: 'var(--hr-line)' }}>
-                          <input type="number" step="0.01" className={`${cellCls} text-right`} disabled={lk}
-                            value={num(e.grossAmount) === 0 ? '' : String(e.grossAmount)} style={{ minWidth: 110 }}
-                            onWheel={ev => ev.currentTarget.blur()}
-                            onChange={ev => patchLocal(e.id, { grossAmount: ev.target.value })}
-                            onBlur={ev => saveField(e.id, { grossAmount: Number(ev.target.value) || 0 }, false)} />
+                          {(() => {
+                            const cur = e.currency || 'PHP'
+                            const foreign = cur !== 'PHP'
+                            const grossInput = (
+                              <input type="number" step="0.01" className={`${cellCls} text-right`} disabled={lk}
+                                value={num(e.grossAmount) === 0 ? '' : String(e.grossAmount)} style={{ minWidth: 100 }}
+                                onWheel={ev => ev.currentTarget.blur()}
+                                onChange={ev => patchLocal(e.id, { grossAmount: ev.target.value })}
+                                onBlur={ev => saveField(e.id, { grossAmount: Number(ev.target.value) || 0 }, false)} />
+                            )
+                            // Recurring rows stay in pesos; the currency option is One-time's.
+                            if (e.recordType !== 'ONE_TIME') return grossInput
+                            return (
+                              <>
+                                <div className="flex items-center">
+                                  <select value={cur} disabled={lk} aria-label="Currency" title="Currency the expense was paid in"
+                                    onChange={ev => void changeCurrency(e, ev.target.value)}
+                                    className="shrink-0 bg-transparent pl-1.5 py-1.5 text-[11px] font-semibold outline-none rounded enabled:hover:bg-[rgba(35,48,56,0.04)] enabled:cursor-pointer"
+                                    style={{ width: 58, color: foreign ? 'var(--deep-teal)' : 'var(--mid-gray)' }}>
+                                    {CURRENCIES.map(c => <option key={c} value={c}>{c}</option>)}
+                                  </select>
+                                  {!foreign ? grossInput : (
+                                    <input type="number" step="0.01" className={`${cellCls} text-right`} disabled={lk}
+                                      value={e.foreignAmount == null || num(e.foreignAmount) === 0 ? '' : String(e.foreignAmount)} style={{ minWidth: 100 }}
+                                      placeholder={`Amount in ${cur}`} aria-label={`Amount in ${cur}`}
+                                      onWheel={ev => ev.currentTarget.blur()}
+                                      onChange={ev => patchLocal(e.id, { foreignAmount: ev.target.value })}
+                                      onBlur={ev => saveFx(e, { foreignAmount: ev.target.value === '' ? null : Math.abs(Number(ev.target.value)) || 0 })} />
+                                  )}
+                                </div>
+                                {foreign && (
+                                  <div className="flex flex-nowrap items-center gap-1 px-2 pb-1.5 text-[10.5px] whitespace-nowrap" style={{ color: 'var(--mid-gray)' }}
+                                    title={`Rate: PHP per 1 ${cur}`}>
+                                    <span className="shrink-0">@</span>
+                                    <input type="number" step="0.0001" disabled={lk} aria-label={`PHP per 1 ${cur}`}
+                                      value={e.fxRate == null || num(e.fxRate) === 0 ? '' : String(e.fxRate)} placeholder="rate"
+                                      onWheel={ev => ev.currentTarget.blur()}
+                                      onChange={ev => patchLocal(e.id, { fxRate: ev.target.value })}
+                                      onBlur={ev => saveFx(e, { fxRate: ev.target.value === '' ? null : Math.abs(Number(ev.target.value)) || null })}
+                                      className="shrink-0 w-[58px] bg-white border rounded px-1 py-0.5 text-right text-[10.5px] outline-none focus:border-[var(--teal)]"
+                                      style={{ borderColor: 'var(--light-gray)' }} />
+                                    <span className="shrink-0">₱/{cur}</span>
+                                    <span className="shrink-0 ml-auto font-semibold" style={{ color: 'var(--charcoal)' }}>
+                                      {num(e.fxRate ?? null) > 0 && e.foreignAmount != null && e.foreignAmount !== '' ? `= ₱${peso(num(e.grossAmount))}` : 'no rate yet'}
+                                    </span>
+                                  </div>
+                                )}
+                              </>
+                            )
+                          })()}
                         </td>
                         <td className={tdCls} style={{ borderColor: 'var(--hr-line)', background: lk ? 'transparent' : '#fafafa' }}>
                           <span className="px-2 py-1.5 block text-right" style={{ color: 'var(--mid-gray)' }}>{peso(netOfVat(e))}</span>

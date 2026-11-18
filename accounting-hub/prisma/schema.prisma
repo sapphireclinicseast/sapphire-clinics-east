@@ -3276,6 +3276,11 @@ model PettyCashEntry {
   registeredName      String?
   registeredAddress   String?
   grossAmount         Decimal              @default(0)
+  // One-time expenses paid in another currency (Hannah 11/18). grossAmount stays
+  // the PHP figure everything downstream uses; it is foreignAmount × fxRate.
+  currency            String               @default("PHP")
+  foreignAmount       Decimal?
+  fxRate              Decimal?
   accountTitle        String?
   referenceNumber     String?
   proofUrl            String?

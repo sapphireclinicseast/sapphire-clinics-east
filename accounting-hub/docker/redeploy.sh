@@ -1145,6 +1145,10 @@ CREATE INDEX IF NOT EXISTS "HmoDirectory_moaValidUntil_idx" ON "HmoDirectory"("m
 ALTER TABLE "APItem" ADD COLUMN IF NOT EXISTS "currency" TEXT NOT NULL DEFAULT 'PHP';
 ALTER TABLE "APItem" ADD COLUMN IF NOT EXISTS "foreignAmount" DECIMAL(65,30);
 ALTER TABLE "APItem" ADD COLUMN IF NOT EXISTS "fxRate" DECIMAL(65,30);
+-- One-time expenses in another currency (11/18): grossAmount stays PHP.
+ALTER TABLE "PettyCashEntry" ADD COLUMN IF NOT EXISTS "currency" TEXT NOT NULL DEFAULT 'PHP';
+ALTER TABLE "PettyCashEntry" ADD COLUMN IF NOT EXISTS "foreignAmount" DECIMAL(65,30);
+ALTER TABLE "PettyCashEntry" ADD COLUMN IF NOT EXISTS "fxRate" DECIMAL(65,30);
 -- Taxes → Expanded Withholding: overdeclared EWT and the month it is offset from.
 CREATE TABLE IF NOT EXISTS "EwtAdjustment" (
   "id"             TEXT NOT NULL,
