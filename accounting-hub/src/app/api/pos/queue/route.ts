@@ -65,6 +65,10 @@ export async function GET(req: Request) {
       // Supervised session from the Clinic Schedule: the named intern ran it
       // under the listed clinician's supervision.
       intern: typeof item.intern === 'string' && item.intern ? item.intern : null,
+      // How the Decking board says this patient is funded: CASH, HMO or GL.
+      // Null when the board does not say, and null is shown as nothing at the
+      // till — never as Cash. Guessing here decides which wallet is charged.
+      paymentType: typeof item.paymentType === 'string' && item.paymentType ? item.paymentType : null,
       converted: convertedIds.has(item.id as string),
     }))
 

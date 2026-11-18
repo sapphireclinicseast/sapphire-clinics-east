@@ -1,7 +1,35 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import type { ScheduleStatus } from '@prisma/client'
 
 const API_KEY = process.env.EXTERNAL_API_KEY || ''
+
+/**
+ * One row of the cashier queue.
+ *
+ * Stated explicitly because three different sources fill it — decked
+ * sessions, class-portal tuition and paid online bookings — and only the
+ * first has a real ScheduleStatus or StaffDepartment. Inferring the shape
+ * from the first one made the other two unassignable the moment the query
+ * was properly typed; widening them to string is the truth, since this all
+ * leaves as JSON anyway.
+ */
+interface QueueOut {
+  id: string
+  startTime: string
+  endTime: string
+  sessionType: string
+  withMentor: boolean
+  intern: string | null
+  status: string
+  department: string
+  branch: string
+  clinician: string
+  patientId: string | null
+  patientName: string
+  /** "CASH" | "HMO" | "GL" from the Decking board, or null when it does not say. */
+  paymentType: string | null
+}
 
 // Authenticated — returns full patient names for POS / Accounting Hub
 export async function GET(req: NextRequest) {
@@ -13,7 +41,19 @@ export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url)
   const branch = searchParams.get('branch')?.toUpperCase()   // SBEA | SBGH
   const date   = searchParams.get('date')                    // YYYY-MM-DD
-  const statusFilter = searchParams.get('status')?.toUpperCase()
+  // Narrowed to the enum rather than left as a string.
+  //
+  // As a plain string this failed to satisfy ScheduleWhereInput, which made
+  // the whole findMany below lose its generic inference: `include` stopped
+  // being understood, every `s.patient` and `s.staff` typed as "does not
+  // exist", and the file carried fifteen errors that all said the same thing.
+  // The query was right the whole time — it was unchecked, which is worse
+  // than wrong because nothing new in here was being checked either.
+  const statusRaw = searchParams.get('status')?.toUpperCase()
+  const STATUSES = ['PENDING', 'CONFIRMED', 'CANCELLED', 'RESCHEDULED', 'COMPLETED', 'NO_SHOW'] as const
+  const statusFilter = (STATUSES as readonly string[]).includes(statusRaw ?? '')
+    ? (statusRaw as ScheduleStatus)
+    : undefined
 
   if (!branch) return NextResponse.json({ error: 'branch required' }, { status: 400 })
 
@@ -60,7 +100,49 @@ export async function GET(req: NextRequest) {
     orderBy: { startTime: 'asc' },
   })
 
-  const items = schedules
+  // ── How each patient is funded, from the Decking board ──────────────────
+  //
+  // The board is where front desk set it when they booked the slot, so it is
+  // the clinic's own record rather than an inference from a wallet balance.
+  // Travels to the POS cashier queue so the till can show Cash / HMO / GL
+  // against the patient before a single service is rung.
+  //
+  // One query for the whole day rather than one per row.
+  const schedPatientIds = [...new Set(
+    schedules.map(s => s.patient?.id).filter((x): x is string => !!x),
+  )]
+  const deckSlots = schedPatientIds.length > 0
+    ? await prisma.deckingSlot.findMany({
+        where: { patientId: { in: schedPatientIds }, disabled: false },
+        select: { patientId: true, staffId: true, dayOfWeek: true, startTime: true, paymentType: true },
+      })
+    : []
+
+  /**
+   * The payment type for one session, most specific match first.
+   *
+   * A patient can be funded differently per clinician — GL for occupational
+   * therapy, cash for speech — so the clinician's own slot wins over a general
+   * one. Falling straight to "any slot of theirs" would show GL at a cash
+   * clinician's till.
+   */
+  const coverageFor = (staffId: string, patientId: string | null, dayOfWeek: string, startTime: string): string | null => {
+    if (!patientId) return null
+    const mine = deckSlots.filter(d => d.patientId === patientId)
+    if (mine.length === 0) return null
+    const exact = mine.find(d => d.staffId === staffId && d.dayOfWeek === dayOfWeek && d.startTime === startTime)
+    if (exact) return exact.paymentType ?? null
+    const sameClinician = mine.find(d => d.staffId === staffId)
+    if (sameClinician) return sameClinician.paymentType ?? null
+    // Only one payment type across the rest of their board → safe to say it.
+    // More than one and the till is told nothing rather than a coin toss.
+    const kinds = [...new Set(mine.map(d => d.paymentType).filter(Boolean))]
+    return kinds.length === 1 ? (kinds[0] as string) : null
+  }
+
+  const DOW = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT']
+
+  const items: QueueOut[] = schedules
     .map(s => {
       const pb = patientBranchCodes(s.patient)
       // One branch on file → that branch. Registered at several → the clinician's branch if
@@ -98,6 +180,10 @@ export async function GET(req: NextRequest) {
         patientName: s.patient
           ? `${s.patient.firstName} ${s.patient.lastName}`
           : '—',
+        // "CASH" | "HMO" | "GL" from the Decking board, or null when the board
+        // does not say. Null is shown as nothing at the till, not as Cash —
+        // a guess here decides which wallet gets charged.
+        paymentType: coverageFor(s.staffId, s.patient?.id ?? null, DOW[new Date(s.date).getUTCDay()], s.startTime),
       }
     })
     .filter(i => i.branch === branch)
@@ -115,7 +201,7 @@ export async function GET(req: NextRequest) {
   // PENDING tuition row regardless of the date filter so the cashier can
   // settle it whenever the parent shows up.
   const classBranch = branch === 'SBEA' ? 'EAST' : branch === 'SBGH' ? 'GREENHILLS' : null
-  let tuitionItems: typeof items = []
+  let tuitionItems: QueueOut[] = []
   if (classBranch) {
     try {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -169,6 +255,10 @@ export async function GET(req: NextRequest) {
           patientName: p.studentName,
           withMentor:  false,   // class-portal tuition is never a mentorship session
           intern:      null,
+          // Tuition is not a decked session, so there is no payment type on
+          // the board to read. Null, not 'CASH': the till shows nothing
+          // rather than asserting how a class is being paid for.
+          paymentType: null as string | null,
         }
       })
     } catch (e) {
@@ -196,7 +286,7 @@ export async function GET(req: NextRequest) {
   //     future appointment (e.g. May 25) appeared in the cashier on every
   //     day until converted. Patients arrive on their appointment date, so
   //     the downpayment should only surface in the queue for that day.
-  let bookingItems: typeof items = []
+  let bookingItems: QueueOut[] = []
   try {
     // Exclude teletherapy bookings (isTeletherapy=true or null date) — those
     // don't need queue conversion because the accounting-hub PayMongo webhook
@@ -236,6 +326,10 @@ export async function GET(req: NextRequest) {
         patientName: b.patient ? `${b.patient.firstName} ${b.patient.lastName}` : '—',
         withMentor:  false,   // patient bookings carry no mentorship flag
         intern:      null,
+        // A booking paid online. Its funding is whatever the board says for
+        // this patient and clinician, exactly as for a decked session.
+        paymentType: coverageFor(b.staffId ?? '', b.patient?.id ?? null,
+          b.date ? DOW[new Date(b.date).getUTCDay()] : '', b.startTime ?? ''),
       }
     })
   } catch (e) {
