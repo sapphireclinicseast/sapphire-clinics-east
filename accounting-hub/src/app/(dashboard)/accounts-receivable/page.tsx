@@ -39,6 +39,8 @@ import { HMO_CHANGE_ROLES, serviceHmoMismatch } from '@/lib/hmo-change'
 import { CANCEL_SESSION_ROLES, AR_CANCEL_PREFIX } from '@/lib/hmo-cancel-shared'
 import ExpandablePanel from './ExpandablePanel'
 import PaymentsCard from './PaymentsCard'
+import GlLinkModal from './GlLinkModal'
+import { GL_LINK_ROLES } from '@/lib/gl-link'
 import { useResizableColumns, ResizableColgroup, ColResizeHandle } from '@/components/useResizableColumns'
 import DetailedGl, { type GlCaseRow, type GlCaseWallet } from './DetailedGl'
 import type { GlStageEvent } from '@/lib/gl-stage-times'
@@ -580,6 +582,8 @@ export default function AccountsReceivablePage() {
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
   const [walletFilter, setWalletFilter] = useState(initialWallet)
+  // AR → GL → Consumption: the letter whose "Link sessions" dialog is open.
+  const [linkWalletId, setLinkWalletId] = useState('')
   const [sortField, setSortField] = useState('transactionDate')
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
 
@@ -2914,6 +2918,12 @@ export default function AccountsReceivablePage() {
                   <td className="px-3 py-2">
                     <p className="text-xs font-semibold" style={{ color: isSelected ? 'var(--teal)' : 'var(--charcoal)' }}>{w.patientName}</p>
                     {w.account && <p className="text-[10px]" style={{ color: 'var(--teal)' }}>{w.account.accountNumber} {w.account.accountTitle}</p>}
+                    {tab === 'GL' && GL_LINK_ROLES.includes(role) && (
+                      <button type="button" className="text-[10px] font-semibold hover:underline" style={{ color: 'var(--teal)' }}
+                        onClick={e => { e.stopPropagation(); setLinkWalletId(w.id) }}>
+                        Link sessions
+                      </button>
+                    )}
                   </td>
                   <td className="px-3 py-2 text-xs" style={{ color: w.branch ? 'var(--charcoal)' : 'var(--light-gray)' }}>
                     {w.branch ? branchLabel(w.branch) : '—'}
@@ -4209,6 +4219,15 @@ export default function AccountsReceivablePage() {
           </div>
         )
       })()}
+
+      {linkWalletId && (
+        <GlLinkModal
+          walletId={linkWalletId}
+          canEdit={GL_LINK_ROLES.includes(role)}
+          onClose={() => setLinkWalletId('')}
+          onChanged={fetchData}
+        />
+      )}
 
       {/* Invoice Settings Modal */}
       {collectionSettings && (
