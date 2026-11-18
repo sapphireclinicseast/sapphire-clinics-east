@@ -2315,6 +2315,33 @@ function TherapistRow({ staff, activeBranch, sectionMode, config, slots, default
                 const clash = datedSlots.some(sl =>
                   String(sl.date).slice(0, 10) === datedForm.date
                   && pieces.some(x => x.startTime === sl.startTime))
+
+                // The WEEKLY grid, at the weekday this date falls on.
+                //
+                // The check above only looked at other one-offs, which is the
+                // rarer collision: most of a consultant's hours live in the
+                // standing week, so a make-up put on their usual hour clashes
+                // with that instead and nothing said so.
+                //
+                // Sauz, 20 Nov 2026: a make-up for Ramirez at 11:00 Friday,
+                // on a Friday he already had at 11:00 every week. It added no
+                // session — it just put him on the board twice, and front desk
+                // had to work out which was real on the day.
+                //
+                // Weekday derived from the date exactly as the save does, so
+                // the warning and the row that gets written agree.
+                const dow = datedForm.date
+                  ? DAYS[new Date(`${datedForm.date}T00:00:00Z`).getUTCDay()]
+                  : ''
+                const weeklyClashes = slots.filter(sl =>
+                  !sl.date && !sl.disabled && sl.dayOfWeek === dow
+                  && pieces.some(x => x.startTime === sl.startTime))
+                // The same patient twice over is the stronger warning: the
+                // other one is a double-booked hour, this one is a session
+                // that does not exist.
+                const samePatientClash = datedForPatient
+                  ? weeklyClashes.filter(sl => sl.patient?.id === datedForPatient.id)
+                  : []
                 return (
                   <div className="col-span-2 flex flex-col gap-1.5" aria-live="polite">
                     <div className="rounded-lg px-3 py-2 text-xs tabular-nums" style={{ background: SUBTLE_BG, border: '1px solid var(--light-gray)', color: 'var(--charcoal)' }}>
@@ -2340,6 +2367,30 @@ function TherapistRow({ staff, activeBranch, sectionMode, config, slots, default
                     {clash && (
                       <p className="flex items-center gap-1.5 text-xs rounded-lg px-3 py-1.5" style={{ background: '#FFFBEB', color: '#92400E', border: '1px solid #FDE68A' }}>
                         <AlertTriangle size={12} aria-hidden /> {staff.firstName} already has a one-off at this date and hour.
+                      </p>
+                    )}
+                    {weeklyClashes.length > 0 && (
+                      <p className="flex items-start gap-1.5 text-xs rounded-lg px-3 py-1.5"
+                        style={samePatientClash.length > 0
+                          ? { background: '#FEF2F2', color: '#B91C1C', border: '1px solid #FCA5A5' }
+                          : { background: '#FFFBEB', color: '#92400E', border: '1px solid #FDE68A' }}>
+                        <AlertTriangle size={12} className="flex-shrink-0 mt-0.5" aria-hidden />
+                        <span>
+                          {samePatientClash.length > 0 ? (
+                            <>
+                              <strong>{personLabel(datedForPatient!)} is already booked at this hour every {DAY_LABEL[dow] ?? dow}.</strong>{' '}
+                              This would put them on the board twice rather than add a session — check the date and the time.
+                            </>
+                          ) : (
+                            <>
+                              {staff.firstName} already has {DAY_LABEL[dow] ?? dow}{' '}
+                              {weeklyClashes.map(sl => formatTime(sl.startTime)).join(', ')} in the weekly grid
+                              {weeklyClashes.some(sl => sl.patient) && (
+                                <> &mdash; {weeklyClashes.filter(sl => sl.patient).map(sl => personLabel(sl.patient!)).join(', ')}</>
+                              )}.
+                            </>
+                          )}
+                        </span>
                       </p>
                     )}
                   </div>
