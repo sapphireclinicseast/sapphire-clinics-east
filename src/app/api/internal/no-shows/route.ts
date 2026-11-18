@@ -47,6 +47,36 @@ export async function POST(req: NextRequest) {
   const paymentType = isCoverage(body.paymentType) ? body.paymentType : null
   const remarks = String(body.remarks ?? '').trim() || null
 
+  // ── The session itself is marked NO_SHOW ────────────────────────────────
+  //
+  // This is the half that matters. The outcome prompt in Clinic Schedule is
+  // skippable and gets skipped: roughly NINE IN TEN absences in 2026 were
+  // never logged at all, which is how that many GL sessions went uncharged.
+  // The uncharged-cancellation flag therefore reads the SCHEDULE, not the
+  // log — so a no-show that only ever became a log would be invisible to the
+  // very thing built to catch it.
+  //
+  // Marking the schedule also makes the two hubs agree about what happened:
+  // the cashier saw the patient not arrive, and the clinic's own board should
+  // not still be claiming a confirmed session.
+  //
+  // Failures here are reported rather than swallowed, for the same reason as
+  // everywhere else on this path: the fee has already been taken.
+  let statusSet = false
+  if (scheduleId) {
+    try {
+      const updated = await prisma.schedule.updateMany({
+        // Only from a status that means "we still expect them". A session
+        // already cancelled or completed is not re-written by a till press.
+        where: { id: scheduleId, status: { in: ['PENDING', 'CONFIRMED'] } },
+        data: { status: 'NO_SHOW' },
+      })
+      statusSet = updated.count > 0
+    } catch (err) {
+      console.error('[internal/no-shows] could not mark the schedule', scheduleId, err)
+    }
+  }
+
   // A patient can be rung up, voided and rung again. One log per session, so a
   // correction at the till does not stack two no-shows on a patient's record —
   // the same rule the Clinic Schedule path already follows.
@@ -55,7 +85,7 @@ export async function POST(req: NextRequest) {
       where: { scheduleId, deletedAt: null },
       select: { id: true },
     })
-    if (existing) return NextResponse.json({ ok: true, log: existing, deduped: true })
+    if (existing) return NextResponse.json({ ok: true, log: existing, deduped: true, statusSet })
   }
 
   // The patient has to exist here, or the log would hang off nothing. Said
@@ -70,6 +100,9 @@ export async function POST(req: NextRequest) {
     data: { patientId, branch, scheduleId, paymentType, remarks },
     select: { id: true, createdAt: true },
   })
-  console.log(`[internal/no-shows] logged ${log.id} for patient ${patientId} (${paymentType ?? 'funding not stated'})`)
-  return NextResponse.json({ ok: true, log })
+  console.log(
+    `[internal/no-shows] logged ${log.id} for patient ${patientId} ` +
+    `(${paymentType ?? 'funding not stated'}, schedule ${statusSet ? 'marked NO_SHOW' : 'not marked'})`,
+  )
+  return NextResponse.json({ ok: true, log, statusSet })
 }

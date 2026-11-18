@@ -27,7 +27,9 @@ export interface OutcomeTarget {
  * policy keys off notice given — a same-day "can we move it?" costs the slot
  * either way. But a reschedule is NOT a cancellation and must not eat the
  * patient's allowance or push them toward slot removal, so the log records which
- * one it was (`sourceStatus`) and the counts leave reschedules out.
+ * one it was (`sourceStatus`). Both COUNT against the patient — Hannah,
+ * 2026-11-18: "there are no reschedules. reschedules should be charged as
+ * cancellations." A moved session is a session the patient called off.
  */
 export default function SessionOutcomePrompt({ target, onClose }: {
   target: OutcomeTarget
@@ -128,8 +130,9 @@ export default function SessionOutcomePrompt({ target, onClose }: {
                 initiatedBy,
                 paymentType: coverage,
                 remarks: remarks || null, scheduleId: target.scheduleId,
-                // What this actually was. Reschedules are logged but never counted,
-                // and without this they are indistinguishable from cancellations.
+                // What this actually was. Both count against the patient now,
+                // but the board, the fee flag and the history still need to
+                // know which of the two happened.
                 sourceStatus: target.status,
                 countsToward: waive ? false : true,
                 excludeReason: waive ? waiveReason.trim() : null }
@@ -157,7 +160,7 @@ export default function SessionOutcomePrompt({ target, onClose }: {
           <p className="text-xs mt-0.5" style={{ color: 'var(--mid-gray)' }}>
             {target.patientName} — the status is already saved. This adds it to Patient Relationship
             {target.status === 'RESCHEDULED'
-              ? ' as a reschedule. Reschedules are kept for history but are not counted against the patient.'
+              ? ' as a reschedule, which counts against the patient the same as a cancellation.'
               : ' so the fee policy can be applied.'}
           </p>
         </div>

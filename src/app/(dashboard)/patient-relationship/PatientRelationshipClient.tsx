@@ -1897,7 +1897,8 @@ function CancellationTab({ branch }: { branch: string }) {
       <Callout tone="warn" icon={<Info size={14} />}>
         <ul className="grid gap-x-6 gap-y-1.5 md:grid-cols-2">
           <li><strong>Free Allowance:</strong> Each patient gets <strong>2 free cancellations</strong> in any <strong>rolling 6-month period</strong> &mdash; counted over the last 180 days, so older logs age out. After that, a cancellation fee applies.</li>
-          <li><strong>Not counted:</strong> reschedules, and any cancellation front desk waived when logging it (the reason is shown on the log).</li>
+          <li><strong>Reschedules count</strong> the same as cancellations &mdash; a moved session is a session the patient called off.</li>
+          <li><strong>Not counted:</strong> any cancellation front desk waived when logging it, which includes every therapist-initiated one (the reason is shown on the log).</li>
           <li><strong>Fees:</strong> owed from the <strong>3rd cancellation onward</strong> in the window; paid/unpaid is read from POS orders in the Accounting Hub.</li>
           <li><strong>Slot Removal:</strong> Upon reaching <strong>12 total cancellations</strong>, the patient is subject to slot removal.</li>
           <li><strong>Guarantee letters:</strong> a GL session has <strong>no free allowance</strong> &mdash; a letter buys named sessions, so a cancellation the patient called off is chargeable from the first and is flagged for the POS to collect against the letter.</li>
@@ -2086,7 +2087,7 @@ function CancellationTab({ branch }: { branch: string }) {
                                           regardless of the window — otherwise the list looks
                                           like it disagrees with the number above it. */}
                                       {!log.deletedAt && log.sourceStatus === 'RESCHEDULED' && (
-                                        <Badge bg="#EFF6FF" fg="#1D4ED8">reschedule &middot; not counted</Badge>
+                                        <Badge bg="#EFF6FF" fg="#1D4ED8">reschedule</Badge>
                                       )}
                                       {/* Who called it off. Only shown for therapist-initiated:
                                           patient-initiated is the ordinary case and badging every
