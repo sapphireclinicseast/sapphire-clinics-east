@@ -2739,11 +2739,25 @@ export default function PatientRelationshipClient({
   const [activeTab, setActiveTab] = useState<Tab>(initialTab)
   const [filterBranch, setFilterBranch] = useState('')
 
-  // Auto-set branch for branch-specific roles
-  const isSBEA = role.startsWith('SBEA')
-  const isSBGH = role.startsWith('SBGH')
-  const effectiveBranch = isSBEA ? 'SANDBOX_EAST' : isSBGH ? 'SANDBOX_GREENHILLS' : filterBranch
-  const isAdmin = !isSBEA && !isSBGH
+  // Which branch this desk belongs to, by exact role.
+  //
+  // This used to test role.startsWith('SBEA') — and the Role enum is
+  // AHEA_FRONT_DESK / AHGH_FRONT_DESK, so it matched nothing and every
+  // account was treated as unscoped here. The lock that was actually working
+  // lives in the API, which is where it belongs; this only decides what the
+  // picker offers, and it was offering the wrong thing.
+  const deskBranch = role === 'AHEA_FRONT_DESK' ? 'SANDBOX_EAST'
+    : role === 'AHGH_FRONT_DESK' ? 'SANDBOX_GREENHILLS'
+    : null
+
+  // The waitlist spans both clinics; the records tabs do not. An enquiry is
+  // not yet anybody's patient — whoever has time to ring them should be able
+  // to — while a no-show or cancellation is one clinic's history with one
+  // family. The API enforces exactly this; the picker just stops disagreeing
+  // with it.
+  const crossBranchTab = activeTab === 'waitlist'
+  const effectiveBranch = deskBranch && !crossBranchTab ? deskBranch : filterBranch
+  const isAdmin = !deskBranch || crossBranchTab
 
   const TAB_HINT: Record<Tab, string> = {
     waitlist: 'Intake form submissions waiting to be converted into patients.',
