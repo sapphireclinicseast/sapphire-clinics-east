@@ -249,6 +249,18 @@ const HEAD_BG = '#E8EDF2'
 const OFF_BG = '#DEE4EA'
 const PAY_BG = '#E4EEF9'
 const REMARK_BG = '#FBF3E2'
+// The free-text line is TEXT, and must be.
+//
+// Front desk write things like "NOV 21" in here. On a cell Sheets formats
+// automatically, that is parsed as a DATE and stored as its serial — the cell
+// then reads 46347, which is Sat 21 Nov 2026 and no use to anybody reading the
+// board. "NOV 21 - ONLINE" survived only because the trailing text stopped it
+// looking like a date, which is why the damage looked random.
+//
+// Forcing the number format to TEXT makes Sheets keep whatever is typed,
+// exactly as typed. It applies to the hint cell too: the format belongs to the
+// cell, and an empty one is the cell somebody is about to type into.
+const REMARK_FMT = { backgroundColor: rgb(REMARK_BG), numberFormat: { type: 'TEXT' } }
 const PAIR_BG = '#F4F1FB'   // the second child of a paired hour
 /** A closed hour's own grey. Matches the rule that greys N/A live on the sheet. */
 export const CLOSED_BG = '#E8EAED'
@@ -636,8 +648,8 @@ export function buildGrid(
 
           if (line === 'remark') {
             put(c, remark
-              ? cell(remark, { backgroundColor: rgb(REMARK_BG), textFormat: { fontSize: 7, italic: true, foregroundColor: rgb('#6B7280') } })
-              : { ...cell(FREE_TEXT_HINT, { backgroundColor: rgb(REMARK_BG), textFormat: { fontSize: 7, italic: true, foregroundColor: rgb('#B3AFA4') } }), note: FREE_TEXT_NOTE })
+              ? cell(remark, { ...REMARK_FMT, textFormat: { fontSize: 7, italic: true, foregroundColor: rgb('#6B7280') } })
+              : { ...cell(FREE_TEXT_HINT, { ...REMARK_FMT, textFormat: { fontSize: 7, italic: true, foregroundColor: rgb('#B3AFA4') } }), note: FREE_TEXT_NOTE })
           } else if (within % 2 === 1) {
             // Coloured by the CATEGORY, so "HMO – INTELLICARE" is amber like
             // any other HMO rather than falling back to the cash green.
@@ -764,8 +776,8 @@ export function buildGrid(
 
           if (line === 'remark') {
             put(1, remark
-              ? cell(remark, { backgroundColor: rgb(REMARK_BG), textFormat: { fontSize: 7, italic: true, foregroundColor: rgb('#6B7280') } })
-              : { ...cell(FREE_TEXT_HINT, { backgroundColor: rgb(REMARK_BG), textFormat: { fontSize: 7, italic: true, foregroundColor: rgb('#B3AFA4') } }), note: FREE_TEXT_NOTE })
+              ? cell(remark, { ...REMARK_FMT, textFormat: { fontSize: 7, italic: true, foregroundColor: rgb('#6B7280') } })
+              : { ...cell(FREE_TEXT_HINT, { ...REMARK_FMT, textFormat: { fontSize: 7, italic: true, foregroundColor: rgb('#B3AFA4') } }), note: FREE_TEXT_NOTE })
           } else if (line === 'pay') {
             put(1, blocked
               ? cell('', { backgroundColor: rgb(CLOSED_BG) })
