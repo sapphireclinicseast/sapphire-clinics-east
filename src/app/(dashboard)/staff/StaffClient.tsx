@@ -424,7 +424,10 @@ export default function StaffClient({ role }: { role: string }) {
     setLoading(true)
     setLoadError(null)
     try {
-      const res = await fetch('/api/staff')
+      // full=1: this module is the one screen that genuinely shows TIN, SSS,
+      // Pag-IBIG, PhilHealth and bank details, so it asks for the whole row.
+      // Everywhere else now gets the lean roster by default — see the route.
+      const res = await fetch('/api/staff?full=1')
       if (res.ok) setStaff(await res.json())
       else {
         const d = await res.json().catch(() => ({}))

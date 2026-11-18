@@ -10,17 +10,67 @@ function allowedBranches(role: string): string[] | null {
   return null // ADMIN / MARKETING_ADMIN — no restriction
 }
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   const session = await auth()
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const role    = (session.user as { role?: string }).role ?? ''
   const allowed = allowedBranches(role)
 
+  // ── Two shapes, and the lean one is the default ─────────────────────────
+  //
+  // This used to return prisma.staff.findMany() with no select at all — the
+  // WHOLE row, to every caller: TIN, SSS, Pag-IBIG, PhilHealth, date of
+  // birth, personal phone and email, bank account number. The Decking board
+  // wanted a name and a department and was handed all of that.
+  //
+  // So the default is now the roster: what the boards actually draw with,
+  // and nothing a payroll clerk would recognise. `?full=1` keeps the old
+  // shape for the Staff Module, which genuinely displays those fields, and
+  // stays branch-scoped exactly as it was — nobody loses access they had.
+  //
+  // The lean shape is also CROSS-BRANCH, which is the point. Front desk
+  // coordinate patients across both clinics and could not read the other
+  // branch's board at all: visibleBranches() in the Decking module has said
+  // "everyone sees both boards" for a long time, but this endpoint quietly
+  // returned an empty roster for the other one, so the board rendered blank
+  // and looked broken rather than blocked. Editing is unchanged and still
+  // enforced server-side by canWriteSlot.
+  const full = new URL(req.url).searchParams.get('full') === '1'
+
+  if (full) {
+    const staff = await prisma.staff.findMany({
+      where: allowed
+        ? { active: true, OR: [{ branch: { in: allowed } }, { extraBranches: { hasSome: allowed } }] }
+        : { active: true },
+      orderBy: [{ lastName: 'asc' }, { firstName: 'asc' }],
+    })
+    return NextResponse.json(staff)
+  }
+
   const staff = await prisma.staff.findMany({
-    where: allowed
-      ? { active: true, OR: [{ branch: { in: allowed } }, { extraBranches: { hasSome: allowed } }] }
-      : { active: true },
+    where: { active: true },
+    select: {
+      id: true, employeeId: true, firstName: true, lastName: true, sex: true,
+      // Work contacts, kept. Two real features read them off this list: the
+      // Clinic Schedule refuses to text a clinician with no number on file
+      // (`!staff.phone`), and the admin page prefills a new login's address
+      // from the staff record. Dropping them would have made the first
+      // silently refuse every SMS.
+      email: true, phone: true,
+      department: true, branch: true, extraBranches: true,
+      branchEmployment: true, employmentByBranch: true,
+      // Month-granular intern window — lib/intern-window.ts gates the Decking
+      // and Clinic Schedule rosters on these two.
+      dateHired: true, contractExpiry: true,
+      jobTitle: true, employmentType: true, workArrangement: true,
+      isInternshipSupervisor: true, isClinicalMentor: true, menteeIds: true,
+      active: true,
+      // Deliberately absent: tin, sss, pagibig, philhealth, bankName,
+      // bankAccountNo and dob — government identifiers, bank details and a
+      // date of birth. None of them draw a board, and they are precisely the
+      // fields that matter if a front-desk login is ever shared or phished.
+    },
     orderBy: [{ lastName: 'asc' }, { firstName: 'asc' }],
   })
   return NextResponse.json(staff)
