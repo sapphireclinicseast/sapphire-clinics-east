@@ -19,6 +19,43 @@ import {
 
 const WRITE_ROLES = ['ADMIN', 'PAYROLL_OFFICER', 'ACCOUNTANT', 'BOOKKEEPER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN', 'AHEA_FRONTDESK', 'AHGH_FRONTDESK']
 
+// A sale on credit lives on in AR → Other Customers. When the sale is undone
+// (void, buyer return, full refund) its receivable goes with it: voided Verdana
+// #44390 had left ₱11,500 standing as owed (Hannah 2026-11-18). Collections
+// already recorded on the receivable need a person's decision first (refund
+// or move them), so those block the undo instead of vanishing with it.
+async function creditSaleReceivable(orderId: string) {
+  const r = await prisma.otherReceivable.findUnique({
+    where: { orderId },
+    select: { id: true, branch: true, customerName: true, totalDue: true, notes: true, _count: { select: { payments: true } } },
+  })
+  if (!r) return { receivable: null, blocked: null as NextResponse | null }
+  if (r._count.payments > 0) {
+    return {
+      receivable: r,
+      blocked: NextResponse.json({
+        error: `This sale's receivable in Accounts Receivable → Other Customers already has ${r._count.payments} payment${r._count.payments === 1 ? '' : 's'} recorded. Refund or remove ${r._count.payments === 1 ? 'it' : 'them'} there first, then undo the sale.`,
+      }, { status: 400 }),
+    }
+  }
+  return { receivable: r, blocked: null as NextResponse | null }
+}
+
+type CreditSaleReceivable = NonNullable<Awaited<ReturnType<typeof creditSaleReceivable>>['receivable']>
+
+// Remove the (payment-free) receivable of a sale that no longer stands, and
+// say so in the order's audit trail so it can be recreated if ever needed.
+async function removeCreditSaleReceivable(r: CreditSaleReceivable | null) {
+  if (!r) return null
+  try {
+    await prisma.otherReceivable.delete({ where: { id: r.id } })
+  } catch (e) {
+    console.error('[POS] removing the sale\'s receivable failed:', e)
+    return null
+  }
+  return { id: r.id, branch: r.branch, customerName: r.customerName, totalDue: Number(r.totalDue), notes: r.notes }
+}
+
 export async function GET(
   _req: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -101,6 +138,8 @@ export async function PUT(
           ? 'This order sold a gift card — void the order instead of refunding it.'
           : 'This order was paid with a gift card — void the order instead, so the card gets its balance back.' }, { status: 400 })
       }
+      const credit = await creditSaleReceivable(id)
+      if (credit.blocked) return credit.blocked
       for (const oi of order.items) {
         if (oi.inventoryItemId) {
           const soldUnits = oi.quantity - (oi.returnedQuantity || 0)   // units still deducted from stock
@@ -115,6 +154,12 @@ export async function PUT(
         await prisma.orderItem.update({ where: { id: oi.id }, data: { returnedQuantity: oi.quantity, refundAmount: oi.lineTotal } })
       }
       await prisma.order.update({ where: { id }, data: { status: 'COMPLETED', returnedByBuyer: true, netAmount: 0 } })
+      const receivableRemoved = await removeCreditSaleReceivable(credit.receivable)
+      if (receivableRemoved) {
+        await prisma.auditLog.create({
+          data: { userId: session.user.id, action: 'REFUND', entity: 'order', entityId: id, details: { orderNumber: existing.orderNumber, receivableRemoved } },
+        }).catch(() => {})
+      }
       return NextResponse.json({ ok: true, refunded: true })
     }
 
@@ -268,6 +313,10 @@ export async function PUT(
           return NextResponse.json({ error: `Gift card ${list} from this sale has already been used. Void the orders that used it first, then void this sale.` }, { status: 400 })
         }
       }
+      const credit = newStatus === 'VOIDED' && existing.status !== 'VOIDED'
+        ? await creditSaleReceivable(id)
+        : { receivable: null, blocked: null }
+      if (credit.blocked) return credit.blocked
 
       const updated = await prisma.order.update({
         where: { id },
@@ -501,6 +550,8 @@ export async function PUT(
         }
       }
 
+      const receivableRemoved = await removeCreditSaleReceivable(credit.receivable)
+
       await prisma.auditLog.create({
         data: {
           userId: session.user.id,
@@ -512,6 +563,7 @@ export async function PUT(
             previousStatus: existing.status,
             newStatus,
             reason: body.reason || null,
+            ...(receivableRemoved ? { receivableRemoved } : {}),
           },
         },
       })

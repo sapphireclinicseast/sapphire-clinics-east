@@ -4118,34 +4118,30 @@ function OrdersPanel({ branch, canSelectBranch, focusOrderId, onFocusHandled }: 
   }
 
   const handleAction = async (id: string, action: 'reopen' | 'void' | 'returnByBuyer' | 'refund') => {
+    const put = (body: Record<string, unknown>) => fetch(`/api/pos/orders/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    })
+    let res: Response
     if (action === 'refund') {
       if (!window.confirm('Mark this order as REFUNDED?\n\nThe product(s) are added back to inventory and the sale is recorded as fully refunded (shows under 7160 Sales Returns + the product refund rate). Net collected becomes 0.')) return
-      await fetch(`/api/pos/orders/${id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action }),
-      })
+      res = await put({ action })
     } else if (action === 'void') {
       const reason = window.prompt('Reason for voiding this order:')
       if (!reason) return
-      await fetch(`/api/pos/orders/${id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action, reason }),
-      })
+      res = await put({ action, reason })
     } else if (action === 'returnByBuyer') {
       if (!window.confirm('Mark this order as RETURNED BY BUYER?\n\nThis restocks the returned product(s) into inventory (with a "RETURNED BY BUYER" reference) and reverses the sale.')) return
-      await fetch(`/api/pos/orders/${id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action }),
-      })
+      res = await put({ action })
     } else {
-      await fetch(`/api/pos/orders/${id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action }),
-      })
+      res = await put({ action })
+    }
+    // The server refuses some of these (a spent gift card, collections already
+    // recorded on the sale's receivable) — say why instead of doing nothing.
+    if (!res.ok) {
+      const msg = await res.json().then((d: { error?: string }) => d?.error).catch(() => null)
+      window.alert(msg || 'This order could not be updated.')
     }
     fetchOrders()
   }
