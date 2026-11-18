@@ -34,6 +34,12 @@ concurrency:
   group: deploy-vps
   cancel-in-progress: false
 
+# `actions: write` is for the follow-up dispatch at the very end of the job —
+# see "Redeploy if main advanced". Everything else stays read-only.
+permissions:
+  contents: read
+  actions: write
+
 jobs:
   deploy:
     name: Build & Deploy
@@ -1730,6 +1736,45 @@ jobs:
             exit 1
           fi
           echo "✅ All critical rebuilds succeeded."
+
+      # ──────────────────────────────────────────────────────────────────
+      #  Did main move while this run was deploying?
+      #
+      #  The server pulls origin/main at deploy time, so a run always ships
+      #  the TIP rather than the commit that triggered it. That makes a
+      #  cancelled pending run harmless — the survivor carries its code.
+      #
+      #  What is NOT harmless: a merge that lands while a run is already
+      #  IN PROGRESS. It is not in that run, and the pending slot may be
+      #  empty, so it ships only if somebody merges again. If nobody does,
+      #  it sits undeployed indefinitely — which is exactly what happened
+      #  to #1084 on 2026-11-19 and took a hand-pushed empty commit to
+      #  shift.
+      #
+      #  So: compare what we just deployed against the tip, and if the tip
+      #  has moved, start another run. Each follow-up deploys the newest
+      #  main, so this terminates as soon as nothing new has landed.
+      #
+      #  Only on success. Re-dispatching after a failure would turn one
+      #  broken deploy into a loop of them.
+      # ──────────────────────────────────────────────────────────────────
+      - name: Redeploy if main advanced
+        if: success()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          git fetch origin main --quiet
+          TIP="$(git rev-parse origin/main)"
+          DEPLOYED="${{ github.sha }}"
+          if [ "$TIP" = "$DEPLOYED" ]; then
+            echo "✅ main is still at ${DEPLOYED:0:9} — nothing landed while this run was deploying."
+            exit 0
+          fi
+          echo "↻ main moved ${DEPLOYED:0:9} → ${TIP:0:9} during this deploy."
+          echo "  Those commits are NOT in what was just shipped. Dispatching a follow-up run."
+          git log --oneline "${DEPLOYED}..${TIP}" 2>/dev/null | head -20 || true
+          gh workflow run "Deploy to Netcup VPS" --ref main
 
   # ── Diagnostic: accounting-hub logs ──────────────────────────
   check-accounting-logs:
