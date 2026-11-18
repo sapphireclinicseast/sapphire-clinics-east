@@ -10,6 +10,7 @@ import { isRenter, RENTER_NOTIFY_REASON } from '@/lib/employment'
 import { KpiCard, Skeleton, DeptChip, CARD_STYLE } from '../patients/dashboard/ui'
 import { PillTabs, Avatar, BTN_PRIMARY, BTN_SECONDARY, BTN_SM, CONTROL, CONTROL_STYLE, TEAL_HEX } from '../decking/ui'
 import { Toolbar, Field, ErrorBanner, KpiSkeletonRow, StatusBadge, TodayTag, deptColor, TH, TH_BG } from './ui'
+import SessionOutcomePrompt, { type OutcomeTarget } from '@/components/SessionOutcomePrompt'
 
 
 // ─── Session types per department ────────────────────────────────────────────
@@ -425,6 +426,12 @@ function StaffCard({ staff, allStaff, selectedDate, schedulingBranch, flat = fal
   const [editId, setEditId] = useState<string | null>(null)
   const [editForm, setEditForm] = useState({ ...EMPTY_FORM })
   const [editSaving, setEditSaving] = useState(false)
+  // Cancelled / rescheduled / no-show carries a fee consequence and belongs in
+  // Patient Relationship. StatusView and DailyView have asked since the prompt
+  // was written; THIS view never did — and this is the view front desk
+  // actually work in, which is a large part of why roughly nine in ten
+  // absences in 2026 were never logged at all.
+  const [outcome, setOutcome] = useState<OutcomeTarget | null>(null)
   const [editError, setEditError] = useState('')
   const [deleteTarget, setDeleteTarget] = useState<Schedule | null>(null)
   const [deleting, setDeleting] = useState(false)
@@ -594,7 +601,26 @@ function StaffCard({ staff, allStaff, selectedDate, schedulingBranch, flat = fal
       body: JSON.stringify({ id: editId, ...editForm, branch: schedulingBranch }),
     })
     setEditSaving(false)
-    if (res.ok) { setEditId(null); loadSchedules() }
+    if (res.ok) {
+      // Read before the form is cleared, and only offered once the status
+      // change has actually saved — there is nothing to log against a change
+      // the server refused.
+      const saved = schedules.find(x => x.id === editId)
+      const newStatus = editForm.status
+      setEditId(null)
+      loadSchedules()
+      if (newStatus === 'CANCELLED' || newStatus === 'RESCHEDULED' || newStatus === 'NO_SHOW') {
+        setOutcome({
+          scheduleId: editId,
+          status: newStatus,
+          patientId: saved?.patient?.id ?? null,
+          patientName: saved?.patient
+            ? `${saved.patient.firstName} ${saved.patient.lastName}`
+            : 'This session',
+          branch: saved?.patient?.branches?.[0] ?? null,
+        })
+      }
+    }
     else { const d = await res.json(); setEditError(d.error ?? 'Failed to update.') }
   }
 
@@ -1099,6 +1125,13 @@ function StaffCard({ staff, allStaff, selectedDate, schedulingBranch, flat = fal
             </div>
           )}
         </div>
+      )}
+
+      {/* The outcome prompt, finally reachable from this view. Rendered at the
+          card root rather than beside the table because it is modal and must
+          survive the row list re-rendering after loadSchedules(). */}
+      {outcome && (
+        <SessionOutcomePrompt target={outcome} onClose={() => setOutcome(null)} />
       )}
     </div>
   )
