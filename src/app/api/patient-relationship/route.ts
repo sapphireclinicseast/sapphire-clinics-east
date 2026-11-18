@@ -36,10 +36,27 @@ export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url)
   const tab = searchParams.get('tab') || 'followup'
 
-  // Branch scoping
+  // ── Branch scoping ──────────────────────────────────────────────────────
+  //
+  // Front desk are pinned to their own branch for the RECORDS tabs — no-show,
+  // cancellation and follow-up are a patient's history with one clinic, and a
+  // desk has no business reading the other's.
+  //
+  // The WAITLIST is different and deliberately shared (Hannah, 2026-11-18:
+  // "allow the greenhills frontdesk to see the waitlist for all, and vice
+  // versa for east, so they can also contact the others"). An enquiry is not
+  // yet anybody's patient: it is someone waiting to be rung back, and whoever
+  // has the time should be able to ring them. Pinning it meant an East desk
+  // with a free afternoon could not see that Greenhills had fifty people
+  // waiting.
+  //
+  // Still a server-side decision, not a client one: the page sends a branch,
+  // but what a client sends is a request, not a permission.
   let branch = searchParams.get('branch') || ''
-  if (role === 'AHEA_FRONT_DESK') branch = 'SANDBOX_EAST'
-  else if (role === 'AHGH_FRONT_DESK') branch = 'SANDBOX_GREENHILLS'
+  const deskBranch = role === 'AHEA_FRONT_DESK' ? 'SANDBOX_EAST'
+    : role === 'AHGH_FRONT_DESK' ? 'SANDBOX_GREENHILLS'
+    : null
+  if (deskBranch && tab !== 'waitlist') branch = deskBranch
 
   const branchFilter = branch ? { branches: { has: branch } } : undefined
 
