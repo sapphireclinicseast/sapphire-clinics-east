@@ -29,6 +29,7 @@
 import type { Prisma, PrismaClient } from '@prisma/client'
 import { postJournalEntry, UnbalancedJournalEntryError, type PostingLine } from './posting'
 import { QB_ERA_END } from './qb-era'
+import { isMdPassThrough } from './md-pass-through'
 import { giftCardCodeFromItem } from '../gift-cards'
 
 /** Either the app client or the interactive-transaction client the locked wrappers pass in. */
@@ -164,13 +165,7 @@ async function postOrderJournalLocked(
   // nothing here is our revenue or receivable — the books get no entry at all
   // (owner directive 2026-08-24). A consult the HMO paid through the clinic this
   // once (Payments to Doctors, lib/hmo-coursed-fee) is our sale after all.
-  if (
-    !order.hmoCoursedThroughClinic &&
-    order.items.length > 0 &&
-    order.items.every(i => (i.service as { hmoPaysClinicianDirect?: boolean } | null)?.hmoPaysClinicianDirect) &&
-    order.payments.some(p => p.method === 'HMO') &&
-    !order.payments.some(p => p.wallet?.paysClinicForMd)
-  ) {
+  if (isMdPassThrough(order)) {
     return { posted: false, reason: 'MD pass-through — HMO pays the clinician directly; not our revenue or AR' }
   }
 

@@ -30,6 +30,7 @@ import { netOfVat } from '@/lib/vat'
 import { hasNoBranch } from '@/lib/reports/audited-expense-rules'
 import { addedCostByAsset } from '@/lib/asset-entry-retag'
 import { carriedTotal } from '@/lib/asset-parts'
+import { isMdPassThrough } from '@/lib/accounting/md-pass-through'
 
 /* ── Types ─────────────────────────────────────────────────────── */
 
@@ -878,16 +879,18 @@ export async function computeLedgerStatements(
     select: {
       id: true, orderNumber: true, patientName: true, transactionDate: true, branch: true,
       netAmount: true, revenueType: true, discountAmount: true, discountLabel: true, discountType: true,
+      hmoCoursedThroughClinic: true,
       items: {
         select: {
           name: true, lineTotal: true, cogsCost: true, quantity: true, isFreeSample: true,
-          service: { select: { revenueAccount: { select: { accountNumber: true } } } },
+          service: { select: { hmoPaysClinicianDirect: true, revenueAccount: { select: { accountNumber: true } } } },
           inventoryItem: { select: { accountSubType: true, skuDepartment: true, skuCategory: true, revenueAccount: { select: { accountNumber: true } }, expenseAccount: { select: { accountNumber: true } } } },
         },
       },
       payments: {
         select: {
           method: true, amount: true, walletId: true,
+          wallet: { select: { paysClinicForMd: true } },
           paymentMode: { select: { account: { select: { accountNumber: true } }, settlementBankAccount: { select: { accountNumber: true } }, deductions: { select: { rate: true, valueType: true, effectiveFrom: true, effectiveTo: true, account: { select: { accountNumber: true } } } } } },
         },
       },
@@ -950,6 +953,9 @@ export async function computeLedgerStatements(
       }
     }
     if (hasRef('POS_ORDER', o.id)) continue
+    // An HMO-direct doctor consult is unposted on purpose (not our sale or AR):
+    // filling in an entry for it put it back into 1010 and MD sales.
+    if (isMdPassThrough(o)) continue
     synthesizedOrders++
     const oMonth = monthOf(o.transactionDate)
     const oLabel = `Order #${o.orderNumber}${o.patientName ? ` — ${o.patientName}` : ''}`
