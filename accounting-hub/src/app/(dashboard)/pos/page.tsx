@@ -55,6 +55,10 @@ interface QueueItem {
   // supervision (IE Intern / Session Intern on the Clinic Schedule); null
   // for an ordinary session.
   intern?: string | null
+  // How the Decking board says this patient is funded: "CASH" | "HMO" | "GL",
+  // or null when the board does not say. Shown at the till so the cashier
+  // knows which wallet a session belongs to before ringing anything.
+  paymentType?: string | null
   [key: string]: unknown
 }
 
@@ -592,6 +596,31 @@ ${isVerdana ? '' : `<div style="text-align:center;font-size:8px;font-weight:900;
   win.document.close()
 }
 
+/**
+ * How a session is funded, as the cashier sees it.
+ *
+ * GL is the loud one on purpose: a guarantee letter is somebody else's money
+ * with a finite balance, and ringing it as cash is the mistake that is hardest
+ * to unpick afterwards.
+ */
+const COVERAGE_CHIP: Record<string, { label: string; title: string; style: React.CSSProperties }> = {
+  CASH: {
+    label: 'Cash',
+    title: 'Decking board: paid by the family',
+    style: { background: '#DBEAFE', color: '#1D4ED8' },
+  },
+  HMO: {
+    label: 'HMO',
+    title: 'Decking board: covered by an HMO',
+    style: { background: '#EDE9FE', color: '#6D28D9' },
+  },
+  GL: {
+    label: 'GL',
+    title: 'Decking board: covered by a guarantee letter — charge the letter, not the family',
+    style: { background: '#FFEDD5', color: '#9A3412', border: '1px solid #FDBA74' },
+  },
+}
+
 function normalize(data: unknown): unknown[] {
   if (Array.isArray(data)) return data
   if (data && typeof data === 'object') {
@@ -886,6 +915,9 @@ function CashierPanel({
   const [selectedBranch, setSelectedBranch] = useState(CASHIER_BRANCHES.includes(branch) ? branch : 'SANDBOX_EAST')
   const [date, setDate] = useState(today())
   const [queue, setQueue] = useState<QueueItem[]>([])
+  // Which button opened the order form. Held here rather than inside the modal
+  // so closing and reopening cannot leave it half in no-show mode.
+  const [noShowMode, setNoShowMode] = useState(false)
   const [queueLoading, setQueueLoading] = useState(false)
   const [queueError, setQueueError] = useState('')
   const [showOrderForm, setShowOrderForm] = useState(false)
@@ -1054,6 +1086,18 @@ function CashierPanel({
                           Mentorship
                         </span>
                       )}
+                      {/* How the Decking board says this session is funded.
+                          Nothing is shown when the board does not say — an
+                          absent chip means "look it up", which is honest;
+                          defaulting to Cash would have the till assert
+                          something nobody recorded. */}
+                      {q.paymentType && COVERAGE_CHIP[q.paymentType] && (
+                        <span className="ml-2 px-2 py-0.5 rounded-full text-[10px] font-bold whitespace-nowrap"
+                          style={COVERAGE_CHIP[q.paymentType].style}
+                          title={COVERAGE_CHIP[q.paymentType].title}>
+                          {COVERAGE_CHIP[q.paymentType].label}
+                        </span>
+                      )}
                     </td>
                     <td className="px-5 py-3" style={{ color: 'var(--mid-gray)' }}>{q.sessionType}</td>
                     <td className="px-5 py-3" style={{ color: 'var(--mid-gray)' }}>
@@ -1072,13 +1116,27 @@ function CashierPanel({
                           Converted
                         </span>
                       ) : (
-                        <button
-                          onClick={() => { setPrefill(q); setShowOrderForm(true) }}
-                          className="px-3 py-1.5 rounded-lg text-xs font-medium text-white"
-                          style={{ background: 'var(--teal)' }}
-                        >
-                          Convert to Order
-                        </button>
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => { setPrefill(q); setNoShowMode(false); setShowOrderForm(true) }}
+                            className="px-3 py-1.5 rounded-lg text-xs font-medium text-white"
+                            style={{ background: 'var(--teal)' }}
+                          >
+                            Convert to Order
+                          </button>
+                          {/* The patient did not come. Rings the no-show fee
+                              and nothing else, and logs it in Patient
+                              Relationship so nobody has to remember to do it
+                              in the other hub afterwards. */}
+                          <button
+                            onClick={() => { setPrefill(q); setNoShowMode(true); setShowOrderForm(true) }}
+                            className="px-3 py-1.5 rounded-lg text-xs font-medium"
+                            style={{ background: '#fff', color: '#B91C1C', border: '1px solid #FCA5A5' }}
+                            title="Patient did not attend — charge the no-show fee and record it in Patient Relationship"
+                          >
+                            No Show
+                          </button>
+                        </div>
                       )}
                     </td>
                   </tr>
@@ -1094,6 +1152,7 @@ function CashierPanel({
       {showOrderForm && (
         <OrderFormModal
           branch={selectedBranch}
+          noShow={noShowMode}
           prefill={prefill}
           session={session}
           onClose={() => { setShowOrderForm(false); setPrefill(null) }}
@@ -1110,7 +1169,7 @@ function CashierPanel({
 
 function OrderFormModal({
   branch, prefill, session, onClose, onSuccess, orderType = 'SERVICE',
-  paymentMethods = PAYMENT_METHODS_SERVICE,
+  paymentMethods = PAYMENT_METHODS_SERVICE, noShow = false,
 }: {
   branch: string
   prefill: Partial<QueueItem> | null
@@ -1119,6 +1178,16 @@ function OrderFormModal({
   onSuccess: () => void
   orderType?: string
   paymentMethods?: { value: string; label: string }[]
+  /**
+   * Opened by the No Show button rather than Convert to Order.
+   *
+   * The patient did not attend, so there is no session to bill — only the
+   * no-show fee. The service list is held to that: an order rung here cannot
+   * quietly become a paid session, which is the mistake the button exists to
+   * prevent. It also writes the no-show through to Patient Relationship, so
+   * the cashier does not have to remember to log it twice.
+   */
+  noShow?: boolean
 }) {
   const [txDate, setTxDate] = useState(today())
   const [patientName, setPatientName] = useState(prefill?.patientName || '')
@@ -1417,10 +1486,14 @@ function OrderFormModal({
       try {
         const r = await fetch(`/api/services?pageSize=1000&branch=${branch}`)
         const d = await r.json()
-        setServices(normalize(d) as ServiceItem[])
+        const all = normalize(d) as ServiceItem[]
+        // Held to the no-show fee here too. `services` is the list every price
+        // lookup reads, so leaving it whole would let a line keep a price from
+        // a service the cashier is not allowed to ring.
+        setServices(noShow ? all.filter(x => /no[\s-]*show/i.test(String(x.name ?? ''))) : all)
       } catch { setServices([]) }
     }, 200)
-  }, [branch])
+  }, [branch, noShow])
 
   const [serviceDropResults, setServiceDropResults] = useState<ServiceItem[]>([])
   const serviceSearchTimer = useRef<ReturnType<typeof setTimeout>>(undefined)
@@ -1436,7 +1509,11 @@ function OrderFormModal({
     }, 200)
   }, [serviceSearch, branch])
 
-  const filteredServices = serviceDropResults
+  // On a no-show, only the no-show fee may be picked — in the typed search AND
+  // in the full list used for price lookups, because restricting one and not
+  // the other leaves a route to any service for anyone who knows the name.
+  const isNoShowService = (x: ServiceItem) => /no[\s-]*show/i.test(String(x.name ?? ''))
+  const filteredServices = noShow ? serviceDropResults.filter(isNoShowService) : serviceDropResults
 
   // Compute the effective price for a service based on branch and effective dates
   const effectivePrice = (svc: ServiceItem) => {
@@ -2254,6 +2331,37 @@ function OrderFormModal({
       // thank-you — and ask them whether to close the patient view now,
       // instead of closing the form under them. onSuccess is deferred until
       // they answer; a tablet that was never shown skips all of this.
+      // The no-show goes on the patient's record in the Operations Hub.
+      //
+      // Placed here, after the order exists and before the tablet branch
+      // returns early: putting it next to onSuccess() would have skipped it
+      // entirely whenever the patient-view tablet was live, which is most of
+      // the time at a busy till.
+      //
+      // Awaited, and its failure is shown. The money has already moved; a
+      // cashier who is not told the record failed will never know to log it
+      // by hand, and the fee ends up with nothing behind it.
+      if (noShow && patientId) {
+        try {
+          const r = await fetch('/api/pos/no-show-log', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              patientId,
+              branch,
+              scheduleId: prefill?.id ?? null,
+              paymentType: prefill?.paymentType ?? null,
+            }),
+          })
+          if (!r.ok) {
+            const d = await r.json().catch(() => ({}))
+            alert(`The order was saved, but the no-show could NOT be recorded in Patient Relationship:\n\n${d?.error ?? r.status}\n\nLog it by hand in the Operations Hub.`)
+          }
+        } catch {
+          alert('The order was saved, but the no-show could NOT be recorded in Patient Relationship. Log it by hand in the Operations Hub.')
+        }
+      }
+
       if (patientTabletBranch && tabletLiveRef.current) {
         fetch('/api/patient-view/checkout', {
           method: 'PUT',
