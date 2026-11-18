@@ -4,7 +4,11 @@
 // and BALANCE DUE. Used by Expenses + Taxes RFPs.
 import type { jsPDF as JsPDF } from 'jspdf'
 
-export interface BVLine { account: string; description: string; gross: number; vat: number; netVat: number; netEwt: number; payee?: string; memo?: string }
+export interface BVLine {
+  account: string; description: string; gross: number; vat: number; netVat: number; netEwt: number; payee?: string; memo?: string
+  /** PFRS account classification (e.g. "Indirect Operating Expenses"). Filled from the Chart of Accounts when the voucher is built. */
+  classification?: string
+}
 export interface BillingVoucherOpts {
   refNumber: string
   date: string          // display date (e.g. 02/12/2026)
@@ -16,6 +20,47 @@ export interface BillingVoucherOpts {
 }
 
 const peso = (n: number) => n.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+
+// ── Account classification (Hannah 11/18: "billing voucher generated for RFP
+// should contain account classification") ─────────────────────────────────
+// The PFRS classification of each line's account, as the Chart of Accounts page
+// labels it. Lines carry the account title ("8050 Courier and Shipping
+// Expense"); it is matched to the Chart of Accounts by its number, else by title.
+const CLASS_LABELS: Record<string, string> = {
+  CURRENT_ASSETS: 'Current Assets', PPE: 'Property, Plant & Equipment', INTANGIBLE_ASSETS: 'Intangible Assets',
+  OTHER_NON_CURRENT_ASSETS: 'Other Non-Current Assets', INVENTORY: 'Inventory',
+  CURRENT_LIABILITIES: 'Current Liabilities', NON_CURRENT_LIABILITIES: 'Non-Current Liabilities',
+  OWNERS_EQUITY: "Owner's Equity", RETAINED_EARNINGS: 'Retained Earnings',
+  OPERATING_REVENUE: 'Operating Revenue', NON_OPERATING_REVENUE: 'Non-Operating Revenue', SALES: 'Sales by Department',
+  DIRECT_EXPENSES: 'Direct Operating Expenses', INDIRECT_EXPENSES: 'Indirect Operating Expenses',
+  NON_OPERATING_EXPENSES: 'Non-Operating Expenses', COGS: 'Cost of Goods Sold', OPERATING_EXPENSES: 'Operating Expenses',
+}
+const TYPE_LABELS: Record<string, string> = { ASSET: 'Assets', LIABILITY: 'Liabilities', EQUITY: 'Equity', REVENUE: 'Revenue', EXPENSE: 'Expenses' }
+export const accountClassification = (type?: string | null, subType?: string | null): string =>
+  (subType && CLASS_LABELS[subType]) || (type && TYPE_LABELS[type]) || ''
+// Payroll and tax RFP lines aren't Chart of Accounts titles: they pay off
+// amounts owed (salaries / benefits / taxes payable), i.e. current liabilities.
+const PAYABLE_LINE = /^(salaries payable|benefits payable|withholding tax|ewt\b|value-added tax|corporate income tax|tax$)/i
+
+interface CoaRow { accountNumber: string; accountTitle: string; accountType: string; subType: string | null }
+/** Fill each line's classification from the Chart of Accounts (lines that already have one are kept). */
+export async function classifyLines(lines: BVLine[]): Promise<BVLine[]> {
+  if (lines.every(l => l.classification)) return lines
+  let accounts: CoaRow[] = []
+  try {
+    const r = await fetch('/api/chart-of-accounts?pageSize=1000&showInactive=true', { cache: 'no-store' })
+    if (r.ok) accounts = ((await r.json()).data || []) as CoaRow[]
+  } catch { /* the voucher still prints; unmatched lines show a dash */ }
+  const byNum = new Map(accounts.map(a => [String(a.accountNumber).trim(), a]))
+  const byTitle = new Map(accounts.map(a => [String(a.accountTitle).trim().toLowerCase(), a]))
+  return lines.map(l => {
+    if (l.classification) return l
+    const t = (l.account || '').trim()
+    const num = t.match(/^(\d{3,})\b/)?.[1]
+    const a = (num ? byNum.get(num) : undefined) || byTitle.get(t.toLowerCase()) || byTitle.get(t.replace(/^\d+\s+/, '').toLowerCase())
+    return { ...l, classification: a ? accountClassification(a.accountType, a.subType) : PAYABLE_LINE.test(t) ? 'Current Liabilities' : '' }
+  })
+}
 
 // Payment details used to compose the standard memo. Missing pieces are simply
 // omitted (e.g. an unpaid RFP has no mode/reference yet).
@@ -88,6 +133,7 @@ export async function buildBillingVoucher(opts: BillingVoucherOpts): Promise<JsP
   const pageW = doc.internal.pageSize.getWidth()
   const left = 14, right = pageW - 14
   const hdr = resolveHeader(opts.branch)
+  const lines = await classifyLines(opts.lines)
 
   // 3 logos top-right (SCEI · Aura · Verdana)
   const logoH = 16
@@ -121,19 +167,22 @@ export async function buildBillingVoucher(opts: BillingVoucherOpts): Promise<JsP
   doc.text(opts.refNumber, 162, 66)
   doc.text(opts.date, 162, 71)
 
-  const tot = (k: keyof BVLine) => opts.lines.reduce((s, l) => s + (l[k] as number), 0)
+  const tot = (k: 'gross' | 'vat' | 'netVat' | 'netEwt') => lines.reduce((s, l) => s + l[k], 0)
   const ewtOf = (l: BVLine) => Math.max(0, l.netVat - l.netEwt)   // EWT withheld = Net of VAT − Net of EWT (0 if none)
-  const totEwt = opts.lines.reduce((s, l) => s + ewtOf(l), 0)
-  const NUMERIC_COLS = [2, 3, 4, 5, 6]
+  const totEwt = lines.reduce((s, l) => s + ewtOf(l), 0)
+  const NUMERIC_COLS = [3, 4, 5, 6, 7]
   autoTable(doc, {
     startY: Math.max(by + 4, 84),
-    head: [['Account/Item', 'Description', 'Gross Amount', 'VAT', 'Net of VAT', 'EWT', 'Net of EWT']],
-    body: opts.lines.map(l => [l.account, l.description, peso(l.gross), peso(l.vat), peso(l.netVat), peso(ewtOf(l)), peso(l.netEwt)]),
-    foot: [['', 'TOTAL', peso(tot('gross')), peso(tot('vat')), peso(tot('netVat')), peso(totEwt), peso(tot('netEwt'))]],
+    head: [['Account/Item', 'Classification', 'Description', 'Gross Amount', 'VAT', 'Net of VAT', 'EWT', 'Net of EWT']],
+    body: lines.map(l => [l.account, l.classification || '—', l.description, peso(l.gross), peso(l.vat), peso(l.netVat), peso(ewtOf(l)), peso(l.netEwt)]),
+    foot: [['', '', 'TOTAL', peso(tot('gross')), peso(tot('vat')), peso(tot('netVat')), peso(totEwt), peso(tot('netEwt'))]],
     styles: { fontSize: 7.5, cellPadding: 1.5, textColor: [30, 30, 30] },
     headStyles: { fillColor: [252, 228, 214], textColor: [120, 60, 20], fontStyle: 'bold' },
     footStyles: { fillColor: [248, 240, 234], textColor: [30, 30, 30], fontStyle: 'bold' },
-    columnStyles: { 0: { cellWidth: 30 }, 2: { cellWidth: 22 }, 3: { cellWidth: 15 }, 4: { cellWidth: 22 }, 5: { cellWidth: 18 }, 6: { cellWidth: 22 } },
+    columnStyles: {
+      0: { cellWidth: 28 }, 1: { cellWidth: 24, textColor: [90, 90, 90] }, 3: { cellWidth: 20 }, 4: { cellWidth: 15 },
+      5: { cellWidth: 20 }, 6: { cellWidth: 16 }, 7: { cellWidth: 20 },
+    },
     // Right-align the numeric columns in EVERY section so the headers line up
     // with the amounts below them (headers were previously centered).
     didParseCell: (data) => { if (NUMERIC_COLS.includes(data.column.index)) data.cell.styles.halign = 'right' },
