@@ -1001,16 +1001,40 @@ function ExpensesInner() {
       } catch { alert('Could not load the entries for that range.'); return }
     }
     const rows = source.filter(e => inDateRange(e.date, dlFrom, dlTo))
+    // One-time rows can be in another currency (gross stays PHP = amount × rate).
+    // Excel gets Currency / Foreign Amount / FX Rate as their own columns (the
+    // amount and rate as real numbers); the PDF folds them into one column so
+    // the page keeps its normal type size.
+    const fx = (e: Entry) => {
+      const cur = e.currency || 'PHP'
+      const fa = num(e.foreignAmount ?? null), rate = num(e.fxRate ?? null)
+      return cur === 'PHP' ? null : { cur, fa, rate }
+    }
+    const fxText = (e: Entry) => {
+      const f = fx(e)
+      if (!f) return ''
+      const amt = f.fa.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+      return f.rate > 0 ? `${f.cur} ${amt} @ ${f.rate.toLocaleString('en-US', { maximumFractionDigits: 4 })}` : `${f.cur} ${amt}`
+    }
+    const xl = fmt === 'xlsx'
     const headers = isRecurring
       ? ['Reference', 'Payee', 'Department', 'Description', 'Account Title', 'Frequency', 'Vatable', 'Gross Amount']
-      : ['Reference', 'Payee', 'Department', 'Date', 'Description', 'Account Title', 'Vatable', 'Validity', 'Audited', 'Gross Amount', 'Payment']
-    const body = rows.map(e => isRecurring
-      ? [e.reimbursement?.refNumber || e.pcvNumber, e.requestor || '', e.department || '', e.description || '', e.accountTitle || '', e.recurFrequency || '', vatLabel(e), num(e.grossAmount).toFixed(2)]
-      : [refOf(e), e.requestor || '', e.department || '', e.date ? String(e.date).slice(0, 10) : '', e.description || '', e.accountTitle || '', vatLabel(e), e.validity || '', e.audited ? 'Yes' : 'No', num(e.grossAmount).toFixed(2), e.paidAt ? `Paid ${String(e.paidAt).slice(0, 10)}` : (e.reimbursementId ? 'In RFP' : e.soaId ? 'In SOA' : '')])
+      : ['Reference', 'Payee', 'Department', 'Date', 'Description', 'Account Title', 'Vatable', 'Validity', 'Audited',
+        ...(xl ? ['Currency', 'Foreign Amount', 'FX Rate (₱)'] : ['Foreign Currency']), 'Gross Amount (PHP)', 'Payment']
+    const body = rows.map(e => {
+      if (isRecurring) return [e.reimbursement?.refNumber || e.pcvNumber, e.requestor || '', e.department || '', e.description || '', e.accountTitle || '', e.recurFrequency || '', vatLabel(e), num(e.grossAmount).toFixed(2)]
+      const f = fx(e)
+      const fxCells = xl
+        ? [f?.cur || 'PHP', f ? f.fa.toFixed(2) : '', f && f.rate > 0 ? f.rate : '']
+        : [fxText(e)]
+      return [refOf(e), e.requestor || '', e.department || '', e.date ? String(e.date).slice(0, 10) : '', e.description || '', e.accountTitle || '', vatLabel(e), e.validity || '', e.audited ? 'Yes' : 'No',
+        ...fxCells, num(e.grossAmount).toFixed(2), e.paidAt ? `Paid ${String(e.paidAt).slice(0, 10)}` : (e.reimbursementId ? 'In RFP' : e.soaId ? 'In SOA' : '')]
+    })
+    const nFx = isRecurring ? 0 : rows.filter(e => fx(e)).length
     const title = `${isRecurring ? 'Recurring' : 'One-time'} Expenses — ${brLabel}`
     const fname = `${isRecurring ? 'recurring-expenses' : 'one-time-expenses'}-${branchFileTag(branch)}`
     if (fmt === 'xlsx') downloadXlsx(fname, [{ name: isRecurring ? 'Recurring' : 'One-time', headers, rows: body }])
-    else downloadPdf({ title, subtitle: `Range: ${rangeNote} · ${body.length} entr${body.length === 1 ? 'y' : 'ies'}`, headers, rows: body, landscape: true })
+    else downloadPdf({ title, subtitle: `Range: ${rangeNote} · ${body.length} entr${body.length === 1 ? 'y' : 'ies'}${nFx ? ` · ${nFx} in a foreign currency (gross shown in pesos)` : ''}`, headers, rows: body, landscape: true })
   }
   const exportRfps = (fmt: ExportFormat) => {
     const rows = shownRfps   // already scoped to the From/To range
