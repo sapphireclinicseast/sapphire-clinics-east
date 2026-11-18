@@ -8,14 +8,18 @@
  *   Highest  COGS + 8× COGS (COGS × 9)
  *
  * each rounded UP to the next ₱10 (Hannah, 2026-11-13). The tiers are always
- * computed live; "Apply Standard to POS" writes Standard into the selling price
- * (server recomputes it, branch copies and variant prices follow, audited).
+ * computed live. Clicking a product's Lowest / Standard / Highest price makes it
+ * that product's tier and its POS price at once (Hannah 11/18: "click … and it
+ * will automatically be the one reflected on the website" — verdanarehab.com
+ * reads the POS price every 15 minutes). The bulk buttons re-price products to
+ * their own chosen tier (Standard unless another was picked). The server
+ * recomputes every price; branch copies and variant prices follow; audited.
  */
 
 import { Fragment, useCallback, useEffect, useMemo, useState } from 'react'
 import { AlertCircle, ArrowUpDown, BadgeCheck, CheckCircle2, ChevronDown, ChevronUp, Loader2, RefreshCw, Search, Tags } from 'lucide-react'
 import { branchShort } from '@/lib/branch'
-import { PRICE_TIERS, type Tiers } from '@/lib/price-tiers'
+import { PRICE_TIERS, type TierKey, type Tiers } from '@/lib/price-tiers'
 import { SKU_HIERARCHY } from '@/lib/sku-taxonomy'
 import { downloadXlsx, downloadPdf } from '@/lib/export'
 import DownloadMenu from '@/components/ui/DownloadMenu'
@@ -28,9 +32,10 @@ interface VariantRow {
 interface Row {
   id: string; sku: string; name: string; branch: string; department: string; isBundle: boolean
   cogs: number | null; cogsSource: 'unitCost' | 'bundle'; currentPrice: number | null; tiers: Tiers | null
+  tier: TierKey
   unitsSold: number; lastSold: string | null; sold: boolean; copies: number; variants: VariantRow[]
 }
-interface Change { kind: 'item' | 'copy' | 'variant'; id: string; sku: string; cogs: number | null; oldPrice: number | null; newPrice: number }
+interface Change { kind: 'item' | 'copy' | 'variant'; id: string; sku: string; cogs: number | null; oldPrice: number | null; newPrice: number; tier: TierKey }
 
 type View = 'priced' | 'changes' | 'nocogs' | 'notsold'
 type SortKey = 'name' | 'sku' | 'cogs' | 'lowest' | 'standard' | 'highest' | 'current' | 'sold'
@@ -41,9 +46,10 @@ const amt = (n: number | null | undefined) => (n == null ? '' : n.toFixed(2))
 
 /** A variant line is worth its own row when its cost or price differs from the product's. */
 const ownVariants = (r: Row) => r.variants.filter(v => v.ownCost || v.currentPrice != null)
-/** Product (or a priced variant) charges something other than Standard. */
+const TIER_LABEL = Object.fromEntries(PRICE_TIERS.map(t => [t.key, t.label])) as Record<TierKey, string>
+/** Product (or a priced variant) charges something other than its chosen tier. */
 const isChanged = (r: Row) =>
-  !!r.tiers && (r.currentPrice !== r.tiers.standard || ownVariants(r).some(v => v.tiers && v.currentPrice !== v.tiers.standard))
+  !!r.tiers && (r.currentPrice !== r.tiers[r.tier] || ownVariants(r).some(v => v.tiers && v.currentPrice !== v.tiers[r.tier]))
 
 export default function PriceListPanel({ canWrite }: { canWrite: boolean }) {
   const [rows, setRows] = useState<Row[]>([])
@@ -57,6 +63,7 @@ export default function PriceListPanel({ canWrite }: { canWrite: boolean }) {
   const [confirm, setConfirm] = useState<{ ids: string[] | null; changes: Change[] } | null>(null)
   const [applying, setApplying] = useState(false)
   const [notice, setNotice] = useState('')
+  const [picking, setPicking] = useState<string | null>(null) // `${rowId}|${tier}` while saving
 
   const load = useCallback(async () => {
     setLoading(true); setError('')
@@ -125,7 +132,7 @@ export default function PriceListPanel({ canWrite }: { canWrite: boolean }) {
       })
       const d = await res.json()
       if (!res.ok) throw new Error(d?.error || 'Could not check the prices')
-      if (!d.changes?.length) { setNotice('Every selected product already charges its Standard price.'); return }
+      if (!d.changes?.length) { setNotice('Every selected product already charges its chosen price.'); return }
       setConfirm({ ids, changes: d.changes })
     } catch (e) { setError(e instanceof Error ? e.message : 'Could not check the prices') }
   }
@@ -140,11 +147,64 @@ export default function PriceListPanel({ canWrite }: { canWrite: boolean }) {
       })
       const d = await res.json()
       if (!res.ok) throw new Error(d?.error || 'Could not update the prices')
-      setNotice(`POS price set to Standard on ${d.updated} row${d.updated === 1 ? '' : 's'} (products, branch copies and variants). Old prices are kept in the audit log.`)
+      setNotice(`POS price set to the chosen tier on ${d.updated} row${d.updated === 1 ? '' : 's'} (products, branch copies and variants). The website follows within 15 minutes; old prices are kept in the audit log.`)
       setConfirm(null); setSelected(new Set())
       await load()
     } catch (e) { setError(e instanceof Error ? e.message : 'Could not update the prices') }
     finally { setApplying(false) }
+  }
+
+  // One click on a price: that tier becomes the product's price at POS (and on
+  // the website at its next sync). The server recomputes the price from COGS.
+  const pickTier = async (r: Row, t: TierKey) => {
+    if (!r.tiers || picking) return
+    if (r.tier === t && !isChanged(r)) return
+    setPicking(`${r.id}|${t}`); setError(''); setNotice('')
+    try {
+      const res = await fetch('/api/inventory/price-list', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids: [r.id], tier: t }),
+      })
+      const d = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(d?.error || 'Could not set the price')
+      const price = r.tiers[t]
+      setRows(list => list.map(x => x.id !== r.id ? x : {
+        ...x, tier: t, currentPrice: price,
+        variants: x.variants.map(v => (!v.ownCost && v.currentPrice == null) || !v.tiers ? v : { ...v, currentPrice: v.tiers[t] }),
+      }))
+      setSelected(sel => { const n = new Set(sel); n.delete(r.id); return n })
+      setNotice(`${r.name} is now ${peso(price)} (${TIER_LABEL[t]}) at POS${r.copies ? ' and its branch copies' : ''}. The website picks it up within 15 minutes.`)
+    } catch (e) { setError(e instanceof Error ? e.message : 'Could not set the price') }
+    finally { setPicking(null) }
+  }
+
+  /** A tier price cell: the chosen tier is marked; the others set it on click. */
+  const tierCell = (r: Row, t: TierKey) => {
+    const val = r.tiers?.[t]
+    if (val == null) return <td className="px-3 py-2 text-right tabular-nums whitespace-nowrap">—</td>
+    const chosen = r.tier === t
+    const busy = picking === `${r.id}|${t}`
+    const label = (
+      <span className="inline-flex items-center gap-1">
+        {busy ? <Loader2 size={12} className="animate-spin" /> : chosen ? <CheckCircle2 size={12} /> : null}
+        {peso(val)}
+      </span>
+    )
+    if (!canWrite) {
+      return <td className="px-3 py-2 text-right tabular-nums whitespace-nowrap" style={chosen ? { color: 'var(--teal)', fontWeight: 700 } : undefined}>{label}</td>
+    }
+    return (
+      <td className="px-2 py-1.5 text-right tabular-nums whitespace-nowrap">
+        <button type="button" onClick={() => pickTier(r, t)} disabled={!!picking}
+          title={chosen ? `${TIER_LABEL[t]} is this product's price${isChanged(r) ? ' — click to charge it again' : ''}` : `Charge ${peso(val)} (${TIER_LABEL[t]}) at POS and on the website`}
+          className={`px-2 py-1 rounded-md border transition-colors ${chosen ? 'font-bold' : 'hover:bg-[#eef6f1] hover:border-[#b7dcc9]'}`}
+          style={chosen
+            ? { color: 'var(--teal)', background: '#e8f5ee', borderColor: '#b7dcc9' }
+            : { color: 'var(--charcoal)', borderColor: 'transparent', cursor: picking ? 'wait' : 'pointer' }}>
+          {label}
+        </button>
+      </td>
+    )
   }
 
   const handleDownload = (format: 'xlsx' | 'pdf') => {
@@ -154,16 +214,16 @@ export default function PriceListPanel({ canWrite }: { canWrite: boolean }) {
       const lines: (string | number | null)[][] = []
       for (const r of priced) {
         lines.push([r.sku, r.name, branchShort(r.branch), SKU_HIERARCHY[r.department]?.label || r.department,
-          amt(r.cogs), amt(r.tiers!.lowest), amt(r.tiers!.standard), amt(r.tiers!.highest), amt(r.currentPrice), r.unitsSold])
+          amt(r.cogs), amt(r.tiers!.lowest), amt(r.tiers!.standard), amt(r.tiers!.highest), TIER_LABEL[r.tier], amt(r.currentPrice), r.unitsSold])
         for (const v of ownVariants(r)) {
           lines.push([v.sku, `${r.name} — ${v.label}`, branchShort(r.branch), SKU_HIERARCHY[r.department]?.label || r.department,
-            amt(v.cogs), amt(v.tiers?.lowest), amt(v.tiers?.standard), amt(v.tiers?.highest), amt(v.currentPrice ?? r.currentPrice), ''])
+            amt(v.cogs), amt(v.tiers?.lowest), amt(v.tiers?.standard), amt(v.tiers?.highest), TIER_LABEL[r.tier], amt(v.currentPrice ?? r.currentPrice), ''])
         }
       }
       const missing = sold.filter(r => !r.tiers).sort((a, b) => a.name.localeCompare(b.name))
         .map(r => [r.sku, r.name, branchShort(r.branch), SKU_HIERARCHY[r.department]?.label || r.department, amt(r.currentPrice), r.unitsSold])
       downloadXlsx(`Price-List-${stamp}`, [
-        { name: 'Price List', headers: ['SKU', 'Product', 'Branch', 'Department', 'COGS', 'Lowest (COGS×3)', 'Standard (COGS×7)', 'Highest (COGS×9)', 'POS Price Now', 'Units Sold'], rows: lines },
+        { name: 'Price List', headers: ['SKU', 'Product', 'Branch', 'Department', 'COGS', 'Lowest (COGS×3)', 'Standard (COGS×7)', 'Highest (COGS×9)', 'Chosen Tier', 'POS Price Now', 'Units Sold'], rows: lines },
         { name: 'Missing COGS', headers: ['SKU', 'Product', 'Branch', 'Department', 'POS Price Now', 'Units Sold'], rows: missing },
       ])
     } else {
@@ -195,7 +255,7 @@ export default function PriceListPanel({ canWrite }: { canWrite: boolean }) {
 
   const viewLabel: Record<View, string> = {
     priced: 'products priced from COGS',
-    changes: 'products whose POS price is not the Standard price',
+    changes: 'products whose POS price is not their chosen price',
     nocogs: 'sold products with no COGS — set a unit cost to price them',
     notsold: 'products we don’t sell (no selling price and no sales) — internal use',
   }
@@ -207,7 +267,7 @@ export default function PriceListPanel({ canWrite }: { canWrite: boolean }) {
         <StatCard label="Products priced" value={loading ? '…' : counts.priced.toLocaleString()} sub="Sold products with a COGS"
           accent={{ line: 'var(--teal)' }} active={view === 'priced'} activeSub="Showing these below"
           onClick={() => setView('priced')} loading={loading} />
-        <StatCard label="POS price ≠ Standard" value={counts.changes.toLocaleString()} sub="Charging something other than COGS × 7"
+        <StatCard label="POS price ≠ chosen" value={counts.changes.toLocaleString()} sub="Charging something other than its chosen tier"
           tone={counts.changes ? 'amber' : 'zero'} active={view === 'changes'} activeSub="Showing these below"
           onClick={() => setView(v => (v === 'changes' ? 'priced' : 'changes'))} loading={loading} />
         <StatCard label="Missing COGS" value={counts.nocogs.toLocaleString()} sub="Sold, but no unit cost to price from"
@@ -223,9 +283,10 @@ export default function PriceListPanel({ canWrite }: { canWrite: boolean }) {
         style={{ background: '#fcfdfa', borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>
         <span className="inline-flex items-center gap-1.5 font-semibold" style={{ color: 'var(--charcoal)' }}><Tags size={14} style={{ color: 'var(--teal)' }} /> Price rule</span>
         {PRICE_TIERS.map(t => (
-          <span key={t.key}><b style={{ color: t.key === 'standard' ? 'var(--teal)' : 'var(--charcoal)' }}>{t.label}</b> = {t.rule}{t.key === 'standard' ? ' (POS price)' : ''}</span>
+          <span key={t.key}><b style={{ color: 'var(--charcoal)' }}>{t.label}</b> = {t.rule}{t.key === 'standard' ? ' (default)' : ''}</span>
         ))}
         <span>Rounded up to the next ₱10 · COGS = current average landed unit cost</span>
+        {canWrite && <span className="basis-full" style={{ color: 'var(--teal)' }}>Click a price to charge it at POS and on verdanarehab.com (the website updates within 15 minutes).</span>}
       </div>
 
       {error && (
@@ -262,13 +323,13 @@ export default function PriceListPanel({ canWrite }: { canWrite: boolean }) {
             <DownloadMenu onDownload={handleDownload} label="Price list" />
             {canWrite && selected.size > 0 && (
               <button onClick={() => startApply(Array.from(selected))} className={hrBtn.outline} style={{ borderColor: 'var(--teal)', color: 'var(--teal)' }}>
-                <BadgeCheck size={14} /> Apply Standard to {selected.size} selected
+                <BadgeCheck size={14} /> Apply chosen price to {selected.size} selected
               </button>
             )}
             {canWrite && counts.changes > 0 && (
               <button onClick={() => startApply(null)} className={hrBtn.primary} style={{ background: 'var(--teal)' }}
-                title="Set every sold product's POS selling price to its Standard price">
-                <BadgeCheck size={14} /> Apply Standard to all ({counts.changes})
+                title="Set every sold product's POS selling price to its chosen tier (Standard unless another was picked)">
+                <BadgeCheck size={14} /> Apply chosen prices to all ({counts.changes})
               </button>
             )}
           </div>
@@ -282,7 +343,7 @@ export default function PriceListPanel({ canWrite }: { canWrite: boolean }) {
                 {canWrite && (
                   <th className="px-3 py-2.5 w-9 border-b" style={{ borderColor: 'var(--light-gray)' }}>
                     <input type="checkbox" className="w-4 h-4 accent-teal-600" disabled={!selectable.length} checked={allSelected}
-                      title="Select every product shown whose POS price is not Standard"
+                      title="Select every product shown whose POS price is not its chosen price"
                       onChange={() => setSelected(allSelected ? new Set() : new Set(selectable.map(r => r.id)))} />
                   </th>
                 )}
@@ -304,7 +365,7 @@ export default function PriceListPanel({ canWrite }: { canWrite: boolean }) {
               )}
               {!loading && shown.map(r => {
                 const changed = isChanged(r)
-                const diff = r.tiers && r.currentPrice != null ? r.currentPrice - r.tiers.standard : null
+                const diff = r.tiers && r.currentPrice != null ? r.currentPrice - r.tiers[r.tier] : null
                 const edge = !r.tiers ? (r.sold ? '#dc2626' : 'transparent') : changed ? '#d97706' : '#059669'
                 return (
                   <Fragment key={r.id}>
@@ -327,14 +388,14 @@ export default function PriceListPanel({ canWrite }: { canWrite: boolean }) {
                         </p>
                       </td>
                       <td className="px-3 py-2 text-right tabular-nums whitespace-nowrap" style={{ color: 'var(--mid-gray)' }}>{!r.cogs ? <span style={{ color: '#b91c1c' }}>No COGS</span> : peso(r.cogs, 2)}</td>
-                      <td className="px-3 py-2 text-right tabular-nums whitespace-nowrap">{peso(r.tiers?.lowest)}</td>
-                      <td className="px-3 py-2 text-right tabular-nums whitespace-nowrap font-bold" style={{ color: 'var(--teal)' }}>{peso(r.tiers?.standard)}</td>
-                      <td className="px-3 py-2 text-right tabular-nums whitespace-nowrap">{peso(r.tiers?.highest)}</td>
+                      {tierCell(r, 'lowest')}
+                      {tierCell(r, 'standard')}
+                      {tierCell(r, 'highest')}
                       <td className="px-3 py-2 text-right tabular-nums whitespace-nowrap">
                         <span style={{ color: changed && r.tiers ? '#b45309' : 'var(--charcoal)' }}>{peso(r.currentPrice, r.currentPrice != null && r.currentPrice % 1 ? 2 : 0)}</span>
                         {diff != null && diff !== 0 && (
                           <span className="block text-[11px]" style={{ color: diff < 0 ? '#b91c1c' : '#b45309' }}>
-                            {diff > 0 ? '+' : '−'}{peso(Math.abs(diff), Math.abs(diff) % 1 ? 2 : 0)} vs Standard
+                            {diff > 0 ? '+' : '−'}{peso(Math.abs(diff), Math.abs(diff) % 1 ? 2 : 0)} vs {TIER_LABEL[r.tier]}
                           </span>
                         )}
                       </td>
@@ -347,9 +408,10 @@ export default function PriceListPanel({ canWrite }: { canWrite: boolean }) {
                           ↳ {v.label} <span className="tabular-nums">· {v.sku}</span>{v.ownCost ? ' · own cost' : ''}
                         </td>
                         <td className="px-3 py-1.5 text-right tabular-nums text-[12px]" style={{ color: 'var(--mid-gray)' }}>{peso(v.cogs, 2)}</td>
-                        <td className="px-3 py-1.5 text-right tabular-nums text-[12px]">{peso(v.tiers?.lowest)}</td>
-                        <td className="px-3 py-1.5 text-right tabular-nums text-[12px] font-bold" style={{ color: 'var(--teal)' }}>{peso(v.tiers?.standard)}</td>
-                        <td className="px-3 py-1.5 text-right tabular-nums text-[12px]">{peso(v.tiers?.highest)}</td>
+                        {(['lowest', 'standard', 'highest'] as TierKey[]).map(t => (
+                          <td key={t} className="px-3 py-1.5 text-right tabular-nums text-[12px]"
+                            style={r.tier === t ? { color: 'var(--teal)', fontWeight: 700 } : undefined}>{peso(v.tiers?.[t])}</td>
+                        ))}
                         <td className="px-3 py-1.5 text-right tabular-nums text-[12px]">{peso(v.currentPrice ?? r.currentPrice)}</td>
                         <td />
                       </tr>
@@ -363,7 +425,7 @@ export default function PriceListPanel({ canWrite }: { canWrite: boolean }) {
       </div>
 
       {confirm && (
-        <HrNoticeModal icon={<BadgeCheck size={18} />} tone="green" title="Set POS price to Standard?"
+        <HrNoticeModal icon={<BadgeCheck size={18} />} tone="green" title="Set POS price to the chosen tier?"
           subtitle={`${confirm.changes.length} price${confirm.changes.length === 1 ? '' : 's'} will change (products, branch copies and variants). Old prices are kept in the audit log.`}
           onClose={() => !applying && setConfirm(null)}
           footer={<>
@@ -377,14 +439,14 @@ export default function PriceListPanel({ canWrite }: { canWrite: boolean }) {
               <thead><tr style={{ background: 'var(--hr-head)', color: 'var(--mid-gray)' }}>
                 <th className="text-left px-2.5 py-1.5 font-semibold">SKU</th>
                 <th className="text-right px-2.5 py-1.5 font-semibold">Now</th>
-                <th className="text-right px-2.5 py-1.5 font-semibold">Standard</th>
+                <th className="text-right px-2.5 py-1.5 font-semibold">New</th>
               </tr></thead>
               <tbody>
                 {confirm.changes.slice(0, 200).map(c => (
                   <tr key={c.kind + c.id} className="border-t" style={{ borderColor: 'var(--hr-line)' }}>
                     <td className="px-2.5 py-1 tabular-nums">{c.sku}{c.kind !== 'item' ? <span style={{ color: 'var(--mid-gray)' }}> · {c.kind === 'copy' ? 'branch copy' : 'variant'}</span> : null}</td>
                     <td className="px-2.5 py-1 text-right tabular-nums" style={{ color: 'var(--mid-gray)' }}>{peso(c.oldPrice, c.oldPrice != null && c.oldPrice % 1 ? 2 : 0)}</td>
-                    <td className="px-2.5 py-1 text-right tabular-nums font-semibold" style={{ color: 'var(--teal)' }}>{peso(c.newPrice)}</td>
+                    <td className="px-2.5 py-1 text-right tabular-nums font-semibold" style={{ color: 'var(--teal)' }}>{peso(c.newPrice)} <span className="font-normal" style={{ color: 'var(--mid-gray)' }}>{TIER_LABEL[c.tier]}</span></td>
                   </tr>
                 ))}
               </tbody>

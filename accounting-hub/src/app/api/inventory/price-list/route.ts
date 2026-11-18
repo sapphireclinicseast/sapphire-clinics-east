@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { priceTiers, type Tiers } from '@/lib/price-tiers'
+import { PRICE_TIERS, priceTiers, type TierKey, type Tiers } from '@/lib/price-tiers'
 
 /**
  * Price list — three tiers per product we sell, from the CURRENT COGS
@@ -10,12 +10,27 @@ import { priceTiers, type Tiers } from '@/lib/price-tiers'
  * GET  → every active product (branch consignment copies folded into their
  *        pool product), with COGS, tiers, current price, units sold and
  *        whether it counts as sold (has a selling price or sales history).
- * POST → { ids?: string[] } sets the POS selling price to the Standard tier,
- *        recomputed here from the live COGS (never trusted from the client).
- *        No ids = every sold product whose price differs from Standard.
+ * POST → { ids?: string[], tier?: 'lowest'|'standard'|'highest', dryRun? }
+ *        sets the POS selling price to a tier, recomputed here from the live
+ *        COGS (never trusted from the client).
+ *        With `tier` (a click on a price in the list): that tier becomes the
+ *        product's chosen tier (InventoryItem.priceTier) and its price.
+ *        Without: each product goes to its own chosen tier (Standard unless
+ *        one was picked), so a re-price after a COGS change keeps the choice.
+ *        No ids = every sold product whose price differs from its tier.
  *        Branch copies and per-variant prices follow; each change is audited
- *        with the old price so it can be undone.
+ *        with the old price so it can be undone. verdanarehab.com reads the
+ *        POS price every 15 minutes (/api/internal/store-prices), so the
+ *        website follows on its own.
  */
+
+const TIER_KEYS = PRICE_TIERS.map(t => t.key) as TierKey[]
+const asTier = (v: unknown): TierKey | null => (TIER_KEYS.includes(v as TierKey) ? (v as TierKey) : null)
+const TIER_RULE: Record<TierKey, string> = {
+  lowest: 'Lowest = COGS × 3, rounded up to ₱10',
+  standard: 'Standard = COGS × 7, rounded up to ₱10',
+  highest: 'Highest = COGS × 9, rounded up to ₱10',
+}
 
 const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN']
 
@@ -44,6 +59,8 @@ export interface PriceListRow {
   cogsSource: 'unitCost' | 'bundle'
   currentPrice: number | null
   tiers: Tiers | null
+  /** The tier this product is priced at (chosen on the list; Standard by default). */
+  tier: TierKey
   unitsSold: number
   lastSold: string | null
   sold: boolean
@@ -57,7 +74,7 @@ async function loadRows(): Promise<PriceListRow[]> {
       where: { isActive: true },
       select: {
         id: true, sku: true, name: true, branch: true, skuDepartment: true, isBundle: true, imageUrl: true,
-        unitCost: true, sellingPrice: true, sourceItemId: true,
+        unitCost: true, sellingPrice: true, priceTier: true, sourceItemId: true,
         variants: {
           where: { isActive: true },
           select: { id: true, variantLabel: true, variantSku: true, unitCost: true, sellingPrice: true },
@@ -128,7 +145,7 @@ async function loadRows(): Promise<PriceListRow[]> {
       id: it.id, sku: it.sku, name: it.name, branch: it.branch, department: it.skuDepartment,
       isBundle: it.isBundle, imageUrl: it.imageUrl,
       cogs, cogsSource: bundleCost && bundleCost > 0 ? 'bundle' : 'unitCost',
-      currentPrice, tiers,
+      currentPrice, tiers, tier: asTier(it.priceTier) ?? 'standard',
       unitsSold: s?.units || 0,
       lastSold: s?.last ? s.last.toISOString() : null,
       // "Sold" = something we sell: priced for POS or with sales on record.
@@ -155,22 +172,30 @@ export async function POST(req: Request) {
   }
   const body = await req.json().catch(() => ({}))
   const ids: string[] | null = Array.isArray(body?.ids) ? body.ids.filter((x: unknown) => typeof x === 'string') : null
+  const pick = body?.tier == null ? null : asTier(body.tier)
+  if (body?.tier != null && !pick) return NextResponse.json({ error: 'Unknown price tier' }, { status: 400 })
+  // Picking a tier is a per-product choice; it never sweeps the whole list.
+  if (pick && !ids?.length) return NextResponse.json({ error: 'Pick the products to price' }, { status: 400 })
 
   const rows = await loadRows()
   const target = rows.filter(r => r.sold && r.tiers && (ids ? ids.includes(r.id) : true))
+  const tierOf = (r: PriceListRow): TierKey => pick ?? r.tier
 
-  type Change = { kind: 'item' | 'copy' | 'variant'; id: string; sku: string; cogs: number | null; oldPrice: number | null; newPrice: number }
+  type Change = { kind: 'item' | 'copy' | 'variant'; id: string; sku: string; cogs: number | null; oldPrice: number | null; newPrice: number; tier: TierKey }
   const changes: Change[] = []
   for (const r of target) {
-    const std = r.tiers!.standard
-    if (r.currentPrice !== std) changes.push({ kind: 'item', id: r.id, sku: r.sku, cogs: r.cogs, oldPrice: r.currentPrice, newPrice: std })
+    const t = tierOf(r)
+    const price = r.tiers![t]
+    if (r.currentPrice !== price) changes.push({ kind: 'item', id: r.id, sku: r.sku, cogs: r.cogs, oldPrice: r.currentPrice, newPrice: price, tier: t })
     for (const v of r.variants) {
       // A variant with no price of its own already charges the product price.
       if (!v.ownCost && v.currentPrice == null) continue
-      const vStd = v.tiers?.standard
-      if (vStd != null && v.currentPrice !== vStd) changes.push({ kind: 'variant', id: v.id, sku: v.sku, cogs: v.cogs, oldPrice: v.currentPrice, newPrice: vStd })
+      const vPrice = v.tiers?.[t]
+      if (vPrice != null && v.currentPrice !== vPrice) changes.push({ kind: 'variant', id: v.id, sku: v.sku, cogs: v.cogs, oldPrice: v.currentPrice, newPrice: vPrice, tier: t })
     }
   }
+  // Products whose chosen tier changes (saved even when the price already matches).
+  const tierSets = pick ? target.filter(r => r.tier !== pick) : []
 
   // Branch copies carry the pool price so a clinic sale charges the same.
   const poolIds = target.map(r => r.id)
@@ -180,30 +205,43 @@ export async function POST(req: Request) {
         select: { id: true, sku: true, sellingPrice: true, sourceItemId: true },
       })
     : []
-  const stdOf = new Map(target.map(r => [r.id, r.tiers!.standard]))
+  const poolPrice = new Map(target.map(r => [r.id, { price: r.tiers![tierOf(r)], tier: tierOf(r) }]))
   for (const c of copies) {
-    const std = stdOf.get(c.sourceItemId!)
-    if (std != null && num(c.sellingPrice) !== std) changes.push({ kind: 'copy', id: c.id, sku: c.sku, cogs: null, oldPrice: num(c.sellingPrice), newPrice: std })
+    const p = poolPrice.get(c.sourceItemId!)
+    if (p && num(c.sellingPrice) !== p.price) changes.push({ kind: 'copy', id: c.id, sku: c.sku, cogs: null, oldPrice: num(c.sellingPrice), newPrice: p.price, tier: p.tier })
   }
 
   if (body?.dryRun) return NextResponse.json({ dryRun: true, changes })
-  if (!changes.length) return NextResponse.json({ updated: 0, changes })
+  if (!changes.length && !tierSets.length) return NextResponse.json({ updated: 0, changes })
 
   await prisma.$transaction(async tx => {
     for (const c of changes) {
       if (c.kind === 'variant') await tx.inventoryVariant.update({ where: { id: c.id }, data: { sellingPrice: c.newPrice } })
       else await tx.inventoryItem.update({ where: { id: c.id }, data: { sellingPrice: c.newPrice } })
     }
+    // Standard is the default, so it is stored as "no choice".
+    for (const r of tierSets) {
+      await tx.inventoryItem.update({ where: { id: r.id }, data: { priceTier: pick === 'standard' ? null : pick } })
+    }
     await tx.auditLog.createMany({
-      data: changes.map(c => ({
-        userId: session.user.id!,
-        action: 'PRICE_TIER_APPLY',
-        entity: c.kind === 'variant' ? 'inventoryVariant' : 'inventoryItem',
-        entityId: c.id,
-        details: { sku: c.sku, cogs: c.cogs, oldPrice: c.oldPrice, newPrice: c.newPrice, rule: 'Standard = COGS × 7, rounded up to ₱10' },
-      })),
+      data: [
+        ...changes.map(c => ({
+          userId: session.user.id!,
+          action: 'PRICE_TIER_APPLY',
+          entity: c.kind === 'variant' ? 'inventoryVariant' : 'inventoryItem',
+          entityId: c.id,
+          details: { sku: c.sku, cogs: c.cogs, oldPrice: c.oldPrice, newPrice: c.newPrice, tier: c.tier, rule: TIER_RULE[c.tier] },
+        })),
+        ...tierSets.map(r => ({
+          userId: session.user.id!,
+          action: 'PRICE_TIER_CHOSEN',
+          entity: 'inventoryItem',
+          entityId: r.id,
+          details: { sku: r.sku, oldTier: r.tier, newTier: pick },
+        })),
+      ],
     })
   }, { timeout: 60_000 })
 
-  return NextResponse.json({ updated: changes.length, changes })
+  return NextResponse.json({ updated: changes.length, tierChanged: tierSets.length, changes })
 }
