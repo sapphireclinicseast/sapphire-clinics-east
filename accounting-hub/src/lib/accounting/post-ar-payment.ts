@@ -74,11 +74,18 @@ export async function postARPaymentJournal(
 
   // QuickBooks era: a 2025 HMO cheque's collection is in the QB import. Editing
   // its tags in Payment History (reverse + re-post) must not give it a first,
-  // hub-made entry. Payments that already carry hub entries (the 2026-08-06
-  // Guarantee Letter migration, Cainta) keep posting as before.
+  // hub-made entry.
   if (payment.wallet.walletType === 'HMO' && payment.paymentDate < QB_ERA_END) {
     const history = await prisma.journalEntry.count({ where: { referenceType: { in: ['AR_PAYMENT', 'AR_PAYMENT_REVERSAL'] }, referenceId: paymentId } })
     if (history === 0) return { posted: false, reason: 'QuickBooks era: HMO collections dated before 2026 are in the QB import, so the hub posts none' }
+  }
+  // Same for a 2025 Guarantee Letter cheque (Hannah 2026-11-18, AR25-0007): the
+  // 2026-08-06 GL migration also gave most of them a hub entry, a second copy of
+  // the QB one. An edit reverses that copy and posts none in its place, so
+  // re-dating a 2025 GL cheque never moves it into a branch's 2026 opening.
+  // Write-offs with no cash (the LGU/Cainta bridge) are not in QB and keep posting.
+  if (payment.wallet.walletType === 'GL' && payment.paymentDate < QB_ERA_END && Number(payment.amount) > 0) {
+    return { posted: false, reason: 'QuickBooks era: Guarantee Letter collections dated before 2026 are in the QB import, so the hub posts none' }
   }
 
   const cashAmt     = Number(payment.amount)
