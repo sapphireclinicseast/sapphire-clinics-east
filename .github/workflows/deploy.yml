@@ -1805,19 +1805,20 @@ jobs:
             echo "=== DB column check: lastLoginAt exists ==="
             docker exec accounting_db psql -U sapphire -d sapphire_accounting -c "SELECT column_name, data_type FROM information_schema.columns WHERE table_name = '"'"'User'"'"' AND column_name IN ('"'"'lastLoginAt'"'"', '"'"'resetToken'"'"', '"'"'passwordHash'"'"');" 2>&1
 
-            echo "=== Test login attempt (triggers [auth] logs) ==="
-            CSRF=$(curl -s http://localhost:3001/api/auth/csrf | grep -o '"token":"[^"]*"' | cut -d'"' -f4 || echo "NO_CSRF")
-            echo "CSRF token: $CSRF"
-            if [ "$CSRF" != "NO_CSRF" ] && [ -n "$CSRF" ]; then
-              curl -s -X POST http://localhost:3001/api/auth/callback/credentials \
-                -H "Content-Type: application/x-www-form-urlencoded" \
-                -d "email=main%40sapphireclinicseast.org&password=SCEIAccounting2026%21&csrfToken=${CSRF}&callbackUrl=http%3A%2F%2Flocalhost%3A3001%2Fdashboard&redirect=false" \
-                -o /dev/null -w "HTTP %{http_code}" 2>&1 || true
-            fi
-
+            # A test login used to be fired here, to make the app emit [auth]
+            # log lines. It carried the main admin's real password in
+            # plaintext, in a workflow file, in a repository that is public.
+            #
+            # Removed 2026-11-19. The password had already been rotated, so
+            # the value this file used to hold is dead — but note it remains
+            # in git history, and deleting a line does not retract it.
+            #
+            # If auth logging needs exercising again, do it with a throwaway
+            # account whose credentials live in GitHub Secrets, never inline.
+            # The log dump below still shows whatever the app logged on its
+            # own, which is what this diagnostic is actually for.
             echo ""
-            echo "=== accounting_app logs AFTER test login ==="
-            sleep 2
+            echo "=== accounting_app logs ==="
             docker logs accounting_app --tail 30 2>&1
 
             echo "=== Recent auth errors (nginx) ==="
