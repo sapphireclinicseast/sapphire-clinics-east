@@ -30,7 +30,7 @@ const STATE_PILL: Record<string, { bg: string; fg: string; text: string }> = {
   PARKED: { bg: '#ede9fe', fg: RETRO_CANCEL_COLOR, text: 'Parked' },
   WAIVED: { bg: '#f1f5f9', fg: '#475569', text: 'Waived' },
 }
-const BRANCH_LABEL: Record<string, string> = { SANDBOX_EAST: 'East', SANDBOX_GREENHILLS: 'Greenhills' }
+export const BRANCH_LABEL: Record<string, string> = { SANDBOX_EAST: 'East', SANDBOX_GREENHILLS: 'Greenhills' }
 // HR Hub look (Hannah 11/18: "improve this UI it seems difficult for the
 // eyes"): stat cards that filter, one card for toolbar + table, a light
 // patient line, two-line booking cells and a coloured edge per state.

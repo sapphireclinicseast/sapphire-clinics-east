@@ -309,7 +309,7 @@ export async function GET(
       const parked = (await prisma.parkedGlCharge.findMany({
         where: { patientId: wallet.patientId, status: 'PARKED' },
         orderBy: { eventDate: 'asc' },
-        select: { id: true, eventDate: true, detail: true, feeName: true, amount: true, reason: true },
+        select: { id: true, eventDate: true, eventType: true, department: true, therapistName: true, detail: true, feeName: true, amount: true, reason: true },
       })).map(p => ({ ...p, amount: Number(p.amount) }))
       return NextResponse.json({ ...wallet, ledger: glEnriched, initialBalance: glInitialBalance, orders, glPaid, parked })
     }

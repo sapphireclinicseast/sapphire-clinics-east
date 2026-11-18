@@ -32,7 +32,7 @@ import TuitionDesk from './TuitionDesk'
 import { buildSoaPdf, MONTH_OPTIONS, periodLabel, type SoaSettings, type SoaOrder } from '@/lib/soa-pdf'
 import { EARLIEST_OBTAINED, latestObtained, obtainedDateError } from '@/lib/wallet-dates'
 import CancellationLinkModal, { type FeeLine } from './CancellationLinkModal'
-import UnchargedCancellations, { type UnchargedRow, WHAT as ABSENCE_WHAT, day as absenceDay, whyText as absenceWhy } from './UnchargedCancellations'
+import UnchargedCancellations, { type UnchargedRow, WHAT as ABSENCE_WHAT, day as absenceDay, whyText as absenceWhy, BRANCH_LABEL as ABSENCE_BRANCH } from './UnchargedCancellations'
 import { HR_PAGE_CLASS, HR_PAGE_STYLE, HrShimmerStyle, HrNoticeModal, hrBtn } from '@/components/ui/hr-look'
 import { GiftCardBatchList, GiftCardCodeInput, printGiftCards, type GiftCardBatchRow } from './GiftCards'
 
@@ -199,7 +199,7 @@ interface DigitalWallet {
   ledger?: WalletLedgerEntry[]
   initialBalance?: number
   /** GL: the patient's parked cancellation fees (lib/pos/parked-gl-charges). */
-  parked?: { id: string; eventDate: string; detail: string; feeName: string; amount: number; reason: string | null }[]
+  parked?: { id: string; eventDate: string; detail: string; feeName: string; amount: number; reason: string | null; eventType?: string; department?: string | null; therapistName?: string | null }[]
   [key: string]: unknown
 }
 
@@ -207,7 +207,13 @@ interface DigitalWallet {
 interface ParkedFee {
   id: string; patientId: string; patientName: string; branch: string
   eventDate: string; detail: string; feeName: string; amount: number; reason: string | null
+  /** CANCELLED | RESCHEDULED | NO_SHOW; with the therapist and when it was parked (full row from the API). */
+  eventType?: string; department?: string | null; therapistName?: string | null; createdAt?: string
 }
+/** "Nov 3, 2026" in Manila for a stored DateTime (eventDate is Manila midnight, so never slice the ISO day). */
+const manilaDay = (iso: string) => new Date(iso).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'Asia/Manila' })
+const capFirst = (t: string) => t.charAt(0).toUpperCase() + t.slice(1)
+const PARKED_EDGE = '#a78bfa'
 
 interface ChargeParkedResponse {
   charged?: { orderNumber: number | null; amount: number }[]
@@ -6496,10 +6502,11 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
             </span>
           )}
           {parkedFees.length > 0 && (
-            <button onClick={() => setShowParked(o => !o)}
-              className="flex items-center gap-1.5 text-xs px-3 py-2 rounded-xl font-semibold border"
-              style={{ borderColor: '#ddd6fe', background: '#f5f3ff', color: RETRO_CANCEL_COLOR }}>
-              <span className="font-mono">{parkedFees.length}</span> parked cancellation fees · <span className="font-mono">{formatCurrency(parkedTotal)}</span> · <span className="font-mono">{parkedByPatient.size}</span> patients
+            <button onClick={() => setShowParked(o => !o)} aria-expanded={showParked}
+              className="flex items-center gap-1.5 text-xs h-8 px-3 rounded-lg font-semibold border bg-white hover:bg-[#f5f3ff]"
+              style={{ borderColor: '#ddd6fe', color: RETRO_CANCEL_COLOR }}>
+              <Clock size={12} />
+              <span className="font-mono">{parkedFees.length}</span> parked fee{parkedFees.length === 1 ? '' : 's'} · <span className="font-mono">{formatCurrency(parkedTotal)}</span>
               <ChevronDown size={12} style={{ transform: showParked ? 'rotate(180deg)' : undefined }} />
             </button>
           )}
@@ -6512,49 +6519,87 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
         </div>
       )}
       {walletTypeFilter === 'GL' && showParked && parkedFees.length > 0 && (
-        <div className="rounded-2xl border bg-white overflow-x-auto" style={{ borderColor: '#ddd6fe' }}>
-          <p className="px-5 pt-3 pb-2 text-xs" style={{ color: 'var(--mid-gray)' }}>
-            Cancellation fees no letter had room for (the letter in use was used up or too low). They go on the patient&apos;s next guarantee letter
-            automatically when it&apos;s created, dated on the cancellation — or open the patient&apos;s letter and click <b>Charge to this letter</b>.
+        // Same look as POS → Services → Uncharged Cancellations (Hannah 11/18:
+        // "make the parked fees view look like this too").
+        <div className="rounded-lg border bg-white overflow-hidden" style={{ borderColor: 'var(--light-gray)', borderLeft: `4px solid ${RETRO_CANCEL_COLOR}` }}>
+          <div className="flex items-center gap-2 flex-wrap px-3 py-2 border-b" style={{ background: '#f5f3ff', borderColor: '#ddd6fe' }}>
+            <Clock size={14} style={{ color: RETRO_CANCEL_COLOR }} />
+            <span className="text-[13px] font-bold" style={{ color: RETRO_CANCEL_COLOR }}>Parked cancellation fees</span>
+            <span className="px-2 py-0.5 rounded-full text-[11px] font-semibold" style={{ background: '#ede9fe', color: RETRO_CANCEL_COLOR }}>
+              <span className="font-mono">{parkedFees.length}</span> · <span className="font-mono">{formatCurrency(parkedTotal)}</span> · <span className="font-mono">{parkedByPatient.size}</span> patient{parkedByPatient.size === 1 ? '' : 's'}
+            </span>
+            <span className="text-[11.5px]" style={{ color: '#6d28d9' }}>waiting for a letter with room</span>
+            <button onClick={() => setShowParked(false)} className="ml-auto p-1 rounded-md hover:bg-[#ede9fe]" style={{ color: RETRO_CANCEL_COLOR }} aria-label="Close parked fees"><X size={14} /></button>
+          </div>
+          <p className="px-3 py-2 text-xs border-b" style={{ color: 'var(--mid-gray)', borderColor: 'var(--hr-line)' }}>
+            No letter had room for these (used up or too low). They go on the patient&apos;s next guarantee letter automatically when it&apos;s created,
+            dated on the cancellation — or open the patient&apos;s letter and click <b>Charge to this letter</b>.
           </p>
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b text-xs" style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>
-                <th className="px-5 py-2 text-left font-semibold">Patient</th>
-                <th className="px-5 py-2 text-left font-semibold">Cancellation</th>
-                <th className="px-5 py-2 text-left font-semibold">Fee</th>
-                <th className="px-5 py-2 text-right font-semibold">Amount</th>
-                {canWaiveParked && <th className="px-5 py-2" />}
-              </tr>
-            </thead>
-            <tbody>
-              {[...parkedByPatient.entries()].sort((a, b) => b[1].amount - a[1].amount).flatMap(([pid, p]) => {
-                const fees = parkedFees.filter(f => f.patientId === pid)
-                return [
-                  <tr key={`${pid}-h`} className="border-b" style={{ borderColor: 'var(--light-gray)', background: '#faf9ff' }}>
-                    <td className="px-5 py-2 font-semibold" style={{ color: 'var(--charcoal)' }}>{p.name}</td>
-                    <td className="px-5 py-2 text-xs" style={{ color: 'var(--mid-gray)' }}><span className="font-mono">{p.count}</span> fee{p.count === 1 ? '' : 's'}</td>
-                    <td />
-                    <td className="px-5 py-2 text-right font-mono font-semibold" style={{ color: RETRO_CANCEL_COLOR }}>{formatCurrency(p.amount)}</td>
-                    {canWaiveParked && <td />}
-                  </tr>,
-                  ...fees.map(f => (
-                    <tr key={f.id} className="border-b text-xs" style={{ borderColor: 'var(--light-gray)' }}>
-                      <td />
-                      <td className="px-5 py-1.5" style={{ color: 'var(--charcoal)' }}>{f.detail}</td>
-                      <td className="px-5 py-1.5" style={{ color: 'var(--mid-gray)' }}>{f.feeName}</td>
-                      <td className="px-5 py-1.5 text-right font-mono">{formatCurrency(f.amount)}</td>
-                      {canWaiveParked && (
-                        <td className="px-5 py-1.5 text-right">
-                          <button onClick={() => openWaive(f)} className="text-xs font-semibold underline" style={{ color: '#b91c1c' }}>Waive</button>
+          <div className="overflow-x-auto">
+            <table className="w-full text-[12.5px]" style={{ minWidth: 640 }}>
+              <thead>
+                <tr style={{ background: 'var(--hr-head)' }}>
+                  {['Booking · why parked', 'Therapist', 'Fee', ...(canWaiveParked ? [''] : [])].map((h, i) => (
+                    <th key={i} className={`px-3 py-2 text-[11px] font-bold uppercase tracking-[.4px] whitespace-nowrap ${i === 2 ? 'text-right' : 'text-left'}`}
+                      style={{ color: 'var(--mid-gray)', borderBottom: '1px solid var(--hr-line)' }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {[...parkedByPatient.entries()].sort((a, b) => b[1].amount - a[1].amount).flatMap(([pid, p]) => {
+                  const fees = parkedFees.filter(f => f.patientId === pid)
+                  return [
+                    <tr key={`${pid}-h`} style={{ background: '#fbfcf8', borderTop: '1px solid var(--light-gray)' }}>
+                      <td colSpan={canWaiveParked ? 4 : 3} className="px-3 pt-3 pb-1.5">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="text-[13px] font-bold" style={{ color: 'var(--charcoal)' }}>{p.name}</span>
+                          {fees[0]?.branch && (
+                            <span className="px-2 py-0.5 rounded-full text-[10.5px] font-semibold" style={{ background: 'var(--pale-teal)', color: 'var(--deep-teal)' }}>
+                              {ABSENCE_BRANCH[fees[0].branch] || fees[0].branch}
+                            </span>
+                          )}
+                          <span className="ml-auto px-2 py-0.5 rounded-full text-[11.5px] font-semibold" style={{ background: '#ede9fe', color: RETRO_CANCEL_COLOR }}>
+                            <span className="font-mono">{formatCurrency(p.amount)}</span> parked · <span className="font-mono">{p.count}</span> fee{p.count === 1 ? '' : 's'}
+                          </span>
+                        </div>
+                      </td>
+                    </tr>,
+                    ...fees.map(f => (
+                      <tr key={f.id} className="align-top" style={{ borderTop: '1px solid var(--hr-line)' }}>
+                        <td className="px-3 py-2.5" style={{ boxShadow: `inset 3px 0 0 ${PARKED_EDGE}` }}>
+                          {f.eventType ? (
+                            <div className="whitespace-nowrap">
+                              <span className="font-semibold" style={{ color: 'var(--charcoal)' }}>{ABSENCE_WHAT[f.eventType] || capFirst(f.eventType.toLowerCase())}</span>
+                              <span className="font-mono" style={{ color: 'var(--mid-gray)' }}> · {manilaDay(f.eventDate)}</span>
+                            </div>
+                          ) : (
+                            <div style={{ color: 'var(--charcoal)' }}>{capFirst(f.detail)}</div>
+                          )}
+                          <div className="text-[11.5px]" style={{ color: 'var(--hr-faint)' }}>
+                            {f.reason ? capFirst(f.reason) : 'No letter had room'}
+                            {f.createdAt && <> · parked <span className="font-mono">{manilaDay(f.createdAt)}</span></>}
+                          </div>
                         </td>
-                      )}
-                    </tr>
-                  )),
-                ]
-              })}
-            </tbody>
-          </table>
+                        <td className="px-3 py-2.5 min-w-[140px]">
+                          <div style={{ color: 'var(--charcoal)' }}>{f.therapistName || '—'}</div>
+                          {f.department && <div className="text-[11px]" style={{ color: 'var(--hr-faint)' }}>{f.department}</div>}
+                        </td>
+                        <td className="px-3 py-2.5 text-right min-w-[118px]">
+                          <div className="font-mono font-semibold whitespace-nowrap" style={{ color: 'var(--charcoal)' }}>{formatCurrency(f.amount)}</div>
+                          <div className="text-[10.5px]" style={{ color: 'var(--hr-faint)' }}>{f.feeName}</div>
+                        </td>
+                        {canWaiveParked && (
+                          <td className="px-3 py-2.5 text-right whitespace-nowrap">
+                            <button onClick={() => openWaive(f)} className="h-7 px-2.5 rounded-lg text-[11px] font-semibold hover:bg-[#fef2f2]" style={{ color: '#b91c1c' }}>Waive</button>
+                          </td>
+                        )}
+                      </tr>
+                    )),
+                  ]
+                })}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 
@@ -7866,34 +7911,50 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
                 <>
               {/* Parked cancellation fees — waiting for a letter with room */}
               {walletDetail.walletType === 'GL' && (walletDetail.parked?.length || 0) > 0 && (
-                <div className="mb-4 rounded-xl border px-4 py-3" style={{ borderColor: '#ddd6fe', background: '#f5f3ff' }}>
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="text-xs" style={{ color: RETRO_CANCEL_COLOR }}>
-                      <p className="font-semibold text-sm">
-                        <span className="font-mono">{walletDetail.parked!.length}</span> parked cancellation fee{walletDetail.parked!.length === 1 ? '' : 's'} ·{' '}
-                        <span className="font-mono">{formatCurrency(walletDetail.parked!.reduce((s, p) => s + p.amount, 0))}</span>
-                      </p>
-                      <p className="mt-0.5" style={{ color: 'var(--mid-gray)' }}>No letter had room for these when they happened. They go on this patient&apos;s next letter — or charge them here, dated on each cancellation.</p>
-                      <ul className="mt-1.5 space-y-0.5">
-                        {walletDetail.parked!.map(p => (
-                          <li key={p.id}>
-                            <span className="font-mono">{formatCurrency(p.amount)}</span> · {p.feeName} — {p.detail}
-                            {canWaiveParked && (
-                              <button onClick={() => openWaive({ ...p, patientName: walletDetail.patientName })}
-                                className="ml-2 text-[11px] font-semibold underline" style={{ color: '#b91c1c' }}>Waive</button>
-                            )}
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
+                <div className="mb-4 rounded-lg border bg-white overflow-hidden" style={{ borderColor: 'var(--light-gray)', borderLeft: `4px solid ${RETRO_CANCEL_COLOR}` }}>
+                  <div className="flex items-center gap-2 flex-wrap px-3 py-2 border-b" style={{ background: '#f5f3ff', borderColor: '#ddd6fe' }}>
+                    <Clock size={14} style={{ color: RETRO_CANCEL_COLOR }} />
+                    <span className="text-[12.5px] font-bold" style={{ color: RETRO_CANCEL_COLOR }}>Parked cancellation fee{walletDetail.parked!.length === 1 ? '' : 's'}</span>
+                    <span className="px-2 py-0.5 rounded-full text-[11px] font-semibold" style={{ background: '#ede9fe', color: RETRO_CANCEL_COLOR }}>
+                      <span className="font-mono">{walletDetail.parked!.length}</span> · <span className="font-mono">{formatCurrency(walletDetail.parked!.reduce((s, p) => s + p.amount, 0))}</span>
+                    </span>
                     {walletDetail.isActive !== false && !walletDetail.usedUpAt && (
                       <button onClick={chargeParkedHere} disabled={parkedBusy}
-                        className="flex-none flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium text-white"
-                        style={{ background: RETRO_CANCEL_COLOR, opacity: parkedBusy ? 0.7 : 1 }}>
+                        className="ml-auto h-7 px-2.5 rounded-lg text-[11px] font-semibold text-white inline-flex items-center gap-1 disabled:opacity-70"
+                        style={{ background: RETRO_CANCEL_COLOR }}>
                         {parkedBusy && <Loader2 size={12} className="animate-spin" />} Charge to this letter
                       </button>
                     )}
                   </div>
+                  <p className="px-3 py-1.5 text-[11.5px]" style={{ color: 'var(--mid-gray)' }}>
+                    No letter had room for these when they happened. They go on this patient&apos;s next letter — or charge them here, dated on each cancellation.
+                  </p>
+                  {walletDetail.parked!.map(p => (
+                    <div key={p.id} className="flex items-center gap-3 px-3 py-2" style={{ borderTop: '1px solid var(--hr-line)', boxShadow: `inset 3px 0 0 ${PARKED_EDGE}` }}>
+                      <div className="min-w-0 flex-1">
+                        {p.eventType ? (
+                          <div className="text-[12.5px] whitespace-nowrap truncate">
+                            <span className="font-semibold" style={{ color: 'var(--charcoal)' }}>{ABSENCE_WHAT[p.eventType] || capFirst(p.eventType.toLowerCase())}</span>
+                            <span className="font-mono" style={{ color: 'var(--mid-gray)' }}> · {manilaDay(p.eventDate)}</span>
+                          </div>
+                        ) : (
+                          <div className="text-[12.5px]" style={{ color: 'var(--charcoal)' }}>{capFirst(p.detail)}</div>
+                        )}
+                        <div className="text-[11.5px] truncate" style={{ color: 'var(--hr-faint)' }} title={p.detail}>
+                          {p.reason ? capFirst(p.reason) : 'No letter had room'}
+                          {p.eventType && [p.department, p.therapistName].filter(Boolean).map(x => ` · ${x}`).join('')}
+                        </div>
+                      </div>
+                      <div className="shrink-0 text-right">
+                        <div className="font-mono font-semibold text-[12.5px] whitespace-nowrap" style={{ color: 'var(--charcoal)' }}>{formatCurrency(p.amount)}</div>
+                        <div className="text-[10.5px] whitespace-nowrap" style={{ color: 'var(--hr-faint)' }}>{p.feeName}</div>
+                      </div>
+                      {canWaiveParked && (
+                        <button onClick={() => openWaive({ ...p, patientName: walletDetail.patientName })}
+                          className="shrink-0 h-7 px-2.5 rounded-lg text-[11px] font-semibold hover:bg-[#fef2f2]" style={{ color: '#b91c1c' }}>Waive</button>
+                      )}
+                    </div>
+                  ))}
                 </div>
               )}
               {/* Running Balance — monetary wallets and GL (consumable balance tracking) */}
