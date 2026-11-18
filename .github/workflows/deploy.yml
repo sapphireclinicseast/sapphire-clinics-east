@@ -1779,6 +1779,18 @@ jobs:
   # ── Diagnostic: accounting-hub logs ──────────────────────────
   check-accounting-logs:
     name: Check Accounting Hub Logs
+    # A DIAGNOSTIC cannot fail the deploy.
+    #
+    # On 2026-11-18 this job ran while the deploy was recreating
+    # accounting_app, found it momentarily absent, and `docker logs` returned
+    # non-zero. Under the default `bash -e` that failed the step, the job, and
+    # the whole run — which was reported red while "Build & Deploy: success"
+    # sat right above it.
+    #
+    # A red run that does not mean a failed deploy is worse than no signal at
+    # all: it is the reason real failures get waved through. This job reads
+    # logs and reports; its result is advisory and now says so.
+    continue-on-error: true
     runs-on: ubuntu-latest
     needs: deploy
     if: always()
@@ -1794,16 +1806,16 @@ jobs:
           ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no \
             ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} '
             echo "=== accounting_app last 80 lines ==="
-            docker logs accounting_app --tail 80 2>&1
+            docker logs accounting_app --tail 80 2>&1 || echo "(accounting_app not running — probably mid-restart)"
 
             echo "=== env vars (masked) ==="
-            docker exec accounting_app env 2>/dev/null | grep -E "NEXTAUTH|AUTH_TRUST|DATABASE_URL|NODE_ENV" | sed "s|postgresql://[^@]*@|postgresql://***@|g"
+            docker exec accounting_app env 2>/dev/null | grep -E "NEXTAUTH|AUTH_TRUST|DATABASE_URL|NODE_ENV" | sed "s|postgresql://[^@]*@|postgresql://***@|g" || echo "(could not read env — container not running)"
 
             echo "=== Users in accounting DB (with passwordHash prefix) ==="
             docker exec accounting_db psql -U sapphire -d sapphire_accounting -c "SELECT id, email, role, LEFT(\"passwordHash\", 10) AS hash_prefix, \"lastLoginAt\", \"updatedAt\" FROM \"User\" ORDER BY \"createdAt\" LIMIT 10;" 2>&1 || echo "DB query failed"
 
             echo "=== DB column check: lastLoginAt exists ==="
-            docker exec accounting_db psql -U sapphire -d sapphire_accounting -c "SELECT column_name, data_type FROM information_schema.columns WHERE table_name = '"'"'User'"'"' AND column_name IN ('"'"'lastLoginAt'"'"', '"'"'resetToken'"'"', '"'"'passwordHash'"'"');" 2>&1
+            docker exec accounting_db psql -U sapphire -d sapphire_accounting -c "SELECT column_name, data_type FROM information_schema.columns WHERE table_name = '"'"'User'"'"' AND column_name IN ('"'"'lastLoginAt'"'"', '"'"'resetToken'"'"', '"'"'passwordHash'"'"');" 2>&1 || echo "column check failed"
 
             # A test login used to be fired here, to make the app emit [auth]
             # log lines. It carried the main admin's real password in
@@ -1819,7 +1831,7 @@ jobs:
             # own, which is what this diagnostic is actually for.
             echo ""
             echo "=== accounting_app logs ==="
-            docker logs accounting_app --tail 30 2>&1
+            docker logs accounting_app --tail 30 2>&1 || echo "(accounting_app not running — probably mid-restart)"
 
             echo "=== Recent auth errors (nginx) ==="
             tail -20 /var/log/nginx/error.log 2>/dev/null | grep -i "accounting" || echo "no nginx errors"
