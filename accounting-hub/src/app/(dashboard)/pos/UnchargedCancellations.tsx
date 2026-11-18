@@ -22,7 +22,8 @@ export interface UnchargedRow {
   gl: { walletId: string; letter: string; balance: number; canCharge: boolean } | null
 }
 
-const WHAT: Record<string, string> = { CANCELLED: 'Cancelled', RESCHEDULED: 'Rescheduled', NO_SHOW: 'No-show' }
+/** Shared with the New Payment reminder (pos/page.tsx). */
+export const WHAT: Record<string, string> = { CANCELLED: 'Cancelled', RESCHEDULED: 'Rescheduled', NO_SHOW: 'No-show' }
 const STATE_PILL: Record<string, { bg: string; fg: string; text: string }> = {
   UNCHARGED: { bg: '#fef3c7', fg: '#92400e', text: 'Not charged' },
   PAID: { bg: '#dcfce7', fg: '#166534', text: 'Charged' },
@@ -43,7 +44,9 @@ const EMPTY: Record<Show, string> = {
 const BRANCH_OPTIONS = [['', 'All'], ['SANDBOX_EAST', 'East'], ['SANDBOX_GREENHILLS', 'Greenhills']] as const
 const segOn = { background: 'var(--teal)', color: '#fff' }
 const segOff = { background: '#fff', color: 'var(--mid-gray)' }
-const day = (ymd: string) => new Date(`${ymd}T00:00:00+08:00`).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'Asia/Manila' })
+/** The reason a fee is owed, as shown under the booking. "no-show" would just repeat the status. */
+export const whyText = (why: string) => (why.toLowerCase() === 'no-show' ? 'Fee on every no-show' : why.charAt(0).toUpperCase() + why.slice(1))
+export const day = (ymd: string) => new Date(`${ymd}T00:00:00+08:00`).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'Asia/Manila' })
 
 export default function UnchargedCancellations({ branch, canSelectBranch, role }: {
   branch: string; canSelectBranch: boolean; role: string
@@ -277,7 +280,7 @@ export default function UnchargedCancellations({ branch, canSelectBranch, role }
                               <span className="font-mono" style={{ color: 'var(--mid-gray)' }}> · {day(r.date)} · {r.startTime}</span>
                             </div>
                             <div className="text-[11.5px]" style={{ color: 'var(--hr-faint)' }}>
-                              {r.why}
+                              {whyText(r.why)}
                               {!r.logged && <span className="ml-1.5 px-1.5 py-px rounded text-[10px] font-semibold whitespace-nowrap" style={{ background: '#f1f5f9', color: '#64748b' }} title="Never logged in Patient Relationship — found on the clinic schedule">Not logged</span>}
                             </div>
                           </td>

@@ -32,7 +32,7 @@ import TuitionDesk from './TuitionDesk'
 import { buildSoaPdf, MONTH_OPTIONS, periodLabel, type SoaSettings, type SoaOrder } from '@/lib/soa-pdf'
 import { EARLIEST_OBTAINED, latestObtained, obtainedDateError } from '@/lib/wallet-dates'
 import CancellationLinkModal, { type FeeLine } from './CancellationLinkModal'
-import UnchargedCancellations, { type UnchargedRow } from './UnchargedCancellations'
+import UnchargedCancellations, { type UnchargedRow, WHAT as ABSENCE_WHAT, day as absenceDay, whyText as absenceWhy } from './UnchargedCancellations'
 import { HR_PAGE_CLASS, HR_PAGE_STYLE, HrShimmerStyle, HrNoticeModal, hrBtn } from '@/components/ui/hr-look'
 import { GiftCardBatchList, GiftCardCodeInput, printGiftCards, type GiftCardBatchRow } from './GiftCards'
 
@@ -2592,29 +2592,54 @@ function OrderFormModal({
                 serviceId: f.feeServiceId!, name: f.feeName, department: f.department, quantity: 1,
                 unitPrice: f.amount, lineTotal: f.amount, absenceScheduleId: f.scheduleId,
               }])
+              // Same look as POS → Services → Uncharged Cancellations (Hannah 11/18:
+              // "make the New Payment cancellation reminder look like this too").
               return (
-                <div className="mt-2 rounded-xl border px-3 py-2 text-xs space-y-1.5" style={{ borderColor: '#fde68a', background: '#fffbeb', color: '#92400e' }}>
-                  <div className="flex items-center justify-between gap-2">
-                    <p className="font-semibold">
-                      Uncharged cancellation fee{owedFees.length === 1 ? '' : 's'}: <span className="font-mono">{owedFees.length}</span> · <span className="font-mono">{formatCurrency(owedFees.reduce((s, f) => s + f.amount, 0))}</span> — please collect
-                    </p>
+                <div className="mt-2 rounded-lg border bg-white overflow-hidden" style={{ borderColor: 'var(--light-gray)', borderLeft: '4px solid #d97706' }}>
+                  <div className="flex items-center gap-2 flex-wrap px-3 py-2 border-b" style={{ background: '#fffbeb', borderColor: '#fde68a' }}>
+                    <AlertCircle size={14} style={{ color: '#b45309' }} />
+                    <span className="text-[12.5px] font-bold" style={{ color: '#92400e' }}>Uncharged cancellation fee{owedFees.length === 1 ? '' : 's'}</span>
+                    <span className="px-2 py-0.5 rounded-full text-[11px] font-semibold" style={{ background: '#fef3c7', color: '#92400e' }}>
+                      <span className="font-mono">{owedFees.length}</span> · <span className="font-mono">{formatCurrency(owedFees.reduce((s, f) => s + f.amount, 0))}</span>
+                    </span>
+                    <span className="text-[11.5px]" style={{ color: '#b45309' }}>please collect</span>
                     {notAdded.length > 1 && (
-                      <button type="button" onClick={() => notAdded.forEach(addFee)} className="shrink-0 px-2 py-1 rounded-lg font-semibold text-white" style={{ background: '#d97706' }}>Add all to this sale</button>
+                      <button type="button" onClick={() => notAdded.forEach(addFee)} className="ml-auto h-7 px-2.5 rounded-lg text-[11px] font-semibold text-white inline-flex items-center gap-1" style={{ background: '#d97706' }}>
+                        <Plus size={12} /> Add all to this sale
+                      </button>
                     )}
                   </div>
-                  {owedFees.map(f => {
+                  {owedFees.map((f, i) => {
                     const added = items.some(it => it.absenceScheduleId === f.scheduleId)
                     return (
-                      <div key={f.scheduleId} className="flex items-center justify-between gap-2 flex-wrap">
-                        <span>
-                          {f.detail} — {f.why} · {f.feeName} <span className="font-mono">{formatCurrency(f.amount)}</span>
-                          {f.gl && <span> · on letter {f.gl.letter}</span>}
-                        </span>
-                        {added ? (
-                          <button type="button" onClick={() => setItems(prev => prev.filter(it => it.absenceScheduleId !== f.scheduleId))} className="shrink-0 underline">Remove</button>
-                        ) : f.feeServiceId ? (
-                          <button type="button" onClick={() => addFee(f)} className="shrink-0 px-2 py-1 rounded-lg font-semibold text-white" style={{ background: '#d97706' }}>Add to this sale</button>
-                        ) : <span className="shrink-0 italic">no fee service set up</span>}
+                      <div key={f.scheduleId} className="flex items-center gap-3 px-3 py-2"
+                        style={{ borderTop: i ? '1px solid var(--hr-line)' : undefined, boxShadow: `inset 3px 0 0 ${added ? '#059669' : '#fcd34d'}` }}>
+                        <div className="min-w-0 flex-1">
+                          <div className="text-[12.5px] whitespace-nowrap truncate">
+                            <span className="font-semibold" style={{ color: 'var(--charcoal)' }}>{ABSENCE_WHAT[f.status] || f.status}</span>
+                            <span className="font-mono" style={{ color: 'var(--mid-gray)' }}> · {absenceDay(f.date)} · {f.startTime}</span>
+                          </div>
+                          <div className="text-[11.5px] truncate" style={{ color: 'var(--hr-faint)' }} title={f.detail}>
+                            {absenceWhy(f.why)} · {f.department} · {f.therapist}{f.gl ? ` · letter ${f.gl.letter}` : ''}
+                          </div>
+                        </div>
+                        <div className="shrink-0 text-right">
+                          <div className="font-mono font-semibold text-[12.5px] whitespace-nowrap" style={{ color: 'var(--charcoal)' }}>{formatCurrency(f.amount)}</div>
+                          <div className="text-[10.5px] whitespace-nowrap" style={{ color: 'var(--hr-faint)' }}>{f.feeName}</div>
+                        </div>
+                        <div className="shrink-0 w-[124px] flex justify-end">
+                          {added ? (
+                            <span className="inline-flex items-center gap-1.5">
+                              <span className="px-2 py-0.5 rounded-full text-[11px] font-semibold" style={{ background: '#dcfce7', color: '#166534' }}>Added</span>
+                              <button type="button" onClick={() => setItems(prev => prev.filter(it => it.absenceScheduleId !== f.scheduleId))}
+                                className="p-1 rounded-md hover:bg-[#fef2f2]" style={{ color: '#b91c1c' }} title="Take it off this sale" aria-label="Remove from this sale"><X size={13} /></button>
+                            </span>
+                          ) : f.feeServiceId ? (
+                            <button type="button" onClick={() => addFee(f)} className="h-7 px-2.5 rounded-lg text-[11px] font-semibold border bg-white hover:bg-[#fffbeb] inline-flex items-center gap-1" style={{ borderColor: '#fcd34d', color: '#b45309' }}>
+                              <Plus size={12} /> Add to sale
+                            </button>
+                          ) : <span className="text-[11px] italic" style={{ color: 'var(--hr-faint)' }}>No fee service set up</span>}
+                        </div>
                       </div>
                     )
                   })}
