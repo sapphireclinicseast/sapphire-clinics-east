@@ -12,7 +12,7 @@
 // shows in its own colour (lib/pos/retro-cancellation).
 import { prisma as defaultPrisma } from '@/lib/prisma'
 import { POST as createPosOrder } from '@/app/api/pos/orders/route'
-import { RETRO_CANCEL_MARKER } from '@/lib/pos/retro-cancellation'
+import { cancelFeeMarker } from '@/lib/pos/retro-cancellation'
 
 type Db = typeof defaultPrisma
 
@@ -88,7 +88,7 @@ export async function chargeParkedToLetter(db: Db, walletId: string, userId?: st
       items: [{ serviceId: p.serviceId, name: p.feeName, quantity: 1, unitPrice: amount, lineTotal: amount }],
       payments: [{ method: 'GL', amount, walletId: wallet.id }],
       revenueType: 'EARNED',
-      notes: `${RETRO_CANCEL_MARKER} — ${p.detail}; parked on ${longDate(p.createdAt)} because no letter had room for it, charged to this letter on ${today}.`,
+      notes: `${cancelFeeMarker(manilaDay(p.eventDate))} — ${p.detail}; parked on ${longDate(p.createdAt)} because no letter had room for it, charged to this letter on ${today}.`,
     }
     let res: Response
     try {

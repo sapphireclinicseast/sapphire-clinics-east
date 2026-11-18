@@ -7,6 +7,20 @@
 
 export const RETRO_CANCEL_MARKER = 'RETROACTIVE CANCELLATION FEE'
 
+/** The backlog ends here: bookings from this day on are flagged as they
+ *  happen, so a fee charged for one is an ordinary fee, not a retroactive one
+ *  (Hannah 11/18: "change the label"). Shared with the uncharged-cancellations flag. */
+export const RETRO_CANCEL_BEFORE = '2026-11-18'
+
+/** Label for a fee charged after the fact from the uncharged-cancellations
+ *  list or the parked queue, on a booking from RETRO_CANCEL_BEFORE onward. */
+export const CANCEL_FEE_MARKER = 'CANCELLATION FEE'
+
+/** The note label for a cancellation fee on a booking dated `bookingYmd`:
+ *  retroactive (purple in the ledger) only for the pre-cutover backlog. */
+export const cancelFeeMarker = (bookingYmd: string): string =>
+  bookingYmd < RETRO_CANCEL_BEFORE ? RETRO_CANCEL_MARKER : CANCEL_FEE_MARKER
+
 /** Font colour for retroactive charges in wallet views. */
 export const RETRO_CANCEL_COLOR = '#7c3aed'
 

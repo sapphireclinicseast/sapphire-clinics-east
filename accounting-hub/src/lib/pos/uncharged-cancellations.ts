@@ -44,13 +44,14 @@
 //   3. otherwise the patient's cancellation-fee orders, oldest booking paired
 //      with the oldest fee dated on or after it.
 import { prisma as defaultPrisma } from '@/lib/prisma'
+import { RETRO_CANCEL_BEFORE } from '@/lib/pos/retro-cancellation'
 
 type Db = typeof defaultPrisma
 
 export const FREE_CANCELLATIONS = 2
 export const WINDOW_DAYS = 180
 /** The day the flag went live — see HOW FAR BACK above. */
-export const FLAG_CUTOVER = '2026-11-18'
+export const FLAG_CUTOVER = RETRO_CANCEL_BEFORE
 /** "Since we started": the hub's first year. */
 export const FLAG_START = '2026-01-01'
 /** Before the cutover: this many bookings called off for one therapist in a day = the clinic's doing. */

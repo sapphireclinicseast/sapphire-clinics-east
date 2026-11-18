@@ -13,7 +13,7 @@
 // cashiers clicking at the same moment.
 import { prisma as defaultPrisma } from '@/lib/prisma'
 import { POST as createPosOrder } from '@/app/api/pos/orders/route'
-import { RETRO_CANCEL_MARKER } from '@/lib/pos/retro-cancellation'
+import { cancelFeeMarker } from '@/lib/pos/retro-cancellation'
 import { letterPatientName } from '@/lib/pos/parked-gl-charges'
 import { loadFeeBearingAbsences, type FlaggedAbsence } from '@/lib/pos/uncharged-cancellations'
 
@@ -91,7 +91,7 @@ export async function chargeAbsenceToGl(db: Db, patientId: string, scheduleId: s
   } catch {
     return { ok: false, status: 409, error: 'This booking was just charged, parked or waived by someone else.' }
   }
-  const notes = `${RETRO_CANCEL_MARKER} — ${a.detail}; charged from the uncharged-cancellations list on ${todayLong()}.`
+  const notes = `${cancelFeeMarker(a.date)} — ${a.detail}; charged from the uncharged-cancellations list on ${todayLong()}.`
     + (movedOn ? ` Charged to this letter because ${a.gl!.letter} had no balance left.` : '')
   const body = {
     orderType: 'SERVICE', branch: a.branch, patientId, patientName: letterPatientName(letter.patientName), clinicianName: null,
