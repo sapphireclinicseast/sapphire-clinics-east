@@ -6,6 +6,7 @@ import { parsePagination, paginatedResult } from '@/lib/pagination'
 import { resolveProductAccounts, inventorySubTypeForDept } from '@/lib/inventory-accounts'
 import { consumeFifoLots } from '@/lib/fifo'
 import { SKU_HIERARCHY } from '@/lib/sku-taxonomy'
+import { choiceForPrice, hasSetPrice, priceTiers, storePriceChoice } from '@/lib/price-tiers'
 
 const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN']
 
@@ -251,8 +252,27 @@ export async function PUT(req: Request) {
       where: { id },
       select: { sku: true, skuDepartment: true, skuCategory: true, skuSubcategory: true, skuSequence: true,
                 revenueAccountId: true, expenseAccountId: true, sourceAccountId: true, accountSubType: true,
-                quantity: true, unitCost: true },
+                quantity: true, unitCost: true, sellingPrice: true, isBundle: true,
+                bundleComponents: { select: { quantity: true, component: { select: { unitCost: true } } } } },
     })
+
+    // A price typed here is the product's own choice on the Price List (Hannah
+    // 11/18): the tier it lands on, else Custom — which the list keeps as typed
+    // and its bulk re-price skips. Only when the price actually changes, so a
+    // save for some other field leaves the choice alone. COGS as the list uses
+    // it: a bundle from its parts, else the unit cost (this request's if given).
+    // Merchandise and books have set prices outside the tiers, so no choice.
+    if (current && data.sellingPrice !== undefined && !hasSetPrice(skuDepartment || current.skuDepartment)) {
+      const before = current.sellingPrice == null ? null : Number(current.sellingPrice)
+      const after = data.sellingPrice as number | null
+      if (after !== before && !(after != null && before != null && Math.round(after * 100) === Math.round(before * 100))) {
+        const bundleCost = current.isBundle && current.bundleComponents.length
+          ? current.bundleComponents.reduce((t, bc) => t + Number(bc.component.unitCost || 0) * bc.quantity, 0)
+          : 0
+        const cogs = bundleCost > 0 ? bundleCost : Number(data.unitCost ?? current.unitCost)
+        data.priceTier = after ? storePriceChoice(choiceForPrice(after, priceTiers(Math.round(cogs * 100) / 100))) : null
+      }
+    }
 
     // Reclassification. The edit form has always SENT these three fields; the API
     // just ignored them, so changing a product's department in the UI silently did
@@ -415,6 +435,24 @@ export async function PATCH(req: Request) {
       where: isActive === undefined ? { id: { in: ids }, isActive: true } : { id: { in: ids } },
       data,
     })
+
+    // A bulk price is each product's own choice on the Price List too: the tier
+    // it lands on for that product's COGS, else Custom (see PUT above).
+    if (data.sellingPrice !== undefined) {
+      const priced = await prisma.inventoryItem.findMany({
+        where: { id: { in: ids }, isActive: true },
+        select: { id: true, skuDepartment: true, unitCost: true, isBundle: true, bundleComponents: { select: { quantity: true, component: { select: { unitCost: true } } } } },
+      })
+      for (const it of priced) {
+        if (hasSetPrice(it.skuDepartment)) continue
+        const bundleCost = it.isBundle && it.bundleComponents.length
+          ? it.bundleComponents.reduce((t, bc) => t + Number(bc.component.unitCost || 0) * bc.quantity, 0)
+          : 0
+        const cogs = bundleCost > 0 ? bundleCost : Number(it.unitCost)
+        const choice = data.sellingPrice ? storePriceChoice(choiceForPrice(data.sellingPrice, priceTiers(Math.round(cogs * 100) / 100))) : null
+        await prisma.inventoryItem.update({ where: { id: it.id }, data: { priceTier: choice } })
+      }
+    }
 
     await prisma.auditLog.create({
       data: {

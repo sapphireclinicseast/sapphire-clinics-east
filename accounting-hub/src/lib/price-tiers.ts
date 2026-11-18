@@ -50,3 +50,27 @@ export function priceTiers(cogs: number | null | undefined): Tiers | null {
     highest: roundUpTo10(c * 9),
   }
 }
+
+/**
+ * What a product is priced at: one of the three tiers, or 'custom' — a price
+ * typed in the item form that matches none of them (Hannah 11/18). Stored on
+ * InventoryItem.priceTier with NULL meaning Standard.
+ */
+export type PriceChoice = TierKey | 'custom'
+
+const CHOICES: PriceChoice[] = ['lowest', 'standard', 'highest', 'custom']
+
+/** Read a stored priceTier; anything unknown or NULL is Standard. */
+export const readPriceChoice = (v: unknown): PriceChoice =>
+  CHOICES.includes(v as PriceChoice) ? (v as PriceChoice) : 'standard'
+
+/** The value to store for a choice (Standard is the default, kept as NULL). */
+export const storePriceChoice = (c: PriceChoice): string | null => (c === 'standard' ? null : c)
+
+/** Which tier a typed price lands on, else 'custom' (also when there is no COGS to price from). */
+export function choiceForPrice(price: number | null | undefined, tiers: Tiers | null): PriceChoice {
+  if (price == null || !tiers) return 'custom'
+  const p = Math.round(Number(price) * 100)
+  for (const t of PRICE_TIERS) if (Math.round(tiers[t.key] * 100) === p) return t.key
+  return 'custom'
+}

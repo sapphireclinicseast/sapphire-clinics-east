@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { PRICE_TIERS, priceTiers, hasSetPrice, type TierKey, type Tiers } from '@/lib/price-tiers'
+import { PRICE_TIERS, priceTiers, hasSetPrice, readPriceChoice, type PriceChoice, type TierKey, type Tiers } from '@/lib/price-tiers'
 
 /**
  * Price list — three tiers per product we sell, from the CURRENT COGS
@@ -17,6 +17,8 @@ import { PRICE_TIERS, priceTiers, hasSetPrice, type TierKey, type Tiers } from '
  *        product's chosen tier (InventoryItem.priceTier) and its price.
  *        Without: each product goes to its own chosen tier (Standard unless
  *        one was picked), so a re-price after a COGS change keeps the choice.
+ *        A Custom product (price typed in the item form, matching no tier) is
+ *        never re-priced by the bulk path — only a click on a tier moves it.
  *        No ids = every sold product whose price differs from its tier.
  *        Branch copies and per-variant prices follow; each change is audited
  *        with the old price so it can be undone. verdanarehab.com reads the
@@ -62,7 +64,8 @@ export interface PriceListRow {
   /** Merchandise / books with their own set price: no tiers, never re-priced here. */
   setPrice: boolean
   /** The tier this product is priced at (chosen on the list; Standard by default). */
-  tier: TierKey
+  /** Chosen tier (Standard by default), or Custom: a price typed in the item form. */
+  tier: PriceChoice
   unitsSold: number
   lastSold: string | null
   sold: boolean
@@ -148,7 +151,7 @@ async function loadRows(): Promise<PriceListRow[]> {
       id: it.id, sku: it.sku, name: it.name, branch: it.branch, department: it.skuDepartment,
       isBundle: it.isBundle, imageUrl: it.imageUrl,
       cogs, cogsSource: bundleCost && bundleCost > 0 ? 'bundle' : 'unitCost',
-      currentPrice, tiers, setPrice, tier: asTier(it.priceTier) ?? 'standard',
+      currentPrice, tiers, setPrice, tier: readPriceChoice(it.priceTier),
       unitsSold: s?.units || 0,
       lastSold: s?.last ? s.last.toISOString() : null,
       // "Sold" = something we sell: priced for POS or with sales on record.
@@ -185,8 +188,9 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Merchandise and books keep their set price — change it on the product instead' }, { status: 400 })
   }
   // Set-price departments have no tiers, so they never enter this list.
-  const target = rows.filter(r => r.sold && r.tiers && (ids ? ids.includes(r.id) : true))
-  const tierOf = (r: PriceListRow): TierKey => pick ?? r.tier
+  // Custom prices are kept as typed unless a tier is picked for them.
+  const target = rows.filter(r => r.sold && r.tiers && (ids ? ids.includes(r.id) : true) && (pick || r.tier !== 'custom'))
+  const tierOf = (r: PriceListRow): TierKey => pick ?? (r.tier as TierKey)
 
   type Change = { kind: 'item' | 'copy' | 'variant'; id: string; sku: string; cogs: number | null; oldPrice: number | null; newPrice: number; tier: TierKey }
   const changes: Change[] = []

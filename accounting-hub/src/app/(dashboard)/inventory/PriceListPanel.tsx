@@ -19,7 +19,7 @@
 import { Fragment, useCallback, useEffect, useMemo, useState } from 'react'
 import { AlertCircle, ArrowUpDown, BadgeCheck, CheckCircle2, ChevronDown, ChevronUp, Loader2, RefreshCw, Search, Tags } from 'lucide-react'
 import { branchShort } from '@/lib/branch'
-import { PRICE_TIERS, type TierKey, type Tiers } from '@/lib/price-tiers'
+import { PRICE_TIERS, type PriceChoice, type TierKey, type Tiers } from '@/lib/price-tiers'
 import { SKU_HIERARCHY } from '@/lib/sku-taxonomy'
 import { downloadXlsx, downloadPdf } from '@/lib/export'
 import DownloadMenu from '@/components/ui/DownloadMenu'
@@ -34,7 +34,8 @@ interface Row {
   cogs: number | null; cogsSource: 'unitCost' | 'bundle'; currentPrice: number | null; tiers: Tiers | null
   /** Merchandise / books: own set price, outside the tier rule. */
   setPrice: boolean
-  tier: TierKey
+  /** Chosen tier, or Custom: a price typed in the item form that matches no tier. */
+  tier: PriceChoice
   unitsSold: number; lastSold: string | null; sold: boolean; copies: number; variants: VariantRow[]
 }
 interface Change { kind: 'item' | 'copy' | 'variant'; id: string; sku: string; cogs: number | null; oldPrice: number | null; newPrice: number; tier: TierKey }
@@ -48,10 +49,14 @@ const amt = (n: number | null | undefined) => (n == null ? '' : n.toFixed(2))
 
 /** A variant line is worth its own row when its cost or price differs from the product's. */
 const ownVariants = (r: Row) => r.variants.filter(v => v.ownCost || v.currentPrice != null)
-const TIER_LABEL = Object.fromEntries(PRICE_TIERS.map(t => [t.key, t.label])) as Record<TierKey, string>
-/** Product (or a priced variant) charges something other than its chosen tier. */
-const isChanged = (r: Row) =>
-  !!r.tiers && (r.currentPrice !== r.tiers[r.tier] || ownVariants(r).some(v => v.tiers && v.currentPrice !== v.tiers[r.tier]))
+const TIER_LABEL = { ...Object.fromEntries(PRICE_TIERS.map(t => [t.key, t.label])), custom: 'Custom' } as Record<PriceChoice, string>
+/** Product (or a priced variant) charges something other than its chosen tier.
+ *  A Custom price is kept as typed, so it never counts as off. */
+const isChanged = (r: Row) => {
+  if (!r.tiers || r.tier === 'custom') return false
+  const t = r.tier
+  return r.currentPrice !== r.tiers[t] || ownVariants(r).some(v => v.tiers && v.currentPrice !== v.tiers[t])
+}
 
 export default function PriceListPanel({ canWrite }: { canWrite: boolean }) {
   const [rows, setRows] = useState<Row[]>([])
@@ -83,6 +88,7 @@ export default function PriceListPanel({ canWrite }: { canWrite: boolean }) {
   const sold = useMemo(() => rows.filter(r => r.sold), [rows])
   const counts = useMemo(() => ({
     priced: sold.filter(r => r.tiers).length,
+    custom: sold.filter(r => r.tiers && r.tier === 'custom').length,
     nocogs: sold.filter(r => !r.tiers && !r.setPrice).length,
     setprice: sold.filter(r => r.setPrice).length,
     changes: sold.filter(isChanged).length,
@@ -200,7 +206,9 @@ export default function PriceListPanel({ canWrite }: { canWrite: boolean }) {
     return (
       <td className="px-2 py-1.5 text-right tabular-nums whitespace-nowrap">
         <button type="button" onClick={() => pickTier(r, t)} disabled={!!picking}
-          title={chosen ? `${TIER_LABEL[t]} is this product's price${isChanged(r) ? ' — click to charge it again' : ''}` : `Charge ${peso(val)} (${TIER_LABEL[t]}) at POS and on the website`}
+          title={chosen ? `${TIER_LABEL[t]} is this product's price${isChanged(r) ? ' — click to charge it again' : ''}`
+            : r.tier === 'custom' ? `Charge ${peso(val)} (${TIER_LABEL[t]}) instead of the custom ${peso(r.currentPrice)}, at POS and on the website`
+            : `Charge ${peso(val)} (${TIER_LABEL[t]}) at POS and on the website`}
           className={`px-2 py-1 rounded-md border transition-colors ${chosen ? 'font-bold' : 'hover:bg-[#eef6f1] hover:border-[#b7dcc9]'}`}
           style={chosen
             ? { color: 'var(--teal)', background: '#e8f5ee', borderColor: '#b7dcc9' }
@@ -298,6 +306,7 @@ export default function PriceListPanel({ canWrite }: { canWrite: boolean }) {
         ))}
         <span>Rounded up to the next ₱10 · COGS = current average landed unit cost</span>
         {canWrite && <span className="basis-full" style={{ color: 'var(--teal)' }}>Click a price to charge it at POS and on verdanarehab.com (the website updates within 15 minutes).</span>}
+        <span className="basis-full">A price typed in the item form that matches no tier is kept as <b style={{ color: '#1d4ed8' }}>Custom</b> — never changed by Apply{counts.custom ? <> · <span className="tabular-nums">{counts.custom}</span> product{counts.custom === 1 ? '' : 's'} on a custom price</> : null}.</span>
       </div>
 
       {error && (
@@ -376,7 +385,7 @@ export default function PriceListPanel({ canWrite }: { canWrite: boolean }) {
               )}
               {!loading && shown.map(r => {
                 const changed = isChanged(r)
-                const diff = r.tiers && r.currentPrice != null ? r.currentPrice - r.tiers[r.tier] : null
+                const diff = r.tiers && r.tier !== 'custom' && r.currentPrice != null ? r.currentPrice - r.tiers[r.tier] : null
                 const edge = r.setPrice ? 'var(--light-gray)' : !r.tiers ? (r.sold ? '#dc2626' : 'transparent') : changed ? '#d97706' : '#059669'
                 return (
                   <Fragment key={r.id}>
@@ -404,7 +413,11 @@ export default function PriceListPanel({ canWrite }: { canWrite: boolean }) {
                       {tierCell(r, 'standard')}
                       {tierCell(r, 'highest')}
                       <td className="px-3 py-2 text-right tabular-nums whitespace-nowrap">
-                        <span style={{ color: changed && r.tiers ? '#b45309' : 'var(--charcoal)' }}>{peso(r.currentPrice, r.currentPrice != null && r.currentPrice % 1 ? 2 : 0)}</span>
+                        {r.tiers && r.tier === 'custom' && (
+                          <span className="mr-1.5 px-1.5 py-0.5 rounded-full text-[10px] font-semibold align-middle" style={{ background: '#eff6ff', color: '#1d4ed8' }}
+                            title="Typed in the item form; matches no tier, so Apply leaves it alone. Click a tier to switch to it.">Custom</span>
+                        )}
+                        <span style={{ color: changed && r.tiers ? '#b45309' : r.tier === 'custom' && r.tiers ? '#1d4ed8' : 'var(--charcoal)', fontWeight: r.tier === 'custom' && r.tiers ? 700 : undefined }}>{peso(r.currentPrice, r.currentPrice != null && r.currentPrice % 1 ? 2 : 0)}</span>
                         {diff != null && diff !== 0 && (
                           <span className="block text-[11px]" style={{ color: diff < 0 ? '#b91c1c' : '#b45309' }}>
                             {diff > 0 ? '+' : '−'}{peso(Math.abs(diff), Math.abs(diff) % 1 ? 2 : 0)} vs {TIER_LABEL[r.tier]}
