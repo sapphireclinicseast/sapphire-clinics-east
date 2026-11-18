@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { branchForRole } from '@/lib/role-branch'
 
 const BRANCH_CONFIG: Record<string, { httpSmsKey: string; phone: string; label: string }> = {
   SANDBOX_EAST:       { httpSmsKey: process.env.HTTPSMS_API_KEY_SBEA ?? '', phone: '+639171189289', label: 'Sapphire Clinics East Inc.' },
@@ -20,10 +21,15 @@ function birthdaySendAt(dateStr: string): string {
   return `${dateStr}T00:00:00Z`
 }
 
+// Branch lock, via the shared helper.
+//
+// This used to test role.startsWith('SBEA_') inline. The Role enum is
+// AHEA_*/AHGH_*, so that matched NOTHING: the lock returned null for every
+// real account and this route ran unscoped for years. branchForRole knows
+// both spellings — always use it rather than writing the prefix out again.
 function branchFromRole(role: string): string | null {
-  if (role.startsWith('SBEA_')) return 'SANDBOX_EAST'
-  if (role.startsWith('SBGH_')) return 'SANDBOX_GREENHILLS'
-  return null
+  const b = branchForRole(role)
+  return b === 'SBEA' ? 'SANDBOX_EAST' : b === 'SBGH' ? 'SANDBOX_GREENHILLS' : null
 }
 
 export async function POST(req: NextRequest) {
