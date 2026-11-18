@@ -1,5 +1,5 @@
 // GET   /api/accounts-receivable/payment-register?branch=
-// PATCH /api/accounts-receivable/payment-register  { id, ref?, copyPending? }
+// PATCH /api/accounts-receivable/payment-register  { id, ref?, copyPending?, addProofUrls? }
 //
 // Accounts Receivable → Payment Register (Hannah 2026-11-17: "a payment history
 // (joint) tracker that combines both HMO and GL so we know that a sequence was not
@@ -8,8 +8,10 @@
 // order and show any number that was skipped, used on more than one row, or
 // never given.
 //
-// PATCH writes ONLY the payment's notes: the AR number at their head and/or the
-// "physical copy pending" tag. It never touches tags, amounts or the journal —
+// PATCH writes ONLY the payment's notes (the AR number at their head and/or the
+// "physical copy pending" tag) and its proof files (appended, never removed —
+// Hannah 2026-11-18: "just make sure proof is there"). It never touches tags,
+// amounts or the journal —
 // unlike the Payment History PUT, which rebuilds the payment and re-posts its
 // entry (a new entry id that unhooks the bank-rec match).
 
@@ -107,13 +109,20 @@ export async function PATCH(req: NextRequest) {
     const id = typeof body.id === 'string' ? body.id : ''
     const refIn = typeof body.ref === 'string' ? body.ref.trim().toUpperCase() : ''
     const copyPending = typeof body.copyPending === 'boolean' ? body.copyPending : undefined
-    if (!id || (!refIn && copyPending === undefined)) {
-      return NextResponse.json({ error: 'Send the payment id with an AR number and/or copyPending' }, { status: 400 })
+    // Files already uploaded through POST /api/upload.
+    const addProofUrls: string[] = Array.isArray(body.addProofUrls)
+      ? body.addProofUrls.filter((u: unknown): u is string => typeof u === 'string' && /^\/api\/files\/[A-Za-z0-9._-]+$/.test(u))
+      : []
+    if (Array.isArray(body.addProofUrls) && addProofUrls.length !== body.addProofUrls.length) {
+      return NextResponse.json({ error: 'Proof files must be /api/files/… links from the upload' }, { status: 400 })
+    }
+    if (!id || (!refIn && copyPending === undefined && !addProofUrls.length)) {
+      return NextResponse.json({ error: 'Send the payment id with an AR number, copyPending and/or addProofUrls' }, { status: 400 })
     }
 
     const p = await prisma.aRPayment.findUnique({
       where: { id },
-      select: { id: true, notes: true, branch: true, paymentDate: true, wallet: { select: { walletType: true } } },
+      select: { id: true, notes: true, branch: true, paymentDate: true, proofUrl: true, wallet: { select: { walletType: true } } },
     })
     if (!p || !['HMO', 'GL'].includes(p.wallet.walletType)) return NextResponse.json({ error: 'Payment not found' }, { status: 404 })
     if (p.branch && !branchAllowed(user.branch, p.branch, user.branches)) {
@@ -148,18 +157,25 @@ export async function PATCH(req: NextRequest) {
     }
     if (copyPending !== undefined) notes = copyPending ? withCopyPending(notes) : withoutCopyPending(notes)
 
-    if (notes === (p.notes || '')) return NextResponse.json({ ok: true, unchanged: true })
-    await prisma.aRPayment.update({ where: { id }, data: { notes } })
+    // Proof: keep every file already attached, add the new ones (same shapes
+    // Payment History writes: one plain URL, or a JSON array).
+    const proofBefore = proofUrlsOf(p.proofUrl)
+    const proofAfter = [...proofBefore, ...addProofUrls.filter(u => !proofBefore.includes(u))]
+    const proofUrl = proofAfter.length === 0 ? null : proofAfter.length === 1 ? proofAfter[0] : JSON.stringify(proofAfter)
+    const proofChanged = proofAfter.length !== proofBefore.length
+
+    if (notes === (p.notes || '') && !proofChanged) return NextResponse.json({ ok: true, unchanged: true })
+    await prisma.aRPayment.update({ where: { id }, data: { notes, ...(proofChanged ? { proofUrl } : {}) } })
     await prisma.auditLog.create({
       data: {
         userId: user.id as string,
         action: 'AR_REFERENCE',
         entity: 'arPayment',
         entityId: id,
-        details: { before: p.notes, after: notes, ref: refIn || null, copyPending: copyPending ?? null },
+        details: { before: p.notes, after: notes, ref: refIn || null, copyPending: copyPending ?? null, proofAdded: proofChanged ? addProofUrls : [] },
       },
     })
-    return NextResponse.json({ ok: true, ref: arRefOf(notes), copyPending: hasCopyPending(notes) })
+    return NextResponse.json({ ok: true, ref: arRefOf(notes), copyPending: hasCopyPending(notes), proofUrls: proofAfter })
   } catch (err) {
     console.error('[AR] payment register PATCH failed:', err)
     return NextResponse.json({ error: 'Could not update the payment' }, { status: 500 })

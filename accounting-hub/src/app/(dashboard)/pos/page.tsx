@@ -32,6 +32,7 @@ import TuitionDesk from './TuitionDesk'
 import { buildSoaPdf, MONTH_OPTIONS, periodLabel, type SoaSettings, type SoaOrder } from '@/lib/soa-pdf'
 import { EARLIEST_OBTAINED, latestObtained, obtainedDateError } from '@/lib/wallet-dates'
 import CancellationLinkModal, { type FeeLine } from './CancellationLinkModal'
+import UnchargedCancellations, { type UnchargedRow } from './UnchargedCancellations'
 import { HR_PAGE_CLASS, HR_PAGE_STYLE, HrShimmerStyle, HrNoticeModal, hrBtn } from '@/components/ui/hr-look'
 import { GiftCardBatchList, GiftCardCodeInput, printGiftCards, type GiftCardBatchRow } from './GiftCards'
 
@@ -100,6 +101,8 @@ interface OrderLineItem {
   variantLabel?: string
   /** A gift card being sold (GiftCards.tsx): the line is the card at face value. */
   giftCardId?: string
+  /** A flagged cancellation fee added from the New Payment reminder: the booking it settles. */
+  absenceScheduleId?: string
 }
 
 interface PaymentLine {
@@ -722,7 +725,7 @@ export default function POSPage() {
   // ── Top-level tab: Services | Orders | Products | Sales Summary
   const [mainTab, setMainTab] = useState<'services' | 'orders' | 'products' | 'sales'>('services')
   // ── Services sub-tab
-  const [serviceTab, setServiceTab] = useState<'cashier' | 'wallet' | 'discounts' | 'payment-modes' | 'vouchers'>('cashier')
+  const [serviceTab, setServiceTab] = useState<'cashier' | 'wallet' | 'discounts' | 'payment-modes' | 'vouchers' | 'uncharged'>('cashier')
   const [loading, setLoading] = useState(true)
   // ── Deep link (?tab=orders&focus=<orderId>): a SALE/ORDER hit in the global
   // search lands on the Orders tab with that order's detail modal open. The
@@ -840,8 +843,8 @@ function ServicesSection({
 }: {
   branch: string
   canSelectBranch: boolean
-  serviceTab: 'cashier' | 'wallet' | 'discounts' | 'payment-modes' | 'vouchers'
-  setServiceTab: (t: 'cashier' | 'wallet' | 'discounts' | 'payment-modes' | 'vouchers') => void
+  serviceTab: 'cashier' | 'wallet' | 'discounts' | 'payment-modes' | 'vouchers' | 'uncharged'
+  setServiceTab: (t: 'cashier' | 'wallet' | 'discounts' | 'payment-modes' | 'vouchers' | 'uncharged') => void
   session: { user?: Record<string, unknown> } | null
 }) {
   const subTabs = [
@@ -850,6 +853,7 @@ function ServicesSection({
     { key: 'discounts' as const, label: 'Discount Settings' },
     { key: 'payment-modes' as const, label: 'Payment Mode Settings' },
     { key: 'vouchers' as const, label: 'Vouchers' },
+    { key: 'uncharged' as const, label: 'Uncharged Cancellations' },
   ]
 
   return (
@@ -885,6 +889,9 @@ function ServicesSection({
       )}
       {serviceTab === 'vouchers' && (
         <VouchersPanel />
+      )}
+      {serviceTab === 'uncharged' && (
+        <UnchargedCancellations branch={branch} canSelectBranch={canSelectBranch} role={String(session?.user?.role || '')} />
       )}
     </div>
   )
@@ -1293,6 +1300,15 @@ function OrderFormModal({
   const isAdvancePayment = advanceTicked && !hasCreditPayer
   const [walletPopup, setWalletPopup] = useState<{ show: boolean; wallet?: DigitalWallet; walletType?: string }>({ show: false })
   const [patientId, setPatientId] = useState(prefill?.patientId as string || '')
+  useEffect(() => {
+    if (!patientId || orderType !== 'SERVICE') { setOwedFees([]); return }
+    let live = true
+    fetch(`/api/pos/uncharged-cancellations?patientId=${encodeURIComponent(patientId)}`, { cache: 'no-store' })
+      .then(r => (r.ok ? r.json() : { rows: [] }))
+      .then(d => { if (live) setOwedFees((d.rows || []) as UnchargedRow[]) })
+      .catch(() => { if (live) setOwedFees([]) })
+    return () => { live = false }
+  }, [patientId, orderType])
   const [activeWallet, setActiveWallet] = useState<DigitalWallet | null>(null) // wallet being used for payment
   const [walletDiscountApplied, setWalletDiscountApplied] = useState(false)
   const [walletDiscountRules, setWalletDiscountRules] = useState<WalletDiscountRuleItem[]>([])
@@ -1307,6 +1323,15 @@ function OrderFormModal({
   const [feeLink, setFeeLink] = useState<
     { orderId: string; orderNumber: number; branch: string; patientName: string; feeLines: FeeLine[] } | null
   >(null)
+  // The form must stay mounted while either after-sale prompt is open — the
+  // cancellation link and the tablet question. Closing it straight away (as
+  // onSuccess does) unmounted the link prompt with it, so no cancellation fee
+  // had been linked since Nov 7. Each prompt clears its flag when answered and
+  // the form closes once both are clear.
+  const afterSaleRef = useRef({ fee: false, tablet: false })
+  const finishSale = () => { if (!afterSaleRef.current.fee && !afterSaleRef.current.tablet) onSuccess() }
+  // Uncharged cancellation fees owed by this patient (lib/pos/uncharged-cancellations).
+  const [owedFees, setOwedFees] = useState<UnchargedRow[]>([])
   // Synchronous re-entrancy guard: blocks duplicate orders from rapid re-clicks
   // before React re-renders the disabled button (state updates lag a render).
   const submittingRef = useRef(false)
@@ -1734,7 +1759,8 @@ function OrderFormModal({
     if (closeTablet && patientTabletBranch) {
       fetch(`/api/patient-view/checkout?branch=${encodeURIComponent(patientTabletBranch)}&mode=close`, { method: 'DELETE' }).catch(() => {})
     }
-    onSuccess()
+    afterSaleRef.current.tablet = false
+    finishSale()
   }
 
   // Take the bill off the tablet when this form goes away — unless the sale
@@ -2200,7 +2226,17 @@ function OrderFormModal({
       // A cancellation fee was taken: ask which cancellation it settles. Queued
       // here and shown once the sale finishes unwinding, so the receipt and the
       // wallet deductions below are untouched by it.
-      const feeLines = cancellationFeeLines(items)
+      // Fees added from the uncharged-cancellations reminder already know their
+      // booking: tie them to this order, and only ask about the others.
+      const absenceIds = items.map(it => it.absenceScheduleId).filter((x): x is string => !!x)
+      if (absenceIds.length && data.id) {
+        fetch('/api/pos/uncharged-cancellations', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'record', orderId: data.id, scheduleIds: absenceIds }),
+        }).catch(() => {})
+      }
+      const feeLines = cancellationFeeLines(items.filter(it => !it.absenceScheduleId))
+      afterSaleRef.current = { fee: feeLines.length > 0 && !!data.id, tablet: false }
       if (feeLines.length > 0 && data.id) {
         setFeeLink({
           orderId: data.id,
@@ -2342,11 +2378,12 @@ function OrderFormModal({
         }).catch(() => {})
         // The unmount clear would undo what was just published, so skip it once.
         skipClearRef.current = true
+        afterSaleRef.current.tablet = true
         setShowCloseTablet(true)
         return
       }
 
-      onSuccess()
+      finishSale()
     } catch {
       setError('Failed to create order')
     } finally {
@@ -2549,6 +2586,41 @@ function OrderFormModal({
                 })}
               </div>
             )}
+            {owedFees.length > 0 && (() => {
+              const notAdded = owedFees.filter(f => f.feeServiceId && !items.some(it => it.absenceScheduleId === f.scheduleId))
+              const addFee = (f: UnchargedRow) => setItems(prev => prev.some(it => it.absenceScheduleId === f.scheduleId) ? prev : [...prev, {
+                serviceId: f.feeServiceId!, name: f.feeName, department: f.department, quantity: 1,
+                unitPrice: f.amount, lineTotal: f.amount, absenceScheduleId: f.scheduleId,
+              }])
+              return (
+                <div className="mt-2 rounded-xl border px-3 py-2 text-xs space-y-1.5" style={{ borderColor: '#fde68a', background: '#fffbeb', color: '#92400e' }}>
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="font-semibold">
+                      Uncharged cancellation fee{owedFees.length === 1 ? '' : 's'}: <span className="font-mono">{owedFees.length}</span> · <span className="font-mono">{formatCurrency(owedFees.reduce((s, f) => s + f.amount, 0))}</span> — please collect
+                    </p>
+                    {notAdded.length > 1 && (
+                      <button type="button" onClick={() => notAdded.forEach(addFee)} className="shrink-0 px-2 py-1 rounded-lg font-semibold text-white" style={{ background: '#d97706' }}>Add all to this sale</button>
+                    )}
+                  </div>
+                  {owedFees.map(f => {
+                    const added = items.some(it => it.absenceScheduleId === f.scheduleId)
+                    return (
+                      <div key={f.scheduleId} className="flex items-center justify-between gap-2 flex-wrap">
+                        <span>
+                          {f.detail} — {f.why} · {f.feeName} <span className="font-mono">{formatCurrency(f.amount)}</span>
+                          {f.gl && <span> · on letter {f.gl.letter}</span>}
+                        </span>
+                        {added ? (
+                          <button type="button" onClick={() => setItems(prev => prev.filter(it => it.absenceScheduleId !== f.scheduleId))} className="shrink-0 underline">Remove</button>
+                        ) : f.feeServiceId ? (
+                          <button type="button" onClick={() => addFee(f)} className="shrink-0 px-2 py-1 rounded-lg font-semibold text-white" style={{ background: '#d97706' }}>Add to this sale</button>
+                        ) : <span className="shrink-0 italic">no fee service set up</span>}
+                      </div>
+                    )
+                  })}
+                </div>
+              )
+            })()}
           </div>
 
           {/* Clinician — disabled for unearned revenue services and advance payments */}
@@ -3605,7 +3677,7 @@ function OrderFormModal({
             branch={feeLink.branch}
             patientName={feeLink.patientName}
             feeLines={feeLink.feeLines}
-            onDone={() => setFeeLink(null)}
+            onDone={() => { setFeeLink(null); afterSaleRef.current.fee = false; finishSale() }}
           />
         )}
       </div>

@@ -1348,6 +1348,9 @@ CREATE INDEX IF NOT EXISTS "ParkedGlCharge_patientId_status_idx" ON "ParkedGlCha
 ALTER TABLE "ParkedGlCharge" ADD COLUMN IF NOT EXISTS "waivedAt" TIMESTAMP(3);
 ALTER TABLE "ParkedGlCharge" ADD COLUMN IF NOT EXISTS "waivedById" TEXT;
 ALTER TABLE "ParkedGlCharge" ADD COLUMN IF NOT EXISTS "waiveReason" TEXT;
+-- One order can settle several bookings (uncharged-cancellations flag, 2026-11-18).
+DROP INDEX IF EXISTS "ParkedGlCharge_orderId_key";
+CREATE INDEX IF NOT EXISTS "ParkedGlCharge_orderId_idx" ON "ParkedGlCharge"("orderId");
 SQL
 
 echo "Redeploy complete."
