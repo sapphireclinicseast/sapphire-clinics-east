@@ -3,6 +3,7 @@ import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { collectionBranch } from '@/lib/ar-payment-branch'
 import { postARPaymentJournal, reverseARPaymentJournal, journalMatchesRecord } from '@/lib/accounting/post-ar-payment'
+import { arSiFromInput, arSiClash, normalizeSI } from '@/lib/sales-invoice'
 
 const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN']
 
@@ -40,6 +41,17 @@ export async function POST(req: Request) {
     }
     // AR actually settled excludes the overpaid excess.
     const totalSettled = paymentAmount + discountAmount - overpayAmount
+
+    // Sales Invoice issued on this collection: the invoice number only, and not
+    // one already used by an order or another payer (lib/sales-invoice).
+    const siIn = arSiFromInput(salesInvoiceNumber)
+    if (siIn.error) return NextResponse.json({ error: siIn.error }, { status: 400 })
+    if (siIn.si) {
+      const first = await prisma.digitalWallet.findUnique({ where: { id: effectiveWalletIds[0] }, select: { branch: true } })
+      const siBranch = await collectionBranch(prisma, { walletBranch: (first?.branch as string | null) ?? null, orderIds: orderIds || [], cashAccountId, requested: branch })
+      const clash = await arSiClash(prisma, siBranch, siIn.si, effectiveWalletIds)
+      if (clash) return NextResponse.json({ error: clash }, { status: 400 })
+    }
 
     // For multi-wallet: split total evenly across wallets, then create one ARPayment per wallet
     const perWalletAmount = paymentAmount / effectiveWalletIds.length
@@ -85,7 +97,7 @@ export async function POST(req: Request) {
           notes: effectiveWalletIds.length > 1
             ? `${notes?.trim() || ''} [Bulk payment across ${effectiveWalletIds.length} GL wallets]`.trim()
             : (notes?.trim() || null),
-          salesInvoiceNumber: salesInvoiceNumber?.trim() || null,
+          salesInvoiceNumber: siIn.si,
           // From the collection itself, never the screen's branch filter alone.
           branch: await collectionBranch(prisma, { walletBranch: wallet.branch as string | null, orderIds: walletOrderIds, cashAccountId, requested: branch }),
           createdById: session.user.id,
@@ -157,6 +169,11 @@ export async function POST(req: Request) {
       })
     }
 
+    // A number cancelled in the SI book is back in use once a collection carries it.
+    if (siIn.si && payments[0]?.branch) {
+      await prisma.salesInvoiceFlag.deleteMany({ where: { branch: payments[0].branch, siNumber: siIn.si, status: 'CANCELLED' } }).catch(() => {})
+    }
+
     return NextResponse.json(payments.length === 1 ? payments[0] : payments, { status: 201 })
   } catch (err) {
     console.error('AR Payment error:', err)
@@ -205,6 +222,17 @@ export async function PUT(req: Request) {
         : ((await prisma.digitalWallet.findUnique({ where: { id: walletId }, select: { branch: true } }))?.branch as string | null),
       orderIds, cashAccountId, requested: branch,
     })
+    // Sales Invoice: an unchanged value passes as it is (older records may hold a
+    // remark there); a new one must be an invoice number nobody else uses.
+    const siTyped = String(salesInvoiceNumber ?? '').trim()
+    const siUnchanged = siTyped === String(existing.salesInvoiceNumber ?? '').trim()
+    const siIn = siUnchanged ? { si: existing.salesInvoiceNumber ?? null } : arSiFromInput(siTyped)
+    if ('error' in siIn && siIn.error) return NextResponse.json({ error: siIn.error }, { status: 400 })
+    if (!siUnchanged && siIn.si && siIn.si !== normalizeSI(existing.salesInvoiceNumber)) {
+      const clash = await arSiClash(prisma, branchOut, siIn.si, [walletId], id)
+      if (clash) return NextResponse.json({ error: clash }, { status: 400 })
+    }
+
     const journalFieldsChanged =
       walletId !== existing.walletId
       || day(paymentDate) !== day(existing.paymentDate)
@@ -258,7 +286,7 @@ export async function PUT(req: Request) {
         overpaymentAccountId: newOverpay > 0 ? overpaymentAccountId : null,
         proofUrl: proofUrl || null,
         notes: notes?.trim() || null,
-        salesInvoiceNumber: salesInvoiceNumber?.trim() || null,
+        salesInvoiceNumber: siIn.si,
         branch: branchOut,
         items: orderIds?.length ? {
           create: orderIds.map((orderId: string) => ({ orderId })),
@@ -310,7 +338,11 @@ export async function PUT(req: Request) {
     // historical journal entries — always reverse + re-post for an audit trail).
     let updatePostResult: Awaited<ReturnType<typeof postARPaymentJournal>> | null = null
     // A journal the record cannot reproduce stays exactly as it is (see keepJournal).
-    if (!keepJournal) {
+    // Nor is a journal re-posted when nothing it is made of changed — an edit of
+    // the tags, notes, proof or SI number leaves it standing, so bank lines
+    // matched to it stay matched (Hannah 2026-11-19). One with nothing standing
+    // is posted.
+    if (!keepJournal && (journalFieldsChanged || matches === null)) {
       try {
         await reverseARPaymentJournal(prisma, id, session.user.id, 'AR payment edited')
         updatePostResult = await postARPaymentJournal(prisma, id, session.user.id)
@@ -333,7 +365,9 @@ export async function PUT(req: Request) {
           balanceDiff,
           orderCount: orderIds?.length || 0,
           glPosted: updatePostResult?.posted ?? false,
-          glReason: keepJournal ? 'journal kept (hand-made lines the record cannot reproduce)' : updatePostResult?.posted ? undefined : updatePostResult?.reason,
+          glReason: keepJournal ? 'journal kept (hand-made lines the record cannot reproduce)'
+            : !journalFieldsChanged && matches !== null ? 'journal kept (no amount, account, date or branch changed)'
+            : updatePostResult?.posted ? undefined : updatePostResult?.reason,
         },
       },
     })

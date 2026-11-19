@@ -4,6 +4,7 @@ import { prisma } from '@/lib/prisma'
 import { enforceBranch } from '@/lib/branch-scope'
 import { parseMonitoringRemark } from '@/lib/si-monitoring'
 import { takenSiNumbers, isShadowedMonitoringFlag } from '@/lib/si-flag-guard'
+import { isArSiNumber } from '@/lib/sales-invoice'
 
 export async function GET(req: Request) {
   const session = await auth()
@@ -162,6 +163,9 @@ export async function GET(req: Request) {
         select: { id: true, salesInvoiceNumber: true, paymentDate: true, amount: true, discount: true, branch: true, wallet: { select: { patientName: true, walletType: true } } },
       })
       for (const p of arPayments) {
+        // Only an actual invoice number counts: older records hold remarks
+        // ("No SI c/o …") or bank references in the SI field (lib/sales-invoice).
+        if (!isArSiNumber(p.salesInvoiceNumber)) continue
         const gross = Number(p.amount) + Number(p.discount)
         arRows.push({
           date: new Date(p.paymentDate).toLocaleDateString('en-PH', { timeZone: 'Asia/Manila', year: 'numeric', month: '2-digit', day: '2-digit' }),
