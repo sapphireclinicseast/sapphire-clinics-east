@@ -1139,9 +1139,10 @@ export default function AccountsReceivablePage() {
     paymentId: string
     loading: boolean
     error?: string
-    payment?: { ref: string; date: string; payer: string; amount: number; discount: number }
+    payment?: { ref: string; date: string; payer: string; amount: number; discount: number; overpayment?: number; discountAccount?: string | null; overpaymentAccount?: string | null; cashAccount?: string | null }
     rows?: { orderId: string; orderNumber: number; date: string; patientName: string; clinicianName: string; hmo: string; amount: number; total: number; status: string; services: string[] }[]
     total?: number
+    journal?: { cash: number; arCleared: number; deductions: { account: string; amount: number }[]; excess: { account: string; amount: number }[] } | null
   } | null>(null)
   const openPaySessions = useCallback(async (paymentId: string) => {
     setPaySessions({ paymentId, loading: true })
@@ -1149,7 +1150,7 @@ export default function AccountsReceivablePage() {
       const res = await fetch(`/api/accounts-receivable/payments/sessions?id=${encodeURIComponent(paymentId)}`)
       const d = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(d.error || `Could not load the sessions (${res.status})`)
-      setPaySessions(cur => (cur?.paymentId === paymentId ? { paymentId, loading: false, payment: d.payment, rows: d.rows, total: d.total } : cur))
+      setPaySessions(cur => (cur?.paymentId === paymentId ? { paymentId, loading: false, payment: d.payment, rows: d.rows, total: d.total, journal: d.journal ?? null } : cur))
     } catch (e) {
       setPaySessions(cur => (cur?.paymentId === paymentId ? { paymentId, loading: false, error: e instanceof Error ? e.message : 'Could not load the sessions' } : cur))
     }
@@ -4904,6 +4905,67 @@ export default function AccountsReceivablePage() {
                   </table>
                 </div>
               )}
+              {/* How the sessions add up to the money received (Hannah 2026-11-19:
+                  "the breakdown of this computation along with the discount to
+                  match amount received"). Sessions + excess = gross paid by the
+                  payer; gross − discount / EWT = cash in the bank. */}
+              {paySessions.payment && paySessions.rows && (() => {
+                const pm = paySessions.payment
+                const je = paySessions.journal
+                const sessionsTotal = paySessions.total || 0
+                // From the ledger when the payment has a standing entry (it holds
+                // every deduction — EWT and the HMO's discount separately); else
+                // from the record's single discount / excess fields.
+                const excessLines = je ? je.excess : (pm.overpayment || 0) > 0 ? [{ account: pm.overpaymentAccount || 'Excess', amount: pm.overpayment || 0 }] : []
+                const deductionLines = je ? je.deductions : pm.discount > 0 ? [{ account: pm.discountAccount || 'Discount / EWT', amount: pm.discount }] : []
+                const arBase = je ? je.arCleared : sessionsTotal
+                const gross = arBase + excessLines.reduce((t, l) => t + l.amount, 0)
+                const computed = gross - deductionLines.reduce((t, l) => t + l.amount, 0)
+                const gap = Math.round((pm.amount - computed) * 100) / 100
+                const arGap = je ? Math.round((je.arCleared - sessionsTotal) * 100) / 100 : 0
+                const line = (label: React.ReactNode, value: string, opts: { sub?: string | null; strong?: boolean; color?: string; top?: boolean } = {}) => (
+                  <div className={`flex items-baseline justify-between gap-4 px-3 py-1.5 ${opts.top ? 'border-t' : ''}`} style={{ borderColor: 'var(--light-gray)' }}>
+                    <span className={opts.strong ? 'font-semibold' : ''} style={{ color: opts.color || 'var(--charcoal)' }}>
+                      {label}
+                      {opts.sub && <span className="block text-[10px] font-normal" style={{ color: 'var(--mid-gray)' }}>{opts.sub}</span>}
+                    </span>
+                    <span className={`font-mono whitespace-nowrap ${opts.strong ? 'font-bold' : ''}`} style={{ color: opts.color || 'var(--charcoal)' }}>{value}</span>
+                  </div>
+                )
+                if (pm.amount === 0 && !je) {
+                  return (
+                    <p className="mt-3 text-[11px] rounded-lg px-3 py-2" style={{ background: '#f8fafc', color: 'var(--mid-gray)' }}>
+                      A ₱0 record: it marks these {paySessions.rows.length} sessions as settled elsewhere (see its notes), so no money is matched here.
+                    </p>
+                  )
+                }
+                return (
+                  <div className="mt-3 ml-auto w-full sm:max-w-md rounded-xl border text-xs" style={{ borderColor: 'var(--light-gray)' }}>
+                    <p className="px-3 pt-2 pb-1 text-[11px] font-semibold uppercase tracking-[.4px] flex justify-between gap-2" style={{ color: 'var(--mid-gray)' }}>
+                      <span>Breakdown</span>
+                      <span className="normal-case tracking-normal font-normal">{je ? 'as booked in the ledger' : 'from the payment record'}</span>
+                    </p>
+                    {line(<>Sessions billed ({paySessions.rows.length})</>, formatCurrency(sessionsTotal))}
+                    {je && Math.abs(arGap) >= 0.01 && line('AR cleared in the ledger', formatCurrency(je.arCleared), {
+                      color: '#92400e',
+                      sub: `${formatCurrency(Math.abs(arGap))} ${arGap > 0 ? 'more' : 'less'} than the sessions tagged now — the tags changed after it was posted`,
+                    })}
+                    {excessLines.map(l => line('+ Paid above the sessions', `+${formatCurrency(l.amount)}`, { sub: l.account, color: '#92400e' }))}
+                    {line(<>= Gross paid by {pm.payer || 'the payer'}</>, formatCurrency(gross), { strong: true, top: true })}
+                    {deductionLines.length === 0
+                      ? line('− Discount / EWT', formatCurrency(0))
+                      : deductionLines.map(l => line(`− ${/1140|withholding/i.test(l.account) ? 'EWT (withholding tax)' : /7200|discount/i.test(l.account) ? 'HMO discount' : /7160|short/i.test(l.account) ? 'Short-pay' : 'Deduction'}`, `−${formatCurrency(l.amount)}`, { sub: l.account }))}
+                    {line('= Amount received', formatCurrency(computed), { strong: true, top: true, color: Math.abs(gap) < 0.01 ? '#166534' : 'var(--charcoal)', sub: pm.cashAccount ? `Into ${pm.cashAccount}` : null })}
+                    {Math.abs(gap) < 0.01 ? (
+                      <p className="px-3 pb-2 text-[11px] font-medium" style={{ color: '#166534' }}>Matches the {formatCurrency(pm.amount)} received.</p>
+                    ) : (
+                      <p className="px-3 pb-2 text-[11px] font-medium" style={{ color: '#b91c1c' }}>
+                        Recorded as received: {formatCurrency(pm.amount)} — {formatCurrency(Math.abs(gap))} {gap > 0 ? 'more' : 'less'} than this explains{je ? '' : ' (the record holds one discount figure; a second deduction is not on it)'}.
+                      </p>
+                    )}
+                  </div>
+                )
+              })()}
             </div>
           </div>
         </div>

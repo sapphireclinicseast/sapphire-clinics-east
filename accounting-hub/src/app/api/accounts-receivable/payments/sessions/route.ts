@@ -29,7 +29,10 @@ export async function GET(req: Request) {
   const payment = await prisma.aRPayment.findUnique({
     where: { id },
     select: {
-      id: true, walletId: true, paymentDate: true, amount: true, discount: true, notes: true,
+      id: true, walletId: true, paymentDate: true, amount: true, discount: true, notes: true, overpayment: true,
+      discountAccount: { select: { accountNumber: true, accountTitle: true } },
+      overpaymentAccount: { select: { accountNumber: true, accountTitle: true } },
+      cashAccount: { select: { accountNumber: true, accountTitle: true } },
       wallet: { select: { patientName: true, walletType: true } },
       items: {
         select: {
@@ -77,7 +80,35 @@ export async function GET(req: Request) {
     })
     .sort((a, b) => a.date.localeCompare(b.date) || a.orderNumber - b.orderNumber)
 
+  // The money as the ledger booked it: the payment's standing AR_PAYMENT entry
+  // (its postings net of reversals), one figure per account. Cash in, AR
+  // cleared, what was taken off (EWT, partnership discount, short-pay) and any
+  // excess booked elsewhere (VAT held, under-billed). Payments from the
+  // QuickBooks era have no hub entry, so the record's own fields stand in.
+  const jeLines = await prisma.journalEntryLine.findMany({
+    where: { journalEntry: { referenceId: payment.id, referenceType: { in: ['AR_PAYMENT', 'AR_PAYMENT_REVERSAL'] } } },
+    select: { debit: true, credit: true, account: { select: { accountNumber: true, accountTitle: true } } },
+  })
+  const netBy = new Map<string, { label: string; net: number; title: string }>()
+  for (const l of jeLines) {
+    const k = l.account.accountNumber
+    const cur = netBy.get(k) || { label: `${k} ${l.account.accountTitle}`, title: l.account.accountTitle, net: 0 }
+    cur.net += Number(l.debit) - Number(l.credit)
+    netBy.set(k, cur)
+  }
+  const cashNo = payment.cashAccount?.accountNumber || ''
+  const r2 = (x: number) => Math.round(x * 100) / 100
+  const standing = [...netBy.entries()].map(([no, v]) => ({ no, ...v, net: r2(v.net) })).filter(v => Math.abs(v.net) >= 0.005)
+  const isAr = (v: { no: string; title: string }) => /receivable/i.test(v.title)
+  const journal = standing.length ? {
+    cash: r2(standing.filter(v => v.no === cashNo).reduce((t, v) => t + v.net, 0)),
+    arCleared: r2(-standing.filter(v => isAr(v) && v.net < 0).reduce((t, v) => t + v.net, 0)),
+    deductions: standing.filter(v => v.net > 0 && v.no !== cashNo).map(v => ({ account: v.label, amount: v.net })),
+    excess: standing.filter(v => v.net < 0 && !isAr(v)).map(v => ({ account: v.label, amount: -v.net })),
+  } : null
+
   return NextResponse.json({
+    journal,
     payment: {
       id: payment.id,
       ref: arRefOf(payment.notes),
@@ -85,6 +116,12 @@ export async function GET(req: Request) {
       payer: payment.wallet?.patientName || '',
       amount: Number(payment.amount),
       discount: Number(payment.discount),
+      // The breakdown under the list: sessions + excess = gross paid by the
+      // payer; gross − discount / EWT = what reached the bank.
+      overpayment: Number(payment.overpayment ?? 0),
+      discountAccount: payment.discountAccount ? `${payment.discountAccount.accountNumber} ${payment.discountAccount.accountTitle}` : null,
+      overpaymentAccount: payment.overpaymentAccount ? `${payment.overpaymentAccount.accountNumber} ${payment.overpaymentAccount.accountTitle}` : null,
+      cashAccount: payment.cashAccount ? `${payment.cashAccount.accountNumber} ${payment.cashAccount.accountTitle}` : null,
     },
     rows,
     total: rows.reduce((s, r) => s + r.amount, 0),
