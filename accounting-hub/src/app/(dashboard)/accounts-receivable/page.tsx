@@ -617,6 +617,8 @@ export default function AccountsReceivablePage() {
   const wallets = dataReady ? walletsLoaded : NO_ROWS
   const orders = dataReady ? ordersLoaded : NO_ROWS
   const arPayments = dataReady ? arPaymentsLoaded : NO_ROWS
+  // Payment by id, for the AR number shown under each Paid session.
+  const payById = useMemo(() => new Map(arPayments.map(p => [p.id, p])), [arPayments])
   const glCases = dataReady ? glCasesLoaded : NO_ROWS
   const glStageEvents = dataReady ? glStageEventsLoaded : NO_ROWS
   const summary = dataReady ? summaryLoaded : null
@@ -1130,6 +1132,28 @@ export default function AccountsReceivablePage() {
 
   const [paySort, setPaySort] = useState<{ key: string; dir: 'asc' | 'desc' }>({ key: 'date', dir: 'desc' })
   const [payFilters, setPayFilters] = useState<Record<string, string>>({})
+
+  // The sessions one AR payment settled (Hannah 2026-11-19): opened from Payment
+  // History's "N orders" and from the AR number under a Paid session.
+  const [paySessions, setPaySessions] = useState<{
+    paymentId: string
+    loading: boolean
+    error?: string
+    payment?: { ref: string; date: string; payer: string; amount: number; discount: number }
+    rows?: { orderId: string; orderNumber: number; date: string; patientName: string; clinicianName: string; hmo: string; amount: number; total: number; status: string; services: string[] }[]
+    total?: number
+  } | null>(null)
+  const openPaySessions = useCallback(async (paymentId: string) => {
+    setPaySessions({ paymentId, loading: true })
+    try {
+      const res = await fetch(`/api/accounts-receivable/payments/sessions?id=${encodeURIComponent(paymentId)}`)
+      const d = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(d.error || `Could not load the sessions (${res.status})`)
+      setPaySessions(cur => (cur?.paymentId === paymentId ? { paymentId, loading: false, payment: d.payment, rows: d.rows, total: d.total } : cur))
+    } catch (e) {
+      setPaySessions(cur => (cur?.paymentId === paymentId ? { paymentId, loading: false, error: e instanceof Error ? e.message : 'Could not load the sessions' } : cur))
+    }
+  }, [])
 
   const togglePaySort = (key: string) =>
     setPaySort(s => (s.key === key ? { key, dir: s.dir === 'asc' ? 'desc' : 'asc' } : { key, dir: 'asc' }))
@@ -2724,7 +2748,18 @@ export default function AccountsReceivablePage() {
                     </td>
                     <td className="px-3 py-2">{toNum(p.discount) > 0 ? formatCurrency(toNum(p.discount)) : '—'}</td>
                     <td className="px-3 py-2" style={{ color: 'var(--teal)' }}>{p.cashAccount ? `${p.cashAccount.accountNumber} ${p.cashAccount.accountTitle}` : '—'}</td>
-                    {tab !== 'GL' && <td className="px-3 py-2">{p.items.length} orders</td>}
+                    {tab !== 'GL' && (
+                      <td className="px-3 py-2 whitespace-nowrap">
+                        {p.items.length > 0 ? (
+                          <button type="button" onClick={() => openPaySessions(p.id)}
+                            className="font-medium underline underline-offset-2 decoration-dotted hover:decoration-solid"
+                            style={{ color: 'var(--teal)' }}
+                            title="See the sessions this payment settled">
+                            {p.items.length} order{p.items.length === 1 ? '' : 's'}
+                          </button>
+                        ) : <span style={{ color: 'var(--mid-gray)' }}>0 orders</span>}
+                      </td>
+                    )}
                     <td className="px-3 py-2" style={{ color: 'var(--mid-gray)' }}>{notesWithoutRef(p.notes) || '—'}</td>
                     <td className="px-3 py-2">
                       {proofFiles.length === 0 ? (
@@ -3975,6 +4010,19 @@ export default function AccountsReceivablePage() {
                             style={isPaid ? { background: '#dcfce7', color: '#166534' } : { background: '#fef3c7', color: '#92400e' }}>
                             {isPaid ? 'Paid' : 'Unpaid'}
                           </span>
+                          {/* Which collection paid it — the AR number, else the payment date. */}
+                          {isPaid && o.arPaymentItems.map(it => {
+                            const pay = payById.get(it.paymentId)
+                            const label = pay ? (arRefOf(pay.notes) || `Paid ${formatDate(pay.paymentDate)}`) : 'AR payment'
+                            return (
+                              <button key={it.paymentId} type="button" onClick={() => openPaySessions(it.paymentId)}
+                                className="block mx-auto mt-1 text-[10px] font-mono font-semibold whitespace-nowrap hover:underline"
+                                style={{ color: '#166534' }}
+                                title={pay ? `Paid on ${label} · ${formatDate(pay.paymentDate)} · ${formatCurrency(toNum(pay.amount))} — click to see every session it paid` : 'Click to see the payment\'s sessions'}>
+                                {label}
+                              </button>
+                            )
+                          })}
                           {!isPaid && canCancelSession && (isFollowUp || hmoSubTab === 'per-hmo') && (
                             <button type="button" onClick={() => openCancel(o)}
                               className="block mx-auto mt-1.5 px-2 py-0.5 rounded-full text-[10px] font-semibold border whitespace-nowrap hover:bg-red-50"
@@ -4778,6 +4826,88 @@ export default function AccountsReceivablePage() {
         </div>
         )
       })()}
+
+      {/* Sessions one AR payment settled — from Payment History "N orders" or a Paid session's AR number */}
+      {paySessions && (
+        <div className="fixed inset-0 z-[80] flex items-start justify-center p-4 pt-10 overflow-y-auto" style={{ background: 'rgba(15, 23, 42, 0.45)' }}
+          onClick={() => setPaySessions(null)}>
+          <div className="w-full max-w-4xl rounded-2xl bg-white shadow-xl" onClick={e => e.stopPropagation()}
+            role="dialog" aria-modal="true" aria-labelledby="pay-sessions-title">
+            <div className="px-5 pt-5 pb-3 border-b flex items-start justify-between gap-3" style={{ borderColor: 'var(--light-gray)' }}>
+              <div className="min-w-0">
+                <h3 id="pay-sessions-title" className="text-base font-semibold" style={{ color: 'var(--charcoal)' }}>
+                  Sessions paid{paySessions.payment ? <> by <span className="font-mono">{paySessions.payment.ref || 'this payment'}</span></> : ''}
+                </h3>
+                {paySessions.payment && (
+                  <p className="text-xs mt-1" style={{ color: 'var(--mid-gray)' }}>
+                    {paySessions.payment.payer} · {formatDate(paySessions.payment.date)} ·{' '}
+                    <span className="font-mono">{formatCurrency(paySessions.payment.amount)}</span> received
+                    {paySessions.payment.discount > 0 && <> + <span className="font-mono">{formatCurrency(paySessions.payment.discount)}</span> discount / EWT</>}
+                    {paySessions.rows && <> · {paySessions.rows.length} session{paySessions.rows.length === 1 ? '' : 's'}</>}
+                  </p>
+                )}
+              </div>
+              <button type="button" onClick={() => setPaySessions(null)} aria-label="Close"
+                className="text-sm px-2 py-1 rounded-lg hover:bg-gray-100" style={{ color: 'var(--mid-gray)' }}>✕</button>
+            </div>
+            <div className="px-5 py-4">
+              {paySessions.loading ? (
+                <p className="text-sm py-6 text-center" style={{ color: 'var(--mid-gray)' }}>Loading sessions…</p>
+              ) : paySessions.error ? (
+                <p className="text-sm py-6 text-center font-medium" style={{ color: '#B91C1C' }}>{paySessions.error}</p>
+              ) : !paySessions.rows?.length ? (
+                <p className="text-sm py-6 text-center" style={{ color: 'var(--mid-gray)' }}>No sessions are tagged to this payment.</p>
+              ) : (
+                <div className="rounded-xl border overflow-x-auto" style={{ borderColor: 'var(--light-gray)' }}>
+                  <table className="w-full text-xs">
+                    <thead>
+                      <tr style={{ background: 'var(--hr-head, #f6f8f3)', color: 'var(--mid-gray)' }}>
+                        <th className="text-left px-3 py-2 font-semibold">Date</th>
+                        <th className="text-left px-3 py-2 font-semibold">Patient</th>
+                        <th className="text-left px-3 py-2 font-semibold">Clinician</th>
+                        <th className="text-left px-3 py-2 font-semibold">HMO</th>
+                        <th className="text-right px-3 py-2 font-semibold">Amount</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {paySessions.rows.map(r => (
+                        <tr key={r.orderId} className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
+                          <td className="px-3 py-2 whitespace-nowrap">
+                            {formatDate(r.date)}
+                            <span className="block text-[10px] font-mono" style={{ color: 'var(--mid-gray)' }}>#{r.orderNumber}{r.status === 'VOIDED' ? ' · voided' : ''}</span>
+                          </td>
+                          <td className="px-3 py-2" style={{ color: 'var(--charcoal)' }}>
+                            {r.patientName || '—'}
+                            {r.services.length > 0 && (
+                              <span className="block text-[10px] leading-snug" style={{ color: 'var(--mid-gray)' }}>{r.services.join(', ')}</span>
+                            )}
+                          </td>
+                          <td className="px-3 py-2">{r.clinicianName || '—'}</td>
+                          <td className="px-3 py-2">{r.hmo || '—'}</td>
+                          <td className="px-3 py-2 text-right font-mono font-medium whitespace-nowrap" style={{ color: 'var(--charcoal)' }}>
+                            {formatCurrency(r.amount)}
+                            {Math.abs(r.total - r.amount) > 0.005 && (
+                              <span className="block text-[10px] font-normal" style={{ color: 'var(--mid-gray)' }}>of {formatCurrency(r.total)} order</span>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                    <tfoot>
+                      <tr className="border-t" style={{ borderColor: 'var(--light-gray)', background: '#f0fdf4' }}>
+                        <td colSpan={4} className="px-3 py-2 font-semibold" style={{ color: '#166534' }}>
+                          Total of {paySessions.rows.length} session{paySessions.rows.length === 1 ? '' : 's'}
+                        </td>
+                        <td className="px-3 py-2 text-right font-mono font-bold" style={{ color: '#166534' }}>{formatCurrency(paySessions.total || 0)}</td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Decrease due to HMO Payment — opened from the Record Payment tag list */}
       {settleOrder && (
