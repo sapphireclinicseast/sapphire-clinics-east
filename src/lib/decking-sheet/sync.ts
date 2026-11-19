@@ -36,6 +36,7 @@ import {
 } from './grid'
 import { daySlots } from '@/lib/decking-slots'
 import type { sheets_v4 } from 'googleapis'
+import { createHash } from 'crypto'
 
 export const DEPARTMENTS = ['OT', 'PT', 'SLP', 'SPED', 'MD', 'PSYCHOLOGY'] as const
 const MAP_TAB = '_map'
@@ -64,6 +65,96 @@ const MAP_TAB = '_map'
  */
 const MAX_BATCH_BYTES = 2_000_000
 const MAX_BATCH_REQUESTS = 5_000
+
+/**
+ * Where each tab's structural fingerprint is kept, and how stale it may get.
+ *
+ * Rewriting a tab's STRUCTURE — its merges, its per-cell dropdowns, its
+ * conditional formats and its protected range — is almost the entire cost of
+ * this sync, and almost always unnecessary. The structure is a function of the
+ * roster and the clinic's hours; it changes when somebody is hired or an hour
+ * is opened, not every five minutes. The cell VALUES are what change, and
+ * writing those is cheap.
+ *
+ * Batching the writes (PR #1093) cut the API calls from ~200 to 19 and removed
+ * the quota problem, but the run still took 321s: Google charges wall-clock
+ * for the WORK, not for the number of calls carrying it. A conditional format
+ * rule naming two thousand ranges, and a protected range exempting two
+ * thousand more, are slow to apply however they are packaged.
+ *
+ * So each tab records a hash of everything structural about it. When the hash
+ * matches, the run writes values only. When it does not — or when the hash is
+ * older than the interval below — the tab is rebuilt in full, so a merge
+ * somebody broke by hand, or a protection that was dropped, repairs itself
+ * within a few hours without anyone noticing it was gone.
+ */
+const SIG_TAB = '_sig'
+const FULL_REBUILD_AFTER_MS = 6 * 60 * 60 * 1000
+
+interface TabSignature { sig: string; at: number }
+
+/** Last run's fingerprints, by tab. An unreadable or absent tab means "rebuild everything". */
+async function loadSignatures(
+  api: sheets_v4.Sheets,
+  spreadsheetId: string,
+): Promise<Map<string, TabSignature>> {
+  const out = new Map<string, TabSignature>()
+  try {
+    const got = await api.spreadsheets.values.get({ spreadsheetId, range: `${SIG_TAB}!A2:C` })
+    for (const r of got.data.values ?? []) {
+      if (!r?.[0] || !r[1]) continue
+      out.set(String(r[0]), { sig: String(r[1]), at: Number(r[2]) || 0 })
+    }
+  } catch { /* no tab yet — every tab rebuilds once, which is correct */ }
+  return out
+}
+
+async function saveSignatures(
+  api: sheets_v4.Sheets,
+  spreadsheetId: string,
+  sigs: Map<string, TabSignature>,
+  tabs?: TabIndex,
+) {
+  if (!sigs.size) return
+  const { id: sheetId } = await tabId(api, spreadsheetId, SIG_TAB, 3, sigs.size + 20, true, tabs)
+  const rows = [
+    { values: ['TAB', 'SIG', 'AT'].map(h => ({ userEnteredValue: { stringValue: h } })) },
+    ...[...sigs].map(([tab, s]) => ({ values: [
+      { userEnteredValue: { stringValue: tab } },
+      { userEnteredValue: { stringValue: s.sig } },
+      { userEnteredValue: { numberValue: s.at } },
+    ] })),
+  ]
+  await api.spreadsheets.batchUpdate({ spreadsheetId, requestBody: { requests: [
+    { updateCells: { range: { sheetId, startRowIndex: 0, endRowIndex: sigs.size + 20, startColumnIndex: 0, endColumnIndex: 3 }, fields: 'userEnteredValue' } },
+    { updateCells: { rows: rows as sheets_v4.Schema$RowData[], fields: 'userEnteredValue', start: { sheetId, rowIndex: 0, columnIndex: 0 } } },
+  ] } })
+}
+
+/**
+ * Everything about a tab that the structural rebuild depends on — and nothing
+ * that changes when a booking does.
+ *
+ * Deliberately NOT included: the cell values, and `preserved`. Those change
+ * constantly and are written on every run regardless. Deliberately included:
+ * `payOptions` and `patientRows`, because both are baked into the dropdown
+ * rules, so a new insurer or a new patient must force the validation to be
+ * written again or the picker goes stale.
+ */
+function structureSignature(grid: Grid, payOptions: string[], patientRows: number): string {
+  const shape = {
+    rows: grid.rows.length,
+    cols: grid.totalCols,
+    k: grid.k,
+    perBand: grid.perBand,
+    merges: grid.merges,
+    editable: grid.editable,
+    validate: grid.validate,
+    payOptions,
+    patientRows,
+  }
+  return createHash('sha1').update(JSON.stringify(shape)).digest('hex').slice(0, 16)
+}
 
 /**
  * Send `requests` in as few batchUpdate calls as the payload cap allows.
@@ -134,7 +225,7 @@ interface OpenSlot {
 
 export interface SyncReport {
   branch: string
-  pushed: { tab: string; staff: number; rows: number; kept?: number; calls?: number }[]
+  pushed: { tab: string; staff: number; rows: number; kept?: number; calls?: number; rebuilt?: boolean }[]
   applied: { tab: string; cell: string; what: string }[]
   conflicts: { tab: string; cell: string; sheet: string; hub: string }[]
   unknownPatients: string[]
@@ -957,10 +1048,22 @@ async function pushTab(
   lastWrote?: Map<string, string>,
   consumed?: Set<string>,
   tabs?: TabIndex,
+  prevSig?: TabSignature,
+  forceFull?: boolean,
 ) {
   const need = grid.rows.length + 60
   const { id: sheetId, rowCount } = await tabId(api, spreadsheetId, tab, SAFE_COL + 8, need, false, tabs)
   const span = Math.max(rowCount, need)
+
+  // Is the expensive half of this push needed at all?
+  //
+  // See SIG_TAB. The merges, the per-cell dropdowns, the conditional formats
+  // and the protected range are a function of the board's SHAPE. If the shape
+  // is the same as last time, they are already in the sheet and rewriting them
+  // costs five minutes to achieve nothing.
+  const sig = structureSignature(grid, payOptions, patientRows)
+  const stale = !prevSig || Date.now() - prevSig.at > FULL_REBUILD_AFTER_MS
+  const rebuild = !!forceFull || stale || prevSig!.sig !== sig
 
   // ── Anything typed since the last push is kept, not overwritten ──────────
   let preserved = 0
@@ -1031,13 +1134,16 @@ async function pushTab(
     }
   }
 
+  // The resize always happens — the board may have grown a row. The unmerge is
+  // the reset half of the merge rebuild, so it goes only when the merges do:
+  // unmerging without re-merging would leave the tab visibly in pieces.
   await api.spreadsheets.batchUpdate({ spreadsheetId, requestBody: { requests: [
     { updateSheetProperties: { properties: { sheetId, gridProperties: { rowCount: span, columnCount: SAFE_COL + 8 } }, fields: 'gridProperties.rowCount,gridProperties.columnCount' } },
     // Only ever within the grid's own columns: everything from SAFE_COL
     // rightwards is front desk's, and the hub does not touch it.
     // Cleared to SAFE_COL, not to this run's width: a narrower layout would
     // otherwise strand the previous, wider one to the right of its new edge.
-    { unmergeCells: { range: { sheetId, startRowIndex: 0, endRowIndex: span, startColumnIndex: 0, endColumnIndex: SAFE_COL } } },
+    ...(rebuild ? [{ unmergeCells: { range: { sheetId, startRowIndex: 0, endRowIndex: span, startColumnIndex: 0, endColumnIndex: SAFE_COL } } }] : []),
   ] } })
 
   const writes: sheets_v4.Schema$Request[] = []
@@ -1057,23 +1163,28 @@ async function pushTab(
     writes.push({ updateDimensionProperties: { range: { sheetId, dimension: 'COLUMNS', startIndex: base, endIndex: base + 1 }, properties: { pixelSize: 95 }, fields: 'pixelSize' } })
     writes.push({ updateDimensionProperties: { range: { sheetId, dimension: 'COLUMNS', startIndex: base + 1, endIndex: base + 1 + grid.k }, properties: { pixelSize: 120 }, fields: 'pixelSize' } })
   }
-  for (const m of grid.merges) writes.push({ mergeCells: { range: { sheetId, ...m }, mergeType: 'MERGE_ALL' } })
+  // Everything from here to the end of the structural block is skipped when
+  // the board's shape has not moved — it is thousands of requests describing a
+  // layout the sheet already has.
+  if (rebuild) {
+    for (const m of grid.merges) writes.push({ mergeCells: { range: { sheetId, ...m }, mergeType: 'MERGE_ALL' } })
 
-  // Validation is not touched by updateCells, so stale dropdowns survive a
-  // layout change and land on rows that are now something else entirely.
-  writes.push({ setDataValidation: { range: { sheetId, startRowIndex: 0, endRowIndex: span, startColumnIndex: 0, endColumnIndex: SAFE_COL } } })
-  for (const v of grid.validate) {
-    // A closed hour's payment cell. It keeps its place in `validate` so the
-    // grey-and-struck rule below still covers it, but no dropdown is written:
-    // the whole range was cleared above, so skipping it here is what removes
-    // the one a previous run left behind.
-    if (v.locked) continue
-    writes.push({ setDataValidation: {
-      range: { sheetId, startRowIndex: v.row, endRowIndex: v.row + 1, startColumnIndex: v.col, endColumnIndex: v.col + 1 },
-      rule: v.kind === 'pay'
-        ? { condition: { type: 'ONE_OF_LIST', values: payOptions.map(v => ({ userEnteredValue: v })) }, showCustomUi: true, strict: true }
-        : { condition: { type: 'ONE_OF_RANGE', values: [{ userEnteredValue: `=${PATIENTS_TAB}!$A$2:$A$${patientRows + 1}` }] }, showCustomUi: true, strict: true },
-    } })
+    // Validation is not touched by updateCells, so stale dropdowns survive a
+    // layout change and land on rows that are now something else entirely.
+    writes.push({ setDataValidation: { range: { sheetId, startRowIndex: 0, endRowIndex: span, startColumnIndex: 0, endColumnIndex: SAFE_COL } } })
+    for (const v of grid.validate) {
+      // A closed hour's payment cell. It keeps its place in `validate` so the
+      // grey-and-struck rule below still covers it, but no dropdown is written:
+      // the whole range was cleared above, so skipping it here is what removes
+      // the one a previous run left behind.
+      if (v.locked) continue
+      writes.push({ setDataValidation: {
+        range: { sheetId, startRowIndex: v.row, endRowIndex: v.row + 1, startColumnIndex: v.col, endColumnIndex: v.col + 1 },
+        rule: v.kind === 'pay'
+          ? { condition: { type: 'ONE_OF_LIST', values: payOptions.map(v => ({ userEnteredValue: v })) }, showCustomUi: true, strict: true }
+          : { condition: { type: 'ONE_OF_RANGE', values: [{ userEnteredValue: `=${PATIENTS_TAB}!$A$2:$A$${patientRows + 1}` }] }, showCustomUi: true, strict: true },
+      } })
+    }
   }
 
   const writeCalls = await sendBatched(api, spreadsheetId, writes)
@@ -1105,6 +1216,16 @@ async function pushTab(
   } catch { /* a label is not worth failing a sync over */ }
 
   // Colour by value, and lock everything but the slot cells.
+  //
+  // Both are described by naming every editable cell — a conditional format
+  // rule carrying two thousand ranges, and a protected range exempting two
+  // thousand more. They are rebuilt only when the shape moved; on an ordinary
+  // run the rules standing in the sheet are already the right ones, and even
+  // the read below is skipped.
+  if (!rebuild) {
+    return { sheetId, rows: grid.rows.length, preserved, calls: writeCalls + 1, sig, rebuilt: false }
+  }
+
   const after = await api.spreadsheets.get({ spreadsheetId, fields: 'sheets.properties.sheetId,sheets.protectedRanges,sheets.conditionalFormats' })
   const mine = after.data.sheets?.find(x => x.properties?.sheetId === sheetId)
   const post: sheets_v4.Schema$Request[] = []
@@ -1214,7 +1335,7 @@ async function pushTab(
   // quota. It is reported because the failure it guards against is invisible
   // otherwise: the sync does not break when it runs out of quota, it just
   // slows down, and the only way to see that coming is to watch the count.
-  return { sheetId, rows: grid.rows.length, preserved, calls: writeCalls + 2 }
+  return { sheetId, rows: grid.rows.length, preserved, calls: writeCalls + 3, sig, rebuilt: true }
 }
 
 async function pushPatients(api: sheets_v4.Sheets, spreadsheetId: string, names: string[], tabs?: TabIndex) {
@@ -1680,7 +1801,7 @@ async function pullTabs(
  * In that order deliberately: pushing first would rewrite the cells front desk
  * had just edited, and their change would be gone before anything read it.
  */
-export async function syncBranch(branch: string, spreadsheetId: string): Promise<SyncReport> {
+export async function syncBranch(branch: string, spreadsheetId: string, forceFull = false): Promise<SyncReport> {
   const report: SyncReport = { branch, pushed: [], applied: [], conflicts: [], unknownPatients: [], errors: [] }
   const startedAt = Date.now()
   const client = sheetsClient()
@@ -1712,6 +1833,11 @@ export async function syncBranch(branch: string, spreadsheetId: string): Promise
   // Hub's HMO wallets, so the picker cannot drift from the receivable list.
   const providers = await prisma.hmoProvider.findMany({ where: { active: true }, orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }], select: { name: true } })
   const payOptions = ['CASH', 'GL', ...providers.map(p => `HMO\u2013${p.name.toUpperCase()}`.replace('HMO\u2013', 'HMO \u2013 '))]
+
+  // Last run's structural fingerprints, so an unchanged tab can skip the
+  // expensive half of its push entirely. See SIG_TAB.
+  const prevSigs = await loadSignatures(api, spreadsheetId)
+  const nextSigs = new Map<string, TabSignature>()
 
   const names = await loadPatientNames(branch)
   // Every tab's id, read once and reused by each writer below.
@@ -1752,9 +1878,10 @@ export async function syncBranch(branch: string, spreadsheetId: string): Promise
           bookableHours += daySlots(h?.startTime ?? st.startTime, h?.endTime ?? st.endTime, { slotsPerDay: st.slotsPerDay, slotMinutes: st.slotMinutes, breakStart: st.breakStart, breakMinutes: st.breakMinutes }).length
         }
       }
-      const res = await pushTab(api, spreadsheetId, dept, grid, patientRows, payOptions, client.identity, lastWrote.get(dept), consumed, tabs)
+      const res = await pushTab(api, spreadsheetId, dept, grid, patientRows, payOptions, client.identity, lastWrote.get(dept), consumed, tabs, prevSigs.get(dept), forceFull)
+      nextSigs.set(dept, { sig: res.sig, at: res.rebuilt ? Date.now() : (prevSigs.get(dept)?.at ?? Date.now()) })
       for (const c of grid.cells) mapEntries.push({ ...c, tab: dept })
-      report.pushed.push({ tab: dept, staff: grid.staffCount, rows: res.rows, kept: res.preserved, calls: res.calls })
+      report.pushed.push({ tab: dept, staff: grid.staffCount, rows: res.rows, kept: res.preserved, calls: res.calls, rebuilt: res.rebuilt })
 
       // The interns of this department, on a tab of their own.
       const interns = await loadInterns(branch, dept)
@@ -1769,9 +1896,10 @@ export async function syncBranch(branch: string, spreadsheetId: string): Promise
         const iGrid = buildGrid({ ...interns })
         if (iGrid) {
           const iTab = `${dept} INTERNS`
-          const iRes = await pushTab(api, spreadsheetId, iTab, iGrid, patientRows, payOptions, client.identity, lastWrote.get(iTab), consumed, tabs)
+          const iRes = await pushTab(api, spreadsheetId, iTab, iGrid, patientRows, payOptions, client.identity, lastWrote.get(iTab), consumed, tabs, prevSigs.get(iTab), forceFull)
+          nextSigs.set(iTab, { sig: iRes.sig, at: iRes.rebuilt ? Date.now() : (prevSigs.get(iTab)?.at ?? Date.now()) })
           for (const c of iGrid.cells) mapEntries.push({ ...c, tab: iTab })
-          report.pushed.push({ tab: iTab, staff: iGrid.staffCount, rows: iRes.rows, kept: iRes.preserved, calls: iRes.calls })
+          report.pushed.push({ tab: iTab, staff: iGrid.staffCount, rows: iRes.rows, kept: iRes.preserved, calls: iRes.calls, rebuilt: iRes.rebuilt })
         }
       }
     } catch (e) {
@@ -1810,8 +1938,20 @@ export async function syncBranch(branch: string, spreadsheetId: string): Promise
   // write calls a minute for the whole service account — and BOTH branches
   // share it — so `calls` creeping towards that number is the warning that
   // this sync is about to start slowing down again.
+  // Written once, after every tab has pushed. `at` carries forward from the
+  // last REBUILD rather than this run, so the six-hourly full reconcile is
+  // measured from when the structure was actually last written.
+  try {
+    await saveSignatures(api, spreadsheetId, nextSigs, tabs)
+  } catch (e) {
+    // A fingerprint that did not save means the next run rebuilds. Slow, not
+    // wrong — so it is noted and never fatal.
+    report.errors.push(`signatures: ${(e as Error).message}`)
+  }
+
   report.ms = Date.now() - startedAt
   report.calls = report.pushed.reduce((n, p) => n + (p.calls ?? 0), 0)
-  console.log(`[sheet-sync] ${branch} finished in ${report.ms}ms, ~${report.calls} write calls, ${report.applied.length} applied, ${report.errors.length} errors`)
+  const rebuilt = report.pushed.filter(p => p.rebuilt).length
+  console.log(`[sheet-sync] ${branch} finished in ${report.ms}ms, ~${report.calls} write calls, ${rebuilt}/${report.pushed.length} tabs rebuilt, ${report.applied.length} applied, ${report.errors.length} errors`)
   return report
 }
