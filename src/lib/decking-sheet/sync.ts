@@ -39,6 +39,64 @@ import type { sheets_v4 } from 'googleapis'
 
 export const DEPARTMENTS = ['OT', 'PT', 'SLP', 'SPED', 'MD', 'PSYCHOLOGY'] as const
 const MAP_TAB = '_map'
+
+/**
+ * How many requests one batchUpdate may carry — and why it is this large.
+ *
+ * Google's write quota is counted in API CALLS, not in the requests inside
+ * them: 60 per minute per service account, and one batchUpdate of five
+ * thousand requests spends exactly one. The chunk size is therefore the
+ * entire cost model of this sync, and it was set to 400.
+ *
+ * A department tab carries one `mergeCells` per merged block and one
+ * `setDataValidation` per editable cell — thousands of requests for a board
+ * the size of OT. At 400 to a call that was ~30 calls per tab, ~200 for the
+ * six, and the sync spent most of its life being told 429 and backing off.
+ * `googleapis` retries those silently, so the symptom was not an error: it
+ * was a run that took longer every week as the rosters grew, until it stopped
+ * finishing at all. Between 2026-11-13 and 2026-11-19 the success rate fell
+ * from 99% to one run in two hundred, with nothing in any log.
+ *
+ * So batches are bounded by PAYLOAD rather than by count. The cap is well
+ * inside the API's request ceiling, and the byte estimate is what keeps a
+ * payment dropdown — which repeats every insurer's name in every single cell
+ * — from quietly building a request too big to send.
+ */
+const MAX_BATCH_BYTES = 2_000_000
+const MAX_BATCH_REQUESTS = 5_000
+
+/**
+ * Send `requests` in as few batchUpdate calls as the payload cap allows.
+ *
+ * Returns the number of API calls spent, so a sync can say what it cost. The
+ * requests are sent in order and each call is awaited: these are writes to the
+ * same tab, and overlapping them would race the grid against its own merges.
+ */
+async function sendBatched(
+  api: sheets_v4.Sheets,
+  spreadsheetId: string,
+  requests: sheets_v4.Schema$Request[],
+): Promise<number> {
+  let calls = 0
+  let i = 0
+  while (i < requests.length) {
+    let bytes = 0
+    let j = i
+    while (j < requests.length && j - i < MAX_BATCH_REQUESTS) {
+      const size = JSON.stringify(requests[j]).length
+      // Always send at least one, however big it is on its own — a single
+      // oversized request is the API's problem to report, not ours to hide
+      // behind an empty call.
+      if (j > i && bytes + size > MAX_BATCH_BYTES) break
+      bytes += size
+      j++
+    }
+    await api.spreadsheets.batchUpdate({ spreadsheetId, requestBody: { requests: requests.slice(i, j) } })
+    calls++
+    i = j
+  }
+  return calls
+}
 // The hub's own cap, mirrored here so the sheet cannot write a cell the board
 // would refuse to draw.
 const MAX_PER_CELL = 3
@@ -76,11 +134,14 @@ interface OpenSlot {
 
 export interface SyncReport {
   branch: string
-  pushed: { tab: string; staff: number; rows: number; kept?: number }[]
+  pushed: { tab: string; staff: number; rows: number; kept?: number; calls?: number }[]
   applied: { tab: string; cell: string; what: string }[]
   conflicts: { tab: string; cell: string; sheet: string; hub: string }[]
   unknownPatients: string[]
   errors: string[]
+  /** Wall-clock milliseconds, and the write calls spent against the quota. */
+  ms?: number
+  calls?: number
 }
 
 // ── loading what the hub knows ──────────────────────────────────────────────
@@ -1015,9 +1076,7 @@ async function pushTab(
     } })
   }
 
-  for (let i = 0; i < writes.length; i += 400) {
-    await api.spreadsheets.batchUpdate({ spreadsheetId, requestBody: { requests: writes.slice(i, i + 400) } })
-  }
+  const writeCalls = await sendBatched(api, spreadsheetId, writes)
 
   // A heading over front desk's own space, written ONCE.
   //
@@ -1151,7 +1210,11 @@ async function pushTab(
   } } })
   await api.spreadsheets.batchUpdate({ spreadsheetId, requestBody: { requests: post } })
 
-  return { sheetId, rows: grid.rows.length, preserved }
+  // `calls` is the number of write calls this tab spent against the 60-a-minute
+  // quota. It is reported because the failure it guards against is invisible
+  // otherwise: the sync does not break when it runs out of quota, it just
+  // slows down, and the only way to see that coming is to watch the count.
+  return { sheetId, rows: grid.rows.length, preserved, calls: writeCalls + 2 }
 }
 
 async function pushPatients(api: sheets_v4.Sheets, spreadsheetId: string, names: string[], tabs?: TabIndex) {
@@ -1208,11 +1271,14 @@ async function pushMap(api: sheets_v4.Sheets, spreadsheetId: string, entries: (C
   await api.spreadsheets.batchUpdate({ spreadsheetId, requestBody: { requests: [
     { updateCells: { range: { sheetId, startRowIndex: 0, endRowIndex: span, startColumnIndex: 0, endColumnIndex: WIDTH }, fields: 'userEnteredValue' } },
   ] } })
+  // One request per slice, all handed to sendBatched together: each slice
+  // carries its own start row, so they coexist happily in a single call and
+  // the map costs one write against the quota instead of five.
+  const mapWrites: sheets_v4.Schema$Request[] = []
   for (let i = 0; i < rows.length; i += 500) {
-    await api.spreadsheets.batchUpdate({ spreadsheetId, requestBody: { requests: [
-      { updateCells: { rows: rows.slice(i, i + 500) as sheets_v4.Schema$RowData[], fields: 'userEnteredValue', start: { sheetId, rowIndex: i, columnIndex: 0 } } },
-    ] } })
+    mapWrites.push({ updateCells: { rows: rows.slice(i, i + 500) as sheets_v4.Schema$RowData[], fields: 'userEnteredValue', start: { sheetId, rowIndex: i, columnIndex: 0 } } })
   }
+  await sendBatched(api, spreadsheetId, mapWrites)
 }
 
 // ── pulling ─────────────────────────────────────────────────────────────────
@@ -1616,6 +1682,7 @@ async function pullTabs(
  */
 export async function syncBranch(branch: string, spreadsheetId: string): Promise<SyncReport> {
   const report: SyncReport = { branch, pushed: [], applied: [], conflicts: [], unknownPatients: [], errors: [] }
+  const startedAt = Date.now()
   const client = sheetsClient()
   if (!client.ok) { report.errors.push(client.error); return report }
   const api = client.sheets
@@ -1687,7 +1754,7 @@ export async function syncBranch(branch: string, spreadsheetId: string): Promise
       }
       const res = await pushTab(api, spreadsheetId, dept, grid, patientRows, payOptions, client.identity, lastWrote.get(dept), consumed, tabs)
       for (const c of grid.cells) mapEntries.push({ ...c, tab: dept })
-      report.pushed.push({ tab: dept, staff: grid.staffCount, rows: res.rows, kept: res.preserved })
+      report.pushed.push({ tab: dept, staff: grid.staffCount, rows: res.rows, kept: res.preserved, calls: res.calls })
 
       // The interns of this department, on a tab of their own.
       const interns = await loadInterns(branch, dept)
@@ -1704,7 +1771,7 @@ export async function syncBranch(branch: string, spreadsheetId: string): Promise
           const iTab = `${dept} INTERNS`
           const iRes = await pushTab(api, spreadsheetId, iTab, iGrid, patientRows, payOptions, client.identity, lastWrote.get(iTab), consumed, tabs)
           for (const c of iGrid.cells) mapEntries.push({ ...c, tab: iTab })
-          report.pushed.push({ tab: iTab, staff: iGrid.staffCount, rows: iRes.rows, kept: iRes.preserved })
+          report.pushed.push({ tab: iTab, staff: iGrid.staffCount, rows: iRes.rows, kept: iRes.preserved, calls: iRes.calls })
         }
       }
     } catch (e) {
@@ -1738,5 +1805,13 @@ export async function syncBranch(branch: string, spreadsheetId: string): Promise
       report.errors.push(`snapshot: ${(e as Error).message}`)
     }
   }
+
+  // Stamped last, and logged as well as returned. The quota ceiling is 60
+  // write calls a minute for the whole service account — and BOTH branches
+  // share it — so `calls` creeping towards that number is the warning that
+  // this sync is about to start slowing down again.
+  report.ms = Date.now() - startedAt
+  report.calls = report.pushed.reduce((n, p) => n + (p.calls ?? 0), 0)
+  console.log(`[sheet-sync] ${branch} finished in ${report.ms}ms, ~${report.calls} write calls, ${report.applied.length} applied, ${report.errors.length} errors`)
   return report
 }
