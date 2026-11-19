@@ -35,6 +35,7 @@ import {
   TrendingDown,
   Gift,
   RotateCcw, Archive, ArchiveRestore, QrCode, PenLine, Copy, ExternalLink,
+  Filter,
 } from 'lucide-react'
 import { QRCodeSVG } from 'qrcode.react'
 import { ACK_DELETE_ROLES, ACK_ITEM_LABELS } from '@/lib/form-ack'
@@ -386,6 +387,12 @@ interface Supplier {
   address: string | null
   notes: string | null
 }
+
+// Age-group options for the Inventory age-classification filter (mirrors the
+// verdanarehab.com storefront taxonomy order). "Unclassified" is appended in the UI.
+const AGE_GROUP_OPTIONS = [
+  'All Ages', 'Infant (0-1)', 'Toddler (1-3)', 'Preschooler (3-5)', 'Child (6-9)', 'For the Parents', 'Aura Merchandise',
+] as const
 
 interface InventoryItem {
   id: string
@@ -839,6 +846,29 @@ function InventoryInner() {
   const [itemDeptFilter, setItemDeptFilter] = useState('')
   const [itemWebClassFilter, setItemWebClassFilter] = useState('')
   const [showDisabledItems, setShowDisabledItems] = useState(false)
+  // Age classification (main website taxonomy on verdanarehab.com), keyed by SKU.
+  // Read-only here — the store is the source of truth; we fetch & join by SKU.
+  const [ageBySku, setAgeBySku] = useState<Record<string, string>>({})
+  const [itemAgeFilter, setItemAgeFilter] = useState<Set<string>>(new Set())
+  const [ageFilterOpen, setAgeFilterOpen] = useState(false)
+  // Pull the age classification from the storefront (source of truth) and key it
+  // by SKU. CORS-enabled on verdanarehab.com for this origin. Best-effort.
+  useEffect(() => {
+    fetch('https://verdanarehab.com/api/products')
+      .then(r => r.json())
+      .then((d: { products?: { sku?: string; ageGroup?: string }[] }) => {
+        const map: Record<string, string> = {}
+        for (const p of d.products || []) {
+          if (p.sku && p.ageGroup) map[p.sku.trim().toUpperCase()] = p.ageGroup
+        }
+        setAgeBySku(map)
+      })
+      .catch(() => {})
+  }, [])
+  const ageOf = useCallback(
+    (sku: string) => ageBySku[(sku || '').trim().toUpperCase()] || '',
+    [ageBySku],
+  )
   const [itemModalOpen, setItemModalOpen] = useState(false)
   // Row click → read-only product details pop-up (Hannah 11/14).
   const [detailItem, setDetailItem] = useState<InventoryItem | null>(null)
@@ -1284,6 +1314,10 @@ function InventoryInner() {
     let visible = items.filter(i => !isBranchCopy(i))
     if (stockFilter === 'low') visible = visible.filter(i => !!i.reorderLevel && i.quantity <= i.reorderLevel)
     else if (stockFilter === 'out') visible = visible.filter(i => i.quantity <= 0)
+    // Age-classification tickbox filter (client-side; ageGroup comes from the store).
+    if (itemAgeFilter.size > 0) {
+      visible = visible.filter(i => itemAgeFilter.has(ageOf(i.sku) || 'Unclassified'))
+    }
     if (!invSortField) return visible
     const sorted = [...visible].sort((a, b) => {
       let cmp = 0
@@ -1299,7 +1333,7 @@ function InventoryInner() {
       return invSortDir === 'desc' ? -cmp : cmp
     })
     return sorted
-  }, [items, invSortField, invSortDir, stockFilter]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [items, invSortField, invSortDir, stockFilter, itemAgeFilter, ageOf]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Freight batch: total freight in PHP (real-time)
   const fbTotalFreightPHP = useMemo(() => {
@@ -1588,6 +1622,9 @@ function InventoryInner() {
     return () => clearTimeout(timeout)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [itemSearch, itemBranchFilter, itemDeptFilter, itemWebClassFilter])
+
+  // Reset to page 1 when the (client-side) age-group filter changes.
+  useEffect(() => { setInvPage(1) }, [itemAgeFilter])
 
   /* ── SKU Generation ────────────────────────────────────── */
 
@@ -2772,13 +2809,47 @@ setTimeout(()=>window.print(),500);
                         </span>
                       </th>
                     ))}
+                    <th className="text-left px-4 py-2.5 text-[11px] font-bold uppercase tracking-[.5px] border-b relative select-none" style={{ color: itemAgeFilter.size > 0 ? 'var(--teal)' : 'var(--mid-gray)', borderColor: 'var(--light-gray)' }}>
+                      <span className="inline-flex items-center gap-1">
+                        Age Group
+                        <button type="button" onClick={() => setAgeFilterOpen(o => !o)} className="p-0.5 rounded hover:bg-black/5" title="Filter by age group (tick one or more)">
+                          <Filter size={12} style={{ color: itemAgeFilter.size > 0 ? 'var(--teal)' : 'var(--mid-gray)' }} />
+                        </button>
+                        {itemAgeFilter.size > 0 && (
+                          <span className="px-1.5 rounded-full text-[10px] font-bold text-white" style={{ background: 'var(--teal)' }}>{itemAgeFilter.size}</span>
+                        )}
+                      </span>
+                      {ageFilterOpen && (
+                        <>
+                          <div className="fixed inset-0 z-40" onClick={() => setAgeFilterOpen(false)} />
+                          <div className="absolute right-0 top-full mt-1 z-50 w-56 rounded-xl border bg-white p-2 shadow-xl" style={{ borderColor: 'var(--light-gray)', textTransform: 'none' }}>
+                            <div className="flex items-center justify-between px-2 py-1">
+                              <span className="text-xs font-semibold normal-case" style={{ color: 'var(--charcoal)' }}>Filter by age group</span>
+                              {itemAgeFilter.size > 0 && (
+                                <button className="text-[11px] hover:underline normal-case" style={{ color: 'var(--teal)' }} onClick={() => setItemAgeFilter(new Set())}>Clear</button>
+                              )}
+                            </div>
+                            <div className="max-h-64 overflow-y-auto">
+                              {[...AGE_GROUP_OPTIONS, 'Unclassified'].map(g => (
+                                <label key={g} className="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-[#f6f9f1] cursor-pointer text-xs font-medium normal-case" style={{ color: 'var(--charcoal)' }}>
+                                  <input type="checkbox" className="rounded" style={{ accentColor: 'var(--teal)' }}
+                                    checked={itemAgeFilter.has(g)}
+                                    onChange={() => setItemAgeFilter(prev => { const n = new Set(prev); if (n.has(g)) n.delete(g); else n.add(g); return n })} />
+                                  {g}
+                                </label>
+                              ))}
+                            </div>
+                          </div>
+                        </>
+                      )}
+                    </th>
                     {canWrite && <th className="text-right px-4 py-2.5 text-[11px] font-bold uppercase tracking-[.5px] border-b" style={{ color: 'var(--mid-gray)', borderColor: 'var(--light-gray)' }}>Actions</th>}
                   </tr>
                 </thead>
                 <tbody>
                   {items.length === 0 ? (
                     <tr>
-                      <td colSpan={canWrite ? 10 : 8} className="px-4 py-12 text-center" style={{ color: 'var(--mid-gray)' }}>
+                      <td colSpan={canWrite ? 11 : 9} className="px-4 py-12 text-center" style={{ color: 'var(--mid-gray)' }}>
                         <Package size={32} className="mx-auto mb-2 opacity-40" />
                         <p>No inventory items</p>
                       </td>
@@ -2900,6 +2971,13 @@ setTimeout(()=>window.print(),500);
                       <td className="px-4 py-3 text-xs" style={{ color: 'var(--mid-gray)' }}>
                         {item.supplier?.supplierName || '—'}
                       </td>
+                      <td className="px-4 py-3 text-xs">
+                        {ageOf(item.sku) ? (
+                          <span className="px-1.5 py-0.5 rounded text-xs font-semibold whitespace-nowrap" style={{ background: '#ecfdf5', color: '#065f46' }} title="Main website classification on verdanarehab.com">{ageOf(item.sku)}</span>
+                        ) : (
+                          <span style={{ color: 'var(--light-gray)' }}>—</span>
+                        )}
+                      </td>
                       {canWrite && (
                         <td className="px-4 py-3">
                           <div className="flex items-center justify-end gap-1">
@@ -2927,7 +3005,7 @@ setTimeout(()=>window.print(),500);
               </table>
             </div>
             {items.length > 0 && (
-              <Pagination totalItems={stockFilter ? sortedItems.length : items.length} page={invPage} pageSize={invPageSize}
+              <Pagination totalItems={(stockFilter || itemAgeFilter.size > 0) ? sortedItems.length : items.length} page={invPage} pageSize={invPageSize}
                 onPageChange={setInvPage} onPageSizeChange={setInvPageSize} />
             )}
           </div>
