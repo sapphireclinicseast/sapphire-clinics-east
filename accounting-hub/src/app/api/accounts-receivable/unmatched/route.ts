@@ -9,13 +9,17 @@
 //     sessions (a claim paid twice, a line with no session left). Owed back to
 //     the payer until they confirm it is for other sessions, or it is refunded.
 //   · anything else — already explained and booked (e.g. a VAT top-up to 4080).
-// Read-only: the amounts come from Record Payment; this lists them in one place.
+// The amounts are read-only (they come from Record Payment). The Reason column —
+// why the excess exists, split by amount — is the one thing edited here:
+// PATCH { id, reasons: [{ reason, amount, note }] } (lib/unmatched-reasons).
 
 import { NextRequest, NextResponse } from 'next/server'
+import { Prisma } from '@prisma/client'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { enforceBranch } from '@/lib/branch-scope'
 import { arRefOf } from '@/lib/ar-ref'
+import { readReasons, suggestReasons, REASON_WRITE_ROLES } from '@/lib/unmatched-reasons'
 
 const READ_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'VIEWER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN', 'HMO_OFFICER']
 /** The account an unmatched excess is parked in while it is still owed to the payer. */
@@ -42,7 +46,7 @@ export async function GET(req: NextRequest) {
         ...(branch ? { branch: { in: [branch, 'ALL'] } } : {}),
       },
       select: {
-        id: true, paymentDate: true, amount: true, discount: true, overpayment: true, notes: true, branch: true,
+        id: true, paymentDate: true, amount: true, discount: true, overpayment: true, notes: true, branch: true, overpaymentReasons: true,
         salesInvoiceNumber: true,
         wallet: { select: { id: true, patientName: true } },
         overpaymentAccount: { select: { accountNumber: true, accountTitle: true } },
@@ -87,6 +91,12 @@ export async function GET(req: NextRequest) {
         held: p.overpaymentAccount?.accountNumber === HELD_ACCOUNT,
         cashAccount: p.cashAccount ? `${p.cashAccount.accountNumber} ${p.cashAccount.accountTitle}` : '',
         inLedger: (standing.get(p.id) || 0) > 0,
+        ...(() => {
+          const stored = readReasons(p.overpaymentReasons)
+          return stored.length
+            ? { reasons: stored, reasonsSuggested: false }
+            : { reasons: suggestReasons(unmatched, round2(gross - unmatched)), reasonsSuggested: true }
+        })(),
       }
     })
     return NextResponse.json({ rows })
@@ -94,4 +104,31 @@ export async function GET(req: NextRequest) {
     console.error('[AR unmatched] failed:', err)
     return NextResponse.json({ error: 'Could not load unmatched payments' }, { status: 500 })
   }
+}
+
+export async function PATCH(req: NextRequest) {
+  const session = await auth()
+  const user = session?.user as { id?: string; role?: string } | undefined
+  if (!user?.id || !REASON_WRITE_ROLES.includes(user.role ?? '')) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  const body = await req.json().catch(() => ({})) as { id?: string; reasons?: unknown }
+  if (!body.id) return NextResponse.json({ error: 'Which payment?' }, { status: 400 })
+  const payment = await prisma.aRPayment.findUnique({ where: { id: body.id }, select: { id: true, overpayment: true, overpaymentReasons: true, notes: true } })
+  if (!payment) return NextResponse.json({ error: 'Payment not found' }, { status: 404 })
+  const reasons = readReasons(body.reasons)
+  const total = round2(reasons.reduce((t, r) => t + r.amount, 0))
+  const unmatched = round2(n(payment.overpayment))
+  if (total > unmatched + 0.005) {
+    return NextResponse.json({ error: `The reasons add up to ${total.toFixed(2)}, more than the ${unmatched.toFixed(2)} unmatched` }, { status: 400 })
+  }
+  // Only the reasons change: no amount, account or journal entry is touched.
+  await prisma.$transaction([
+    prisma.aRPayment.update({ where: { id: payment.id }, data: { overpaymentReasons: reasons.length ? (reasons as unknown as Prisma.InputJsonValue) : Prisma.DbNull } }),
+    prisma.auditLog.create({
+      data: {
+        userId: user.id, action: 'UPDATE', entity: 'arPaymentUnmatchedReason', entityId: payment.id,
+        details: { ref: arRefOf(payment.notes), before: payment.overpaymentReasons ?? null, after: reasons } as unknown as Prisma.InputJsonValue,
+      },
+    }),
+  ])
+  return NextResponse.json({ ok: true, reasons })
 }

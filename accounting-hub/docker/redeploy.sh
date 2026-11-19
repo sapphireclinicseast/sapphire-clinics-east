@@ -1357,6 +1357,8 @@ DROP INDEX IF EXISTS "ParkedGlCharge_orderId_key";
 CREATE INDEX IF NOT EXISTS "ParkedGlCharge_orderId_idx" ON "ParkedGlCharge"("orderId");
 -- Price List: the tier each product is priced at (2026-11-18). NULL = standard.
 ALTER TABLE "InventoryItem" ADD COLUMN IF NOT EXISTS "priceTier" TEXT;
+-- Unmatched Payments → Reason (2026-11-19): why a payment's overpayment exists.
+ALTER TABLE "ARPayment" ADD COLUMN IF NOT EXISTS "overpaymentReasons" JSONB;
 SQL
 
 echo "Redeploy complete."

@@ -1809,6 +1809,8 @@ model ARPayment {
   // credited to overpaymentAccount (an income account) instead of AR.
   overpayment          Decimal       @default(0)
   overpaymentAccountId String?
+  /// Why the overpayment exists: [{ reason, amount, note }] (lib/unmatched-reasons). Unmatched Payments → Reason.
+  overpaymentReasons    Json?
   overpaymentAccount   Account?      @relation("ARPaymentOverpaymentAccount", fields: [overpaymentAccountId], references: [id], onDelete: SetNull)
   proofUrl             String? // URL or file path to payment proof
   notes                String?
