@@ -33,6 +33,7 @@ import {
   type CollectionBranchSettings, type CollectionGroup, type HmoReportKind,
 } from '@/lib/collection-report'
 import BreakdownDonut, { type DonutItem } from './BreakdownDonut'
+import HmoPaidByProvider, { type ProviderSettled } from './HmoPaidByProvider'
 import { DIRECTORY_WRITE_ROLES } from '@/lib/hmo-directory'
 import { NOT_DUP_ROLES, notDuplicateTwins } from '@/lib/hmo-not-duplicate'
 import { HMO_CHANGE_ROLES, serviceHmoMismatch } from '@/lib/hmo-change'
@@ -116,6 +117,8 @@ interface ARSummary {
   /** GL only: byDepartment per letter agency ('' = not set). */
   byDepartmentByAgency?: Record<string, { label: string; amount: number }[]>
   byProvider: { label: string; amount: number }[]
+  /** HMO only: each provider's billed sessions split by how they were settled. */
+  byProviderSettled?: ProviderSettled[]
   directToClinician?: { orderCount: number; total: number; paidOrderCount?: number; paidTotal?: number; byProvider: { label: string; amount: number }[] }
   hmoDecrease?: { total: number; sessionCount: number }
   // HMO billed sessions by how they were settled (older API: absent).
@@ -2403,16 +2406,31 @@ export default function AccountsReceivablePage() {
                     {summary!.directToClinician!.orderCount} session{summary!.directToClinician!.orderCount === 1 ? '' : 's'} the HMO settles with the clinician — not in our AR
                   </p>
                   <p className="text-[11px] mt-1" style={{ color: '#c2410c' }}>
-                    {summary!.directToClinician!.byProvider.slice(0, 3).map(pv => `${pv.label} ${formatCurrency(pv.amount)}`).join(' · ')}
+                    {(() => {
+                      // The top three by name, and the rest summed, so the line adds up to the total above.
+                      const dp = summary!.directToClinician!.byProvider
+                      const rest = dp.slice(3)
+                      const restTotal = rest.reduce((t, pv) => t + pv.amount, 0)
+                      return [
+                        ...dp.slice(0, 3).map(pv => `${pv.label} ${formatCurrency(pv.amount)}`),
+                        ...(rest.length ? [`${rest.length} other${rest.length === 1 ? '' : 's'} ${formatCurrency(restTotal)}`] : []),
+                      ].join(' · ')
+                    })()}
                   </p>
                 </div>
               )}
             </div>
             {(deptItems.length > 0 || provItems.length > 0) && (
               <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-                <BreakdownDonut title="HMO Orders by Department" items={deptItems} />
+                <BreakdownDonut title="HMO Orders by Department" items={deptItems}
+                  note={(summary?.directToClinician?.total ?? 0) > 0
+                    ? `MD here is only the consults an HMO paid through the clinic. The ${summary!.directToClinician!.orderCount} consults HMOs pay the doctor directly (${formatCurrency(summary!.directToClinician!.total)}, Paid Direct to Clinician) are not our AR, so they are left out of every chart here.`
+                    : undefined} />
                 <BreakdownDonut title="HMO Orders by Provider" items={provItems} />
               </div>
+            )}
+            {(summary?.byProviderSettled?.length ?? 0) > 0 && (
+              <HmoPaidByProvider rows={summary!.byProviderSettled!} sciPaidShare={sciPaidShare} />
             )}
           </div>
         )

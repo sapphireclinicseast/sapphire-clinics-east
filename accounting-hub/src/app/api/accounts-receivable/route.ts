@@ -335,6 +335,9 @@ export async function GET(req: Request) {
     const agencyByWallet = new Map(wallets.map(w => [w.id, (w as { agency?: string | null }).agency || '']))
     const deptByAgency = new Map<string, Map<string, number>>()
     const providerTotals = new Map<string, number>()
+    // Per HMO, how its billed sessions were settled (Hannah 2026-11-19: "% per
+    // HMO paid" bars) — same tags as the % Settled card, so the rows add up to it.
+    const providerSettle = new Map<string, { paid: number; sci: number; sessions: number; paidSessions: number }>()
     const directProviderTotals = new Map<string, number>()
     let totalBilled = 0
     let directBilled = 0
@@ -368,6 +371,10 @@ export async function GET(req: Request) {
         else if (how === 'HMO') paidSessions += amt
         const name = (p.walletId && walletNameById.get(p.walletId)) || 'Unknown'
         providerTotals.set(name, (providerTotals.get(name) || 0) + amt)
+        const ps = providerSettle.get(name) ?? providerSettle.set(name, { paid: 0, sci: 0, sessions: 0, paidSessions: 0 }).get(name)!
+        ps.sessions++
+        if (how === 'HMO') { ps.paid += amt; ps.paidSessions++ }
+        else if (how === 'SCI') { ps.sci += amt; ps.paidSessions++ }
       }
       // Department split mirrors the client: an order's payment is apportioned
       // across departments by how many of its items belong to each.
@@ -451,6 +458,15 @@ export async function GET(req: Request) {
       byProvider: Array.from(providerTotals.entries())
         .map(([label, amount]) => ({ label, amount }))
         .sort((a, b) => b.amount - a.amount),
+      // HMO only: each provider's billed sessions split by how they were settled.
+      byProviderSettled: type === 'HMO'
+        ? Array.from(providerTotals.entries())
+            .map(([label, billed]) => {
+              const ps = providerSettle.get(label) ?? { paid: 0, sci: 0, sessions: 0, paidSessions: 0 }
+              return { label, billed, paid: ps.paid, sci: ps.sci, sessions: ps.sessions, paidSessions: ps.paidSessions }
+            })
+            .sort((a, b) => b.billed - a.billed)
+        : undefined,
     }
 
     // Get AR payments for these wallets
