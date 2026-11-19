@@ -2,11 +2,11 @@ import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { GL_STAGES, parseAgency, AGENCY_ERROR, parseTreatedBranch, TREATED_ERROR } from '@/lib/gl-stage'
-import { stageEventRows } from '@/lib/gl-stage-events'
+import { stageEventRows, movedOnProblem, movedAtFor, manilaDay } from '@/lib/gl-stage-events'
 
 /**
  * PUT /api/accounts-receivable/gl-case/bulk
- *   { glStage?:        { value: 'BILLING' | '' , caseIds: [], walletIds: [] },
+ *   { glStage?:        { value: 'BILLING' | '' , caseIds: [], walletIds: [], movedOn?: 'YYYY-MM-DD' },
  *     glReleasedAt?:   { value: 'YYYY-MM-DD',    caseIds: [], walletIds: [] },
  *     soaSubmittedAt?: { value: 'YYYY-MM-DD',    caseIds: [], walletIds: [] },
  *     soaResubmittedAt?: { value: 'YYYY-MM-DD',  caseIds: [], walletIds: [] },
@@ -23,6 +23,13 @@ import { stageEventRows } from '@/lib/gl-stage-events'
  * stage clears it; neither SOA date can be in the future (the single-row rule in
  * ../route.ts — the GL release date has no such rule there, so none here
  * either). All in one transaction.
+ *
+ * `glStage.movedOn` dates the move (Hannah 2026-11-20: "make sure to take note of
+ * the date of the movement to the next office"): the day the letters reached the
+ * new office, today when left out. It can't be in the future or before a ticked
+ * letter's previous move — unless that previous event is a BASELINE (the hub
+ * only believed the letter was there), which the earlier move shows was stale,
+ * so it is removed (see stage-date/route.ts).
  */
 const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN',
   'HMO_OFFICER', 'AHEA_FRONTDESK', 'AHGH_FRONTDESK']
@@ -54,12 +61,19 @@ export async function PUT(req: Request) {
     const stage = part(body.glStage)
 
     let glStage: string | null = null
+    let movedOn: string | null = null
     if (stage) {
       const s = String(body.glStage.value ?? '').trim().toUpperCase()
       if (s && !(GL_STAGES as readonly string[]).includes(s)) {
         return NextResponse.json({ error: `Stage must be one of: ${GL_STAGES.join(', ')}` }, { status: 400 })
       }
       glStage = s || null
+      const m = String(body.glStage.movedOn ?? '').trim().slice(0, 10)
+      if (m) {
+        const problem = movedOnProblem(m)
+        if (problem) return NextResponse.json({ error: problem }, { status: 400 })
+        movedOn = m
+      }
     }
     const agencyPart = part(body.agency)
     let agency: string | null = null
@@ -91,6 +105,7 @@ export async function PUT(req: Request) {
     if (size(stage) > MAX || size(agencyPart) > MAX || size(treatedPart) > MAX || dates.some(d => size(d.ids) > MAX)) return NextResponse.json({ error: `At most ${MAX} letters at a time` }, { status: 400 })
 
     const ops = []
+    let staleRemoved: { id: string; changedAt: string }[] = []
     if (stage) {
       ops.push(prisma.glCase.updateMany({ where: { id: { in: stage.caseIds } }, data: { glStage } }))
       ops.push(prisma.digitalWallet.updateMany({ where: { id: { in: stage.walletIds }, walletType: 'GL' }, data: { glStage } }))
@@ -108,22 +123,57 @@ export async function PUT(req: Request) {
       ops.push(prisma.digitalWallet.updateMany({ where: { id: { in: treatedPart.walletIds }, walletType: 'GL' }, data: { treatedBranch } }))
     }
     // Dated stage history (Hannah 2026-11-17: "track stage dates"): one event per
-    // ticked letter whose stage actually changes. Appended last, so the count
-    // pairs read below keep their positions.
+    // ticked letter whose stage actually changes, dated the day it moved.
+    // Appended last, so the count pairs read below keep their positions.
     if (size(stage)) {
-      const [curCases, curWallets] = await Promise.all([
+      const [curCases, curWallets, history] = await Promise.all([
         stage!.caseIds.length
-          ? prisma.glCase.findMany({ where: { id: { in: stage!.caseIds } }, select: { id: true, glStage: true, walletId: true } })
+          ? prisma.glCase.findMany({ where: { id: { in: stage!.caseIds } }, select: { id: true, glStage: true, walletId: true, patientName: true } })
           : Promise.resolve([]),
         stage!.walletIds.length
-          ? prisma.digitalWallet.findMany({ where: { id: { in: stage!.walletIds }, walletType: 'GL' }, select: { id: true, glStage: true } })
+          ? prisma.digitalWallet.findMany({ where: { id: { in: stage!.walletIds }, walletType: 'GL' }, select: { id: true, glStage: true, patientName: true } })
+          : Promise.resolve([]),
+        // Each letter's previous move — a backdated move can't come before it.
+        movedOn
+          ? prisma.glStageEvent.findMany({
+              where: { OR: [{ glCaseId: { in: stage!.caseIds } }, { walletId: { in: stage!.walletIds }, glCaseId: null }] },
+              select: { id: true, glCaseId: true, walletId: true, changedAt: true, source: true },
+              orderBy: { changedAt: 'asc' },
+            })
           : Promise.resolve([]),
       ])
-      const events = stageEventRows([
-        ...curCases.map(c => ({ glCaseId: c.id, walletId: c.walletId, fromStage: c.glStage, stage: glStage })),
-        ...curWallets.map(w => ({ walletId: w.id, fromStage: w.glStage, stage: glStage })),
-      ], session.user.id as string, 'BULK')
+      type Last = { id: string; changedAt: Date; source: string }
+      const lastCase = new Map<string, Last>()
+      const lastWallet = new Map<string, Last>()
+      for (const e of history) {
+        if (e.glCaseId) lastCase.set(e.glCaseId, e)
+        else if (e.walletId) lastWallet.set(e.walletId, e)
+      }
+      const changes = [
+        ...curCases.map(c => ({ glCaseId: c.id, walletId: c.walletId, fromStage: c.glStage, stage: glStage, name: c.patientName, prev: lastCase.get(c.id) ?? null })),
+        ...curWallets.map(w => ({ glCaseId: null as string | null, walletId: w.id, fromStage: w.glStage, stage: glStage, name: w.patientName, prev: lastWallet.get(w.id) ?? null })),
+      ].filter(c => (c.fromStage ?? null) !== (c.stage ?? null))
+      // A previous event that is only a BASELINE, dated after the move: stale, removed.
+      const stale = movedOn ? changes.filter(c => c.prev?.source === 'BASELINE' && movedOn! < manilaDay(c.prev.changedAt)) : []
+      const staleIds = new Set(stale.map(c => c.prev!.id))
+      if (movedOn) {
+        const early = changes.filter(c => movedOnProblem(movedOn!, { prevAt: c.prev && !staleIds.has(c.prev.id) ? c.prev.changedAt : null }))
+        if (early.length) {
+          const names = early.slice(0, 3).map(c => c.name).join(', ')
+          return NextResponse.json({
+            error: `${early.length} ticked letter${early.length === 1 ? ' was' : 's were'} moved to ${early.length === 1 ? 'its' : 'their'} current office after that date (${names}${early.length > 3 ? ', …' : ''}). Pick a later date or untick ${early.length === 1 ? 'it' : 'them'}.`,
+          }, { status: 400 })
+        }
+      }
+      const events = stageEventRows(
+        changes.map(c => ({
+          glCaseId: c.glCaseId, walletId: c.walletId, fromStage: c.fromStage, stage: c.stage,
+          ...(movedOn ? { changedAt: movedAtFor(movedOn, c.prev && !staleIds.has(c.prev.id) ? c.prev.changedAt : null) } : {}),
+        })),
+        session.user.id as string, 'BULK')
+      if (staleIds.size) ops.push(prisma.glStageEvent.deleteMany({ where: { id: { in: [...staleIds] }, source: 'BASELINE' } }))
       if (events.length) ops.push(prisma.glStageEvent.createMany({ data: events }))
+      staleRemoved = stale.map(c => ({ id: c.prev!.id, changedAt: c.prev!.changedAt.toISOString(), ...(c.glCaseId ? { glCaseId: c.glCaseId } : { walletId: c.walletId }) }))
     }
     const counts = await prisma.$transaction(ops)
     // Two updateMany per part, in push order: stage first (if any), then each date, then agency, then treated-at.
@@ -136,7 +186,7 @@ export async function PUT(req: Request) {
       data: {
         userId: session.user.id as string, action: 'UPDATE', entity: 'gl_case_bulk', entityId: 'detailed-gl',
         details: {
-          ...(stage ? { glStage, stageCaseIds: stage.caseIds, stageWalletIds: stage.walletIds, stageUpdated } : {}),
+          ...(stage ? { glStage, ...(movedOn ? { movedOn } : {}), ...(staleRemoved.length ? { staleBaselinesRemoved: staleRemoved } : {}), stageCaseIds: stage.caseIds, stageWalletIds: stage.walletIds, stageUpdated } : {}),
           ...(agencyPart ? { agency, agencyCaseIds: agencyPart.caseIds, agencyWalletIds: agencyPart.walletIds, agencyUpdated } : {}),
           ...(treatedPart ? { treatedBranch, treatedCaseIds: treatedPart.caseIds, treatedWalletIds: treatedPart.walletIds, treatedUpdated } : {}),
           ...Object.fromEntries(dates.map(d => [d.field, { day: d.day, caseIds: d.ids.caseIds, walletIds: d.ids.walletIds, updated: dateUpdated[d.field] }])),

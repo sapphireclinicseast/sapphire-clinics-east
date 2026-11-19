@@ -1167,7 +1167,10 @@ model GlStageEvent {
   stage       String?
   changedAt   DateTime @default(now())
   changedById String?
-  /// ROW (Stage dropdown / edit form) | BULK (ticked letters) | BASELINE (11/17 start)
+  /// ROW (Stage dropdown / edit form) | BULK (ticked letters) | BASELINE (already there on
+  /// that date, arrival unknown: the 11/17 start, or an office found out later) | DATED (a
+  /// baseline since given its real arrival day). changedAt is the day the letter moved —
+  /// backdated when the move is recorded late (Hannah 2026-11-20).
   source      String
 
   @@index([glCaseId])

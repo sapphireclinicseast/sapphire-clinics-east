@@ -15,13 +15,18 @@ export interface GlStageEvent {
   /** The stage entered; null when it was cleared. */
   stage?: string | null
   changedAt: string
-  /** ROW | BULK | BASELINE */
+  /** ROW | BULK | BASELINE | DATED */
   source: string
 }
 
 export const DAY_MS = 86_400_000
 
-/** BASELINE marks where tracking began, not when the letter got there. */
+/**
+ * BASELINE marks a stage the letter was already at on that date — where tracking
+ * began on 11/17, or an office found out later (e.g. "already with cashier") —
+ * not when the letter got there. DATED is a baseline someone has since given its
+ * real arrival day, so it counts like any recorded move.
+ */
 export const isBaseline = (e: GlStageEvent) => e.source === 'BASELINE'
 
 export interface StageEventIndex {
@@ -59,9 +64,16 @@ function push(m: Map<string, GlStageEvent[]>, k: string, e: GlStageEvent) {
  * the other's dates.
  */
 export function eventsForRow(r: GlLetterRow, idx: StageEventIndex): GlStageEvent[] {
+  const rec = stageRecord(r)
+  if (!rec) return []
+  return 'caseId' in rec ? idx.byCase.get(rec.caseId) ?? [] : idx.byWallet.get(rec.walletId) ?? []
+}
+
+/** The record whose stage (and stage history) a row shows: its entry's or its wallet's. */
+export function stageRecord(r: GlLetterRow): { caseId: string } | { walletId: string } | null {
   const caseOwnsStage = !!r.caseId && (r.source?.glStage != null || !r.wallet)
-  if (caseOwnsStage) return idx.byCase.get(r.caseId!) ?? []
-  return r.wallet ? idx.byWallet.get(r.wallet.id) ?? [] : []
+  if (caseOwnsStage) return { caseId: r.caseId! }
+  return r.wallet ? { walletId: r.wallet.id } : null
 }
 
 /**
@@ -92,7 +104,9 @@ export function spanBetween(events: GlStageEvent[], from: string, to: string): n
   let start: number | null = null
   for (const e of events) {
     if (e.stage === from) start = isBaseline(e) ? null : new Date(e.changedAt).getTime()
-    else if (e.stage === to && start != null) return (new Date(e.changedAt).getTime() - start) / DAY_MS
+    // Arriving at `to` on a baseline date only says it was there by then, so the
+    // span is unknown too.
+    else if (e.stage === to && start != null) return isBaseline(e) ? null : (new Date(e.changedAt).getTime() - start) / DAY_MS
   }
   return null
 }

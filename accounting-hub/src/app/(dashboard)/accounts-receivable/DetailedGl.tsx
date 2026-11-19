@@ -9,7 +9,7 @@ import ExpandablePanel from './ExpandablePanel'
 import { GL_STAGES, GL_TREATED_BRANCHES, agencySortKey } from '@/lib/gl-stage'
 import { GlAgencySelect, useGlAgencies } from '@/components/GlAgencySelect'
 import { num, buildRows, arRunningDays, soaSubmittedOn, avgArRunningDays, posBalanceOf, drawnDown, type GlCaseWallet, type GlCaseRow, type GlLetterRow } from '@/lib/gl-letters'
-import { indexStageEvents, eventsForRow, stageSince, daysSince, spanBetween, enteredAt, average, DAY_MS, type GlStageEvent } from '@/lib/gl-stage-times'
+import { indexStageEvents, eventsForRow, stageRecord, stageSince, daysSince, spanBetween, enteredAt, average, DAY_MS, type GlStageEvent } from '@/lib/gl-stage-times'
 
 export type { GlCaseWallet, GlCaseRow } from '@/lib/gl-letters'
 /**
@@ -232,7 +232,7 @@ function commissionOf(r: Row): number {
 
 /** Columns in the order the OPGL SUMMARY sheet uses, with Branch added. */
 type ColKey =
-  | 'stage' | 'stageDays' | 'name' | 'branch' | 'docsDate' | 'requested' | 'released' | 'approved' | 'soaAmount'
+  | 'stage' | 'stageDate' | 'stageDays' | 'name' | 'branch' | 'docsDate' | 'requested' | 'released' | 'approved' | 'soaAmount'
   | 'posBalance'
   | 'rendered' | 'soaSubmitted' | 'soaDate' | 'soaResubDate' | 'status' | 'paidDate' | 'arDays' | 'arDaysResub' | 'perMonths'
   | 'guardian' | 'drive' | 'commission' | 'payout' | 'qb' | 'linked' | 'glNo' | 'agency' | 'treated'
@@ -242,6 +242,10 @@ interface Col { key: ColKey; label: string; numeric?: boolean }
 const COLS: Col[] = [
   // Hannah, 2026-11-03: which OP office the letter is at, so each stage can be chased.
   { key: 'stage', label: 'Stage' },
+  // Hannah 11/20: "make sure to take note of the date of the movement to the next
+  // office" — the day the letter reached the office it is at now. Dated when the
+  // stage is changed; click it to put the real day when the move is recorded late.
+  { key: 'stageDate', label: 'Moved to stage on' },
   // Hannah 11/17: how long the letter has been at that office (stage dates are
   // recorded from 11/17; "≥" = it was already there then).
   { key: 'stageDays', label: 'Days at stage', numeric: true },
@@ -295,6 +299,7 @@ function filterHit(r: Row, k: string, raw: string): boolean {
 function cellText(r: Row, k: ColKey): string {
   switch (k) {
     case 'stage': return r.glStage || '—'
+    case 'stageDate': return r.stageSince ? `${r.stageSince.floor ? 'by ' : ''}${fmtDate(r.stageSince.since)}` : '—'
     case 'stageDays': return r.stageSince ? `${r.stageSince.floor ? '≥' : ''}${daysSince(r.stageSince.since)}` : '—'
     case 'agency': return r.agency || '—'
     case 'name': return r.patientName || ''
@@ -339,6 +344,7 @@ function sortValue(r: Row, k: ColKey): string | number {
     // Process order (STAR OFFICE first, PAID last), letters with no stage after them.
     case 'stage': { const i = (GL_STAGES as readonly string[]).indexOf(r.glStage || ''); return i < 0 ? GL_STAGES.length : i }
     case 'stageDays': return r.stageSince ? daysSince(r.stageSince.since) : -1
+    case 'stageDate': return r.stageSince ? r.stageSince.since : ''
     // STAR, ODESFA, LGU, then any added agency A–Z, then letters with no agency.
     case 'agency': return agencySortKey(r.agency)
     case 'name': return r.patientName || ''
@@ -403,6 +409,10 @@ export default function DetailedGl({
   const [agencyEdits, setAgencyEdits] = useState<Record<string, string | null>>({})
   // Treated-at branch picked in the table, likewise.
   const [treatedEdits, setTreatedEdits] = useState<Record<string, string | null>>({})
+  // The day a letter moved, set here (row date cell or the bulk "Moved on"),
+  // shown at once while it saves: row key → ISO moment.
+  const [stageDateEdits, setStageDateEdits] = useState<Record<string, string>>({})
+  const [editingDate, setEditingDate] = useState<string | null>(null)
   const [stageError, setStageError] = useState('')
   const stageIdx = useMemo(() => indexStageEvents(stageEvents), [stageEvents])
   const allRows = useMemo(
@@ -415,15 +425,18 @@ export default function DetailedGl({
       if (r.key in agencyEdits) out = { ...out, agency: agencyEdits[r.key] }
       if (r.key in treatedEdits) out = { ...out, treatedBranch: treatedEdits[r.key] }
       const stageHistory = eventsForRow(out, stageIdx)
+      const dated = r.key in stageDateEdits && !r.paid && out.glStage
       return {
         ...out,
         stageHistory,
-        stageSince: justSet
+        stageSince: dated
+          ? { since: stageDateEdits[r.key], floor: false }
+          : justSet
           ? (out.glStage ? { since: new Date().toISOString(), floor: false } : null)
           : stageSince(out, stageHistory),
       }
     }),
-    [wallets, glCases, stageEdits, agencyEdits, treatedEdits, stageIdx],
+    [wallets, glCases, stageEdits, stageDateEdits, agencyEdits, treatedEdits, stageIdx],
   )
   // The agency list: STAR, ODESFA, LGU plus any agency already on a letter;
   // "+ Add agency…" in a dropdown adds another (Hannah 11/15).
@@ -460,6 +473,8 @@ export default function DetailedGl({
     const glStage = value || null
     setStageError('')
     setStageEdits(m => ({ ...m, [r.key]: glStage }))
+    // A new stage starts today; its date can then be corrected in the next column.
+    setStageDateEdits(m => { if (!(r.key in m)) return m; const n = { ...m }; delete n[r.key]; return n })
     try {
       const res = r.caseId
         ? await fetch('/api/accounts-receivable/gl-case', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ caseId: r.caseId, glStage }) })
@@ -468,6 +483,31 @@ export default function DetailedGl({
     } catch (e) {
       setStageEdits(m => { const n = { ...m }; delete n[r.key]; return n })
       setStageError(`${r.patientName}: ${e instanceof Error ? e.message : 'Could not save the stage'}`)
+    }
+  }
+  // The day the letter reached its current office (Hannah 11/20). The stage was
+  // set on whichever record the row's edits go to: the entry when the row has one
+  // and the stage was just picked here, otherwise the record whose stage it shows.
+  const saveStageDate = async (r: Row, day: string) => {
+    const rec = r.key in stageEdits
+      ? (r.caseId ? { caseId: r.caseId } : r.wallet ? { walletId: r.wallet.id } : null)
+      : stageRecord(r)
+    if (!rec || !day) return
+    if (r.stageSince && !r.stageSince.floor && dayKey(r.stageSince.since) === day) return
+    if (day > manilaToday()) { setStageError(`${r.patientName}: that date is in the future`); return }
+    setStageError('')
+    const had = r.key in stageDateEdits ? stageDateEdits[r.key] : undefined
+    setStageDateEdits(m => ({ ...m, [r.key]: `${day}T00:00:00+08:00` }))
+    try {
+      const res = await fetch('/api/accounts-receivable/gl-case/stage-date', {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...rec, date: day }),
+      })
+      const j = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(j.error || 'Could not save the date')
+      setStageDateEdits(m => ({ ...m, [r.key]: j.changedAt || `${day}T00:00:00+08:00` }))
+    } catch (e) {
+      setStageDateEdits(m => { const n = { ...m }; if (had === undefined) delete n[r.key]; else n[r.key] = had; return n })
+      setStageError(`${r.patientName}: ${e instanceof Error ? e.message : 'Could not save the date'}`)
     }
   }
 
@@ -480,6 +520,8 @@ export default function DetailedGl({
   const canTick = (r: Row) => canWrite && !!(r.caseId || r.wallet)
   const [picked, setPicked] = useState<string[]>([])
   const [bulkStage, setBulkStage] = useState('')
+  // The day the ticked letters moved to the bulk stage; blank = today (Hannah 11/20).
+  const [bulkMovedOn, setBulkMovedOn] = useState('')
   const [bulkAgency, setBulkAgency] = useState('')
   const [bulkTreated, setBulkTreated] = useState('')
   const [bulkRelease, setBulkRelease] = useState('')
@@ -494,6 +536,7 @@ export default function DetailedGl({
   const saveBulk = async (targets: Row[]) => {
     const stageTargets = bulkStage ? targets.filter(r => !r.paid) : []
     const glStage = bulkStage === CLEAR_STAGE ? null : bulkStage
+    const movedOn = glStage && bulkMovedOn ? bulkMovedOn : ''
     const agency = bulkAgency === CLEAR_STAGE ? null : bulkAgency
     const treatedVal = bulkTreated === CLEAR_STAGE ? null : bulkTreated
     const anyDate = !!(bulkRelease || bulkSoa || bulkResoa)
@@ -514,7 +557,7 @@ export default function DetailedGl({
     const noFirst = bulkResoa ? targets.filter(r => !soaOn(r)).length : 0
     const beforeFirst = bulkResoa ? targets.filter(r => soaOn(r) && soaOn(r) > bulkResoa).length : 0
     const lines = [
-      ...(bulkStage ? [`• Stage → ${glStage || 'Not set'} on ${stageTargets.length}${paidSkipped ? ` (${paidSkipped} paid keep PAID)` : ''}`] : []),
+      ...(bulkStage ? [`• Stage → ${glStage || 'Not set'} on ${stageTargets.length}${paidSkipped ? ` (${paidSkipped} paid keep PAID)` : ''}${glStage ? `, moved on ${fmtDate(`${movedOn || manilaToday()}T00:00:00+08:00`)}` : ''}`] : []),
       ...(bulkAgency ? [`• Agency → ${agency || 'Not set'} on ${targets.length}`] : []),
       ...(bulkTreated ? [`• Treated at → ${treatedVal ? branchShort(treatedVal) : 'Same branch as the letter'} on ${targets.length}`] : []),
       ...(bulkRelease ? [`• GL released → ${fmtDate(`${bulkRelease}T00:00:00+08:00`)} on ${targets.length}${replacingRel ? ` (replaces the date on ${replacingRel})` : ''}`] : []),
@@ -530,6 +573,12 @@ export default function DetailedGl({
     setStageError(''); setBulkBusy(true)
     const before = Object.fromEntries(stageTargets.map(r => [r.key, r.key in stageEdits ? stageEdits[r.key] : undefined]))
     if (stageTargets.length) setStageEdits(m => ({ ...m, ...Object.fromEntries(stageTargets.map(r => [r.key, glStage])) }))
+    const datesBefore = Object.fromEntries(stageTargets.map(r => [r.key, r.key in stageDateEdits ? stageDateEdits[r.key] : undefined]))
+    if (stageTargets.length) setStageDateEdits(m => {
+      const n = { ...m }
+      for (const r of stageTargets) { if (movedOn) n[r.key] = `${movedOn}T00:00:00+08:00`; else delete n[r.key] }
+      return n
+    })
     const agencyBefore = Object.fromEntries(targets.map(r => [r.key, r.key in agencyEdits ? agencyEdits[r.key] : undefined]))
     if (bulkAgency) setAgencyEdits(m => ({ ...m, ...Object.fromEntries(targets.map(r => [r.key, agency])) }))
     const treatedBefore = Object.fromEntries(targets.map(r => [r.key, r.key in treatedEdits ? treatedEdits[r.key] : undefined]))
@@ -538,7 +587,7 @@ export default function DetailedGl({
       const res = await fetch('/api/accounts-receivable/gl-case/bulk', {
         method: 'PUT', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          ...(stageTargets.length ? { glStage: { value: glStage ?? '', ...idsOf(stageTargets) } } : {}),
+          ...(stageTargets.length ? { glStage: { value: glStage ?? '', ...idsOf(stageTargets), ...(movedOn ? { movedOn } : {}) } } : {}),
           ...(bulkRelease ? { glReleasedAt: { value: bulkRelease, ...idsOf(targets) } } : {}),
           ...(bulkSoa ? { soaSubmittedAt: { value: bulkSoa, ...idsOf(targets) } } : {}),
           ...(bulkResoa ? { soaResubmittedAt: { value: bulkResoa, ...idsOf(targets) } } : {}),
@@ -547,12 +596,17 @@ export default function DetailedGl({
         }),
       })
       if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'Could not save')
-      setPicked([]); setBulkStage(''); setBulkAgency(''); setBulkTreated(''); setBulkRelease(''); setBulkSoa(''); setBulkResoa('')
+      setPicked([]); setBulkStage(''); setBulkMovedOn(''); setBulkAgency(''); setBulkTreated(''); setBulkRelease(''); setBulkSoa(''); setBulkResoa('')
       if (anyDate) onSaved() // reload: the dates drive their columns, AR days and the row colour
     } catch (e) {
       setStageEdits(m => {
         const n = { ...m }
         for (const [k, v] of Object.entries(before)) { if (v === undefined) delete n[k]; else n[k] = v }
+        return n
+      })
+      setStageDateEdits(m => {
+        const n = { ...m }
+        for (const [k, v] of Object.entries(datesBefore)) { if (v === undefined) delete n[k]; else n[k] = v }
         return n
       })
       if (bulkAgency) setAgencyEdits(m => {
@@ -788,10 +842,32 @@ export default function DetailedGl({
                           {GL_TREATED_BRANCHES.filter(b => b !== r.branch || r.treatedBranch === b).map(b => <option key={b} value={b}>{branchShort(b)}</option>)}
                         </select>
                       : <span className="text-[11px] font-semibold" style={treatedElsewhere(r) ? { color: '#92400e' } : undefined}>{cellText(r, 'treated')}</span>)
+                  : c.key === 'stageDate'
+                  ? (canWrite && !r.paid && r.glStage && (r.caseId || r.wallet)
+                      ? (editingDate === r.key
+                          ? <input type="date" autoFocus max={manilaToday()}
+                              defaultValue={r.stageSince && !r.stageSince.floor ? dayKey(r.stageSince.since) : ''}
+                              aria-label={`Day ${r.patientName}'s letter moved to ${r.glStage}`}
+                              onBlur={e => { const v = e.target.value; setEditingDate(null); if (v) saveStageDate(r, v) }}
+                              onKeyDown={e => {
+                                if (e.key === 'Enter') e.currentTarget.blur()
+                                if (e.key === 'Escape') setEditingDate(null)
+                              }}
+                              className="px-1.5 py-0.5 rounded border text-[11px] outline-none bg-white"
+                              style={{ borderColor: 'var(--teal)', color: 'var(--charcoal)' }} />
+                          : <button type="button" onClick={() => setEditingDate(r.key)}
+                              title={r.stageSince?.floor
+                                ? `Already at ${r.glStage} by ${fmtDate(r.stageSince.since)}; the day it arrived isn't recorded. Click to put it.`
+                                : `The day the letter reached ${r.glStage}. Click to change it if it moved on another day.`}
+                              className="px-1 py-0.5 rounded text-[11px] underline decoration-dotted underline-offset-2 hover:bg-[var(--pale-teal)]"
+                              style={{ color: r.stageSince?.floor ? 'var(--mid-gray)' : 'var(--charcoal)', fontStyle: r.stageSince?.floor ? 'italic' : undefined }}>
+                              {r.stageSince ? cellText(r, 'stageDate') : 'set date'}
+                            </button>)
+                      : <span className="text-[11px]">{cellText(r, 'stageDate')}</span>)
                   : c.key === 'stageDays'
                   ? <span title={r.stageSince
                       ? (r.stageSince.floor
-                          ? `Already at ${r.glStage} when stage dates began on ${fmtDate(r.stageSince.since)}, so at least this many days`
+                          ? `Already at ${r.glStage} by ${fmtDate(r.stageSince.since)} (the day it arrived isn't recorded), so at least this many days`
                           : `At ${r.glStage} since ${fmtDate(r.stageSince.since)}`)
                       : r.paid ? 'Paid' : 'No stage set'}>{cellText(r, c.key)}</span>
                   : c.key === 'drive'
@@ -1179,6 +1255,15 @@ export default function DetailedGl({
               <option value={CLEAR_STAGE}>Clear the stage (Not set)</option>
             </select>
           </label>
+          {bulkStage && bulkStage !== CLEAR_STAGE && (
+            <label className="flex items-center gap-1.5 text-xs" style={{ color: 'var(--mid-gray)' }}>
+              Moved on
+              <input type="date" value={bulkMovedOn} max={manilaToday()} onChange={e => setBulkMovedOn(e.target.value)} disabled={bulkBusy}
+                title={`The day the letters reached ${bulkStage}. Leave blank for today.`}
+                className="px-2 py-1 rounded-lg border text-xs outline-none bg-white"
+                style={{ borderColor: 'var(--light-gray)', color: bulkMovedOn ? 'var(--charcoal)' : 'var(--mid-gray)' }} />
+            </label>
+          )}
           <label className="flex items-center gap-1.5 text-xs" style={{ color: 'var(--mid-gray)' }}>
             Agency
             <GlAgencySelect value={bulkAgency} onChange={setBulkAgency} disabled={bulkBusy} agencies={agencies} onAdded={addAgency}
@@ -1218,7 +1303,7 @@ export default function DetailedGl({
               style={{ borderColor: 'var(--light-gray)', color: bulkResoa ? 'var(--charcoal)' : 'var(--mid-gray)' }} />
           </label>
           <button onClick={() => saveBulk(pickedRows)}
-            disabled={(!bulkStage && !bulkAgency && !bulkTreated && !bulkRelease && !bulkSoa && !bulkResoa) || [bulkSoa, bulkResoa].some(d => !!d && d > manilaToday()) || bulkBusy}
+            disabled={(!bulkStage && !bulkAgency && !bulkTreated && !bulkRelease && !bulkSoa && !bulkResoa) || [bulkSoa, bulkResoa, bulkStage ? bulkMovedOn : ''].some(d => !!d && d > manilaToday()) || bulkBusy}
             className="px-3 py-1 rounded-lg text-xs font-semibold text-white disabled:opacity-40"
             style={{ background: 'var(--teal)' }}>
             {bulkBusy ? 'Saving…' : 'Apply'}
