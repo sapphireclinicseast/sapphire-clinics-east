@@ -40,6 +40,10 @@ export async function POST(req: NextRequest) {
 
   const body = await req.json().catch(() => ({}))
   const asked = String(body.branch ?? '').toUpperCase()
+  // `full: true` forces every tab's structure to be rewritten even when its
+  // fingerprint says nothing moved — the escape hatch for a sheet somebody has
+  // edited by hand into a state the hub cannot see.
+  const forceFull = body.full === true
   const branches = asked ? [asked] : Object.keys(SHEETS)
 
   const reports = []
@@ -49,7 +53,7 @@ export async function POST(req: NextRequest) {
       reports.push({ branch, errors: [`No spreadsheet configured — set GOOGLE_SHEETS_${branch === 'SBEA' ? 'AHEA' : 'AHGH'}_ID.`], pushed: [], applied: [], conflicts: [], unknownPatients: [] })
       continue
     }
-    reports.push(await syncBranch(branch, spreadsheetId))
+    reports.push(await syncBranch(branch, spreadsheetId, forceFull))
   }
 
   // Conflicts and unrecognised names are the two things a person has to act
