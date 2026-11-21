@@ -12,13 +12,15 @@ export async function GET(req: Request) {
   const branch = searchParams.get('branch') || ''
   const type = searchParams.get('type') || '' // 'employee' | 'consultant' | ''
 
+  // Any non-zero share: a Govcon credit row carries negative amounts (an agency's
+  // credit for an earlier overpayment, netted inside that month's RFP).
   const benefitOR = [
-    { sssDeduction: { gt: 0 } },
-    { philhealthDeduction: { gt: 0 } },
-    { pagibigDeduction: { gt: 0 } },
-    { sssEmployerShare: { gt: 0 } },
-    { philhealthEmployerShare: { gt: 0 } },
-    { pagibigEmployerShare: { gt: 0 } },
+    { sssDeduction: { not: 0 } },
+    { philhealthDeduction: { not: 0 } },
+    { pagibigDeduction: { not: 0 } },
+    { sssEmployerShare: { not: 0 } },
+    { philhealthEmployerShare: { not: 0 } },
+    { pagibigEmployerShare: { not: 0 } },
   ]
 
   const rows: {
@@ -94,7 +96,7 @@ export async function GET(req: Request) {
     ? new Set((await prisma.reimbursementReport.findMany({ where: { id: { in: rfpIds }, status: 'PAID' }, select: { id: true } })).map(r => r.id))
     : new Set<string>()
   for (const r of rows) {
-    const ok = (field: string | null, amt: number) => r.benefitsRemitted || amt <= 0 || !!((field || r.benefitRfpId) && paid.has((field || r.benefitRfpId) as string))
+    const ok = (field: string | null, amt: number) => r.benefitsRemitted || Math.abs(amt) < 0.005 || !!((field || r.benefitRfpId) && paid.has((field || r.benefitRfpId) as string))
     r.settled = {
       SSS: ok(r.sssRfpId, r.sssEE + r.sssER),
       PHILHEALTH: ok(r.philhealthRfpId, r.philEE + r.philER),

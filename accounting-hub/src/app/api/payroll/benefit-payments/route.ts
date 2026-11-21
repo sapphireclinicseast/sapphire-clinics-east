@@ -69,7 +69,7 @@ export async function POST(req: Request) {
       const partialIds: string[] = []
       for (const p of payslips) {
         const outstanding = uncovered.some(a => {
-          if (a.amt(p) <= 0) return false
+          if (Math.abs(a.amt(p)) < 0.005) return false
           const rid = a.rfp(p) || p.benefitRfpId
           return !(rid && paidRfps.has(rid))
         })
@@ -139,8 +139,8 @@ export async function POST(req: Request) {
             const remaining = await tx.employeePayslip.count({
               where: { cutoffPeriod: cp, branch: br, status: 'LOCKED', benefitsRemitted: false,
                 OR: [
-                  { sssDeduction: { gt: 0 } }, { philhealthDeduction: { gt: 0 } }, { pagibigDeduction: { gt: 0 } },
-                  { sssEmployerShare: { gt: 0 } }, { philhealthEmployerShare: { gt: 0 } }, { pagibigEmployerShare: { gt: 0 } },
+                  { sssDeduction: { not: 0 } }, { philhealthDeduction: { not: 0 } }, { pagibigDeduction: { not: 0 } },
+                  { sssEmployerShare: { not: 0 } }, { philhealthEmployerShare: { not: 0 } }, { pagibigEmployerShare: { not: 0 } },
                 ],
               },
             })

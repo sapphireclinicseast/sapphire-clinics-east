@@ -123,9 +123,14 @@ export async function POST(req: Request) {
         rowIds = rows.map(r => r.id)
         items = rows.map(r => ({ id: r.id, name: `${r.employee.firstName} ${r.employee.lastName}`, amount: benefitAmount(r) }))
       }
-      items = items.filter(i => source === 'salary' || i.amount > 0)
+      // A benefit row may be negative (a Govcon credit for an earlier overpayment);
+      // it nets inside the RFP, which must still come to more than zero.
+      items = items.filter(i => source === 'salary' || Math.abs(i.amount) >= 0.005)
       if (items.length === 0) throw new Error('No eligible entries (already in an RFP or remitted?)')
       const netTotal = items.reduce((s, i) => s + i.amount, 0) + feesTotal
+      if (source === 'benefit' && !(netTotal > 0)) {
+        throw new Error('The ticked lines net to zero or less — tick the month’s other contributions together with the credit line')
+      }
 
       let settings = await tx.pettyCashSettings.findUnique({ where: { branch: pcBranch } })
       if (!settings) settings = await tx.pettyCashSettings.create({ data: { branch: pcBranch, nextPcvSeq: 1 } })

@@ -108,7 +108,7 @@ export default function BenefitsPayablePage() {
 
   // Rows relevant to the current agency subtab + filters
   const shown = useMemo(() => rows.filter(r => {
-    if (ee(r) + er(r) <= 0) return false
+    if (Math.abs(ee(r) + er(r)) < 0.005) return false
     if (hideRemitted && settledOf(r)) return false
     if (fType && r.type !== fType) return false
     const [y, m, half] = r.cutoffPeriod.split('-')
@@ -427,7 +427,12 @@ function GovconCatchupModal({ defaultBranch, onClose, onSaved }: { defaultBranch
   const [employees, setEmployees] = useState<CatchupEmployee[]>([])
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
-  const set = (k: string, v: string) => setF(p => ({ ...p, [k]: v }))
+  // A negative share makes this a credit, which is always company-shouldered.
+  const set = (k: string, v: string) => setF(p => {
+    const next = { ...p, [k]: v }
+    const t = ['sssEE', 'sssER', 'philEE', 'philER', 'pagEE', 'pagER'].reduce((s, key) => s + (Number(next[key as keyof typeof next]) || 0), 0)
+    return t < 0 ? { ...next, mode: 'COMPANY' as const } : next
+  })
   const n = (v: string) => Number(v) || 0
   useEffect(() => {
     fetch(`/api/payroll/employees?branch=${f.branch}&includeInactive=true`).then(r => r.ok ? r.json() : []).then(j => setEmployees(Array.isArray(j) ? j : [])).catch(() => setEmployees([]))
@@ -438,7 +443,11 @@ function GovconCatchupModal({ defaultBranch, onClose, onSaved }: { defaultBranch
   const save = async () => {
     setErr('')
     if (!f.employeeId) { setErr('Pick the employee.'); return }
-    if (!(total > 0)) { setErr('Enter at least one contribution amount.'); return }
+    if (total === 0) { setErr('Enter at least one contribution amount.'); return }
+    const shares = [f.sssEE, f.sssER, f.philEE, f.philER, f.pagEE, f.pagER].map(n)
+    if (total < 0 && shares.some(v => v > 0)) { setErr('A credit (negative) catch-up takes negative amounts only.'); return }
+    if (total > 0 && shares.some(v => v < 0)) { setErr('Mixing negative and positive amounts isn’t allowed — record them separately.'); return }
+    if (total < 0 && f.mode !== 'COMPANY') { setErr('A credit (negative) catch-up must be Company-shouldered.'); return }
     setBusy(true)
     try {
       const res = await fetch('/api/payroll/govcon-catchup', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
@@ -461,7 +470,7 @@ function GovconCatchupModal({ defaultBranch, onClose, onSaved }: { defaultBranch
           <h2 className="text-lg font-bold" style={{ color: 'var(--charcoal)' }}>Record Govcon Catch-up</h2>
           <button onClick={onClose}><X size={18} style={mg} /></button>
         </div>
-        <p className="text-xs mb-3" style={mg}>For a month with <strong>no payroll</strong> (unpaid month, maternity leave): recognizes the SSS/PHIC/HDMF payable so it can be remitted and tagged here like any payroll row.</p>
+        <p className="text-xs mb-3" style={mg}>For a month with <strong>no payroll</strong> (unpaid month, maternity leave): recognizes the SSS/PHIC/HDMF payable so it can be remitted and tagged here like any payroll row. Enter <strong>negative</strong> amounts for an agency&apos;s credit — an earlier overpayment deducted from this month&apos;s remittance.</p>
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           <div className="col-span-2"><label className={lbl} style={mg}>Employee</label>
             <select value={f.employeeId} onChange={e => set('employeeId', e.target.value)} className={inp} style={bc}><option value="">— Select —</option>{[...employees].sort((a, b) => `${a.lastName}${a.firstName}`.localeCompare(`${b.lastName}${b.firstName}`)).map(e => <option key={e.id} value={e.id}>{e.lastName}, {e.firstName}</option>)}</select>
@@ -486,13 +495,18 @@ function GovconCatchupModal({ defaultBranch, onClose, onSaved }: { defaultBranch
               </div>
             ))}
           </div>
-          <p className="text-[11px] mt-2 font-mono" style={{ color: '#334155' }}>EE {formatCurrency(eeTotal)} + ER {formatCurrency(erTotal)} = <strong>{formatCurrency(total)}</strong> payable</p>
+          <p className="text-[11px] mt-2 font-mono" style={{ color: '#334155' }}>EE {formatCurrency(eeTotal)} + ER {formatCurrency(erTotal)} = <strong>{formatCurrency(total)}</strong> {total < 0 ? 'credit' : 'payable'}</p>
+          {total < 0 && (
+            <p className="text-[11px] mt-1.5 rounded-lg px-2.5 py-1.5" style={{ background: '#E0F2FE', color: '#075985' }}>
+              Credit: lowers {MONTH_NAMES[Number(f.month) - 1]} {f.year}&apos;s payable by <span className="font-mono">{formatCurrency(-total)}</span> so it matches the smaller remittance after the agency applied an earlier overpayment. Books DR Benefits Payable / CR the contribution expense (company-shouldered). Tick it together with that month&apos;s other lines when making the RFP.
+            </p>
+          )}
         </div>
 
         <div className="mt-3 rounded-xl border p-3" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
           <p className="text-xs font-semibold mb-2" style={{ color: 'var(--charcoal)' }}>Who shoulders the employee share?</p>
           <label className="flex items-start gap-2 text-xs mb-2" style={{ color: 'var(--charcoal)' }}>
-            <input type="radio" name="gcmode" checked={f.mode === 'DEDUCT'} onChange={() => set('mode', 'DEDUCT')} className="mt-0.5" />
+            <input type="radio" name="gcmode" checked={f.mode === 'DEDUCT'} onChange={() => set('mode', 'DEDUCT')} disabled={total < 0} className="mt-0.5" />
             <span><strong>Deduct from coming payrolls (hulugan)</strong> — the EE share goes to 1160 Due from Employees and opens a GOVCON staff loan; payroll suggests the deduction every cutoff until repaid.</span>
           </label>
           {f.mode === 'DEDUCT' && (

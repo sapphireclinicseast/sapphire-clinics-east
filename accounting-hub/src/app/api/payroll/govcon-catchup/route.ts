@@ -15,6 +15,14 @@ import { prisma } from '@/lib/prisma'
 //   mode DEDUCT  (hulugan): DR 1160 Due from Employees (EE) + DR ER expense / CR Benefits Payable
 //                           + a GOVCON Staff Loan so coming payrolls deduct the EE share back
 //   mode COMPANY (shouldered, e.g. maternity): DR ER expense (EE + ER) / CR Benefits Payable
+//
+// A CREDIT (negative amounts, company-shouldered only — Hannah 2026-11-21, staff:
+// "pwede po ba magnegative dito para tally lang po siya sa august?"): an agency
+// that was overpaid credits the excess against a later month, so that month's
+// remittance comes in short. A negative row brings the month's payable down to
+// what is actually remitted, reversing the extra expense the overpaid month's
+// catch-up booked: DR Benefits Payable / CR the agency's contribution expense.
+// It is remitted (netted inside that month's RFP) like any other row.
 const WRITE_ROLES = ['ADMIN', 'PAYROLL_OFFICER', 'ACCOUNTANT', 'BOOKKEEPER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN']
 const LEDGER_BRANCH: Record<string, string> = { SBEA: 'SANDBOX_EAST', SBGH: 'SANDBOX_GREENHILLS', SBVR: 'VERDANA_STORE', VERDANA: 'VERDANA_STORE' }
 const ledgerBranch = (b: string) => LEDGER_BRANCH[b] ?? b
@@ -36,7 +44,18 @@ export async function POST(req: Request) {
     const sssEE = num(b.sssEE), sssER = num(b.sssER), philEE = num(b.philEE), philER = num(b.philER), pagEE = num(b.pagEE), pagER = num(b.pagER)
     const eeTotal = num(sssEE + philEE + pagEE), erTotal = num(sssER + philER + pagER)
     const total = num(eeTotal + erTotal)
-    if (!(total > 0)) return NextResponse.json({ error: 'Enter at least one contribution amount' }, { status: 400 })
+    const shares = [sssEE, sssER, philEE, philER, pagEE, pagER]
+    if (total === 0) return NextResponse.json({ error: 'Enter at least one contribution amount' }, { status: 400 })
+    const credit = total < 0
+    if (credit && shares.some(v => v > 0)) {
+      return NextResponse.json({ error: 'A credit (negative) catch-up takes negative amounts only — record any positive contribution separately' }, { status: 400 })
+    }
+    if (!credit && shares.some(v => v < 0)) {
+      return NextResponse.json({ error: 'Mixing negative and positive amounts isn’t allowed — use one catch-up per direction' }, { status: 400 })
+    }
+    if (credit && mode !== 'COMPANY') {
+      return NextResponse.json({ error: 'A credit (negative) catch-up must be company-shouldered: it reverses contribution expense, there is nothing to deduct from the employee' }, { status: 400 })
+    }
 
     const employee = await prisma.employee.findUnique({ where: { id: b.employeeId }, select: { id: true, firstName: true, lastName: true } })
     if (!employee) return NextResponse.json({ error: 'Employee not found' }, { status: 404 })
@@ -64,12 +83,16 @@ export async function POST(req: Request) {
     ]
     for (const [er, ee, accountId, label] of agencyDebits) {
       const debit = mode === 'COMPANY' ? num(er + ee) : er
-      if (debit <= 0) continue
+      if (debit === 0 || (!credit && debit < 0)) continue
       if (!accountId) return NextResponse.json({ error: `${label} employer-share expense account not configured (Payroll → COA Mapping)` }, { status: 400 })
-      lines.push({ accountId, debit, credit: 0, description: mode === 'COMPANY' ? `${label} Contribution (ER + EE company-shouldered)` : `${label} Contribution (ER)` })
+      lines.push(credit
+        ? { accountId, debit: 0, credit: -debit, description: `${label} Contribution — credit for an earlier overpayment (ER + EE)` }
+        : { accountId, debit, credit: 0, description: mode === 'COMPANY' ? `${label} Contribution (ER + EE company-shouldered)` : `${label} Contribution (ER)` })
     }
     if (mode === 'DEDUCT' && eeTotal > 0) lines.push({ accountId: dueFrom!.id, debit: eeTotal, credit: 0, description: 'Due from Employees — Govcon catch-up (EE share, to be deducted)' })
-    lines.push({ accountId: mapping.benefitsPayableAccountId, debit: 0, credit: total, description: 'SSS, PHIC, HDMF Payable (EE + ER)' })
+    lines.push(credit
+      ? { accountId: mapping.benefitsPayableAccountId, debit: -total, credit: 0, description: 'SSS, PHIC, HDMF Payable — credit from the agency for an earlier overpayment' }
+      : { accountId: mapping.benefitsPayableAccountId, debit: 0, credit: total, description: 'SSS, PHIC, HDMF Payable (EE + ER)' })
 
     const entryDate = b.entryDate ? new Date(b.entryDate) : new Date()
     const monthLabel = `${cutoffPeriod.slice(0, 7)}`
@@ -90,13 +113,13 @@ export async function POST(req: Request) {
         sssDeduction: sssEE, philhealthDeduction: philEE, pagibigDeduction: pagEE,
         sssEmployerShare: sssER, philhealthEmployerShare: philER, pagibigEmployerShare: pagER,
         totalDeductions: eeTotal, grossPay: 0, netPay: 0,
-        details: { govconCatchup: true, mode, staffLoanId: loan?.id || null, notes: typeof b.notes === 'string' ? b.notes.trim() : '' },
+        details: { govconCatchup: true, mode, ...(credit ? { credit: true } : {}), staffLoanId: loan?.id || null, notes: typeof b.notes === 'string' ? b.notes.trim() : '' },
         createdById: userId,
       } })
       const je = await tx.journalEntry.create({ data: {
         entryDate,
-        description: `Govcon catch-up ${monthLabel} — ${who}${mode === 'COMPANY' ? ' (company-shouldered)' : ' (EE share to be deducted from coming payrolls)'}`,
-        referenceType: 'GOVCON_CATCHUP', referenceId: payslip.id, totalAmount: total,
+        description: `Govcon catch-up ${monthLabel} — ${who}${credit ? ' (credit for an earlier overpayment)' : mode === 'COMPANY' ? ' (company-shouldered)' : ' (EE share to be deducted from coming payrolls)'}`,
+        referenceType: 'GOVCON_CATCHUP', referenceId: payslip.id, totalAmount: Math.abs(total),
         branch: ledgerBranch(b.branch), createdById: userId,
         lines: { create: lines },
       } })
