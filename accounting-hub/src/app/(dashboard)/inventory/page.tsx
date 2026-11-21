@@ -969,10 +969,48 @@ function InventoryInner() {
   const [supReqRows, setSupReqRows] = useState<{ itemId: string; quantity: string; remarks: string }[]>([{ itemId: '', quantity: '', remarks: '' }])
   const [supReqSaving, setSupReqSaving] = useState(false)
   const [supReqDeleteId, setSupReqDeleteId] = useState<string | null>(null)
+  // Hannah 2026-11-21: once a supplier is picked, the product search lists only
+  // what that supplier supplies us (the item's Supplier in the inventory list),
+  // and "Put all inventory under supplier" adds every one of them as a row.
+  const [supReqAll, setSupReqAll] = useState(false)
+  const supReqItems = useMemo(
+    () => (supReqSupplierId ? allItems.filter(it => it.supplierId === supReqSupplierId) : allItems),
+    [allItems, supReqSupplierId],
+  )
+  const blankSupReqRow = () => ({ itemId: '', quantity: '', remarks: '' })
+
+  function pickSupReqSupplier(id: string) {
+    setSupReqSupplierId(id)
+    setSupReqAll(false)
+    // Products picked for the previous supplier don't belong on this one's sheet.
+    const theirs = new Set(allItems.filter(it => it.supplierId === id).map(it => it.id))
+    setSupReqRows(rs => {
+      const kept = id ? rs.filter(r => r.itemId && theirs.has(r.itemId)) : rs.filter(r => r.itemId)
+      return kept.length ? kept : [blankSupReqRow()]
+    })
+  }
+
+  function toggleSupReqAll(on: boolean) {
+    setSupReqAll(on)
+    setSupReqRows(rs => {
+      if (on) {
+        // Keep what's already there (and any quantities typed), then add the rest
+        // of the supplier's products in SKU order.
+        const have = new Set(rs.map(r => r.itemId).filter(Boolean))
+        const add = [...supReqItems].sort((a, b) => a.sku.localeCompare(b.sku))
+          .filter(it => !have.has(it.id)).map(it => ({ itemId: it.id, quantity: '', remarks: '' }))
+        const next = [...rs.filter(r => r.itemId), ...add]
+        return next.length ? next : [blankSupReqRow()]
+      }
+      // Untick: drop the rows still without a quantity; keep the ones filled in.
+      const kept = rs.filter(r => r.itemId && Number(r.quantity) > 0)
+      return kept.length ? kept : [blankSupReqRow()]
+    })
+  }
 
   function openSupReqCreate() {
     setSupReqEditId(null); setSupReqSupplierId(''); setSupReqDate(new Date().toISOString().slice(0, 10))
-    setSupReqRemarks(''); setSupReqRows([{ itemId: '', quantity: '', remarks: '' }]); setError('')
+    setSupReqRemarks(''); setSupReqRows([{ itemId: '', quantity: '', remarks: '' }]); setSupReqAll(false); setError('')
     setSupReqOpen(true)
   }
 
@@ -980,7 +1018,7 @@ function InventoryInner() {
     setSupReqEditId(r.id); setSupReqSupplierId(r.supplier.id)
     setSupReqDate(String(r.requestDate).slice(0, 10)); setSupReqRemarks(r.remarks || '')
     setSupReqRows(r.items.map(i => ({ itemId: i.itemId, quantity: String(i.quantity), remarks: i.remarks || '' })))
-    setError(''); setSupReqOpen(true)
+    setSupReqAll(false); setError(''); setSupReqOpen(true)
   }
 
   async function handleSupReqSubmit() {
@@ -4293,7 +4331,7 @@ setTimeout(()=>window.print(),500);
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
               <div>
                 <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--charcoal)' }}>Supplier <span className="text-red-500">*</span></label>
-                <select value={supReqSupplierId} onChange={e => setSupReqSupplierId(e.target.value)}
+                <select value={supReqSupplierId} onChange={e => pickSupReqSupplier(e.target.value)}
                   className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }}>
                   <option value="">— Select supplier —</option>
                   {allSuppliers.map(sup => <option key={sup.id} value={sup.id}>{sup.supplierName}</option>)}
@@ -4311,9 +4349,30 @@ setTimeout(()=>window.print(),500);
               </div>
             </div>
 
-            <div className="rounded-xl border mb-2" style={{ borderColor: 'var(--light-gray)' }}>
+            <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+              <label className={`flex items-center gap-2 text-xs select-none ${supReqSupplierId && supReqItems.length ? 'cursor-pointer' : 'opacity-50 cursor-not-allowed'}`}
+                style={{ color: 'var(--charcoal)' }}
+                title={!supReqSupplierId ? 'Pick the supplier first' : !supReqItems.length ? 'No product in the inventory list has this supplier' : 'Add every product this supplier supplies us as a row'}>
+                <input type="checkbox" checked={supReqAll} disabled={!supReqSupplierId || !supReqItems.length}
+                  onChange={e => toggleSupReqAll(e.target.checked)} className="accent-[var(--teal)]" />
+                Put all inventory under supplier
+                {supReqSupplierId && (
+                  <span style={{ color: 'var(--mid-gray)' }}>
+                    ({supReqItems.length} product{supReqItems.length === 1 ? '' : 's'})
+                  </span>
+                )}
+              </label>
+              <span className="text-[11px]" style={{ color: 'var(--mid-gray)' }}>
+                {!supReqSupplierId
+                  ? 'Pick the supplier to list only the products they supply us.'
+                  : supReqItems.length
+                  ? 'Only this supplier’s products are listed. Rows left without a quantity aren’t requested.'
+                  : 'No product in the inventory list has this supplier yet — set it on the product first.'}
+              </span>
+            </div>
+            <div className="rounded-xl border mb-2 max-h-[55vh] overflow-y-auto" style={{ borderColor: 'var(--light-gray)' }}>
               <table className="w-full text-sm">
-                <thead><tr style={{ background: 'var(--off-white)', color: 'var(--charcoal)' }}>
+                <thead className="sticky top-0 z-10"><tr style={{ background: 'var(--off-white)', color: 'var(--charcoal)' }}>
                   <th className="px-3 py-2 text-left text-xs font-semibold" style={{ minWidth: 250 }}>Product</th>
                   <th className="px-3 py-2 text-left text-xs font-semibold">Supplier&apos;s Name For It</th>
                   <th className="px-3 py-2 text-right text-xs font-semibold w-20">On Hand</th>
@@ -4329,7 +4388,11 @@ setTimeout(()=>window.print(),500);
                           <div className="flex items-center gap-2">
                             {item?.imageUrl && <img src={item.imageUrl} alt="" className="w-8 h-8 rounded object-cover border shrink-0" style={{ borderColor: 'var(--light-gray)' }} />}
                             <div className="flex-1 min-w-0">
-                              <ItemSearchSelect items={allItems} value={row.itemId} compact
+                              <ItemSearchSelect
+                                // A product already on the row (e.g. an older request) stays pickable even if
+                                // it isn't filed under this supplier; the rest of the list is the supplier's own.
+                                items={item && !supReqItems.some(x => x.id === item.id) ? [item, ...supReqItems] : supReqItems}
+                                value={row.itemId} compact
                                 onChange={it => setSupReqRows(rs => rs.map((r, idx) => idx === i ? { ...r, itemId: it?.id || '' } : r))} />
                             </div>
                           </div>
