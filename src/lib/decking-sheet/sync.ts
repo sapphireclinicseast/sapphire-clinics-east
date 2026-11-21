@@ -89,6 +89,19 @@ const MAX_BATCH_REQUESTS = 5_000
  * within a few hours without anyone noticing it was gone.
  */
 const SIG_TAB = '_sig'
+
+/**
+ * How current the spreadsheet must be before the pull is allowed to delete.
+ *
+ * A branch syncs every five minutes and a run takes well under a minute, so a
+ * healthy gap is one cycle. This allows four missed cycles — enough slack for
+ * the cross-branch lock to skip a tick or two without the sync going deaf to
+ * front desk, and far short of the days-long staleness that let a broken sync
+ * delete a clinic. See the guard in syncBranch.
+ */
+const MAX_SHEET_AGE_MS = 20 * 60 * 1000
+/** The _sig row that records when a push last reached the sheet. */
+const LAST_PUSH_KEY = '__lastPush'
 const FULL_REBUILD_AFTER_MS = 6 * 60 * 60 * 1000
 
 interface TabSignature { sig: string; at: number }
@@ -233,6 +246,8 @@ export interface SyncReport {
   /** Wall-clock milliseconds, and the write calls spent against the quota. */
   ms?: number
   calls?: number
+  /** Set when the pull was skipped because the sheet was too stale to trust. */
+  skippedPull?: string
 }
 
 // ── loading what the hub knows ──────────────────────────────────────────────
@@ -1815,7 +1830,49 @@ export async function syncBranch(branch: string, spreadsheetId: string, forceFul
     { updateSpreadsheetProperties: { properties: { defaultFormat: { textFormat: { fontFamily: 'Roboto' } } }, fields: 'defaultFormat.textFormat.fontFamily' } },
   ] } }).catch(() => { /* cosmetic — never fail a sync over a font */ })
 
-  await pullTabs(api, spreadsheetId, branch, report).catch(e => report.errors.push(`pull: ${(e as Error).message}`))
+  // Last run's fingerprints — read BEFORE the pull, because one of them decides
+  // whether the pull may run at all.
+  const prevSigs = await loadSignatures(api, spreadsheetId)
+  const nextSigs = new Map<string, TabSignature>()
+
+  // ── A stale sheet is never allowed to delete anything ────────────────────
+  //
+  // The pull reads a blank cell as a decision somebody made, and deletes the
+  // booking behind it. That is correct when the sheet is current. It is
+  // catastrophic when the sheet is not — and the sheet is only as current as
+  // the last push that reached it.
+  //
+  // Both halves of this had to go wrong together before, and they did:
+  // through 16–19 Nov the sync was failing ~97% of runs, so the sheet sat for
+  // days showing a board nobody had updated. The occasional run that did
+  // succeed pulled that stale board into the hub first — pull runs before
+  // push — and 37 bookings were deleted, including a doctor's entire December
+  // clinic of 14 children. Nobody noticed for two days.
+  //
+  // MAX_BLANKED_PER_TAB does not cover this: it refuses a tab that blanks 40+
+  // cells at once, so it catches the catastrophe and waves through exactly the
+  // middling losses that go unseen. 15 slots is well under its floor.
+  //
+  // So: if the sheet has not been successfully pushed to recently, this run
+  // does not pull. It pushes — re-establishing the hub as the truth the sheet
+  // shows — and the NEXT run, reading a sheet that is current again, pulls
+  // normally. The cost of being wrong is one cycle of front-desk edits
+  // arriving five minutes late. The cost of the other way round is a deleted
+  // clinic.
+  const lastPushAt = prevSigs.get(LAST_PUSH_KEY)?.at ?? 0
+  const sheetAgeMs = lastPushAt ? Date.now() - lastPushAt : Infinity
+  const trustSheet = sheetAgeMs <= MAX_SHEET_AGE_MS
+
+  if (trustSheet) {
+    await pullTabs(api, spreadsheetId, branch, report).catch(e => report.errors.push(`pull: ${(e as Error).message}`))
+  } else {
+    // Reported, not silent. A sync that quietly stops reading the spreadsheet
+    // is its own kind of failure, and front desk have to be able to find out
+    // why what they typed has not landed.
+    const age = lastPushAt ? `${Math.round(sheetAgeMs / 60000)} min since the last successful push` : 'no recorded push'
+    report.skippedPull = age
+    console.warn(`[sheet-sync] ${branch} SKIPPING PULL — ${age}. Pushing the hub's state first; the next run will read the sheet.`)
+  }
 
   // Cells the pull has just taken into the hub.
   //
@@ -1833,11 +1890,6 @@ export async function syncBranch(branch: string, spreadsheetId: string, forceFul
   // Hub's HMO wallets, so the picker cannot drift from the receivable list.
   const providers = await prisma.hmoProvider.findMany({ where: { active: true }, orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }], select: { name: true } })
   const payOptions = ['CASH', 'GL', ...providers.map(p => `HMO\u2013${p.name.toUpperCase()}`.replace('HMO\u2013', 'HMO \u2013 '))]
-
-  // Last run's structural fingerprints, so an unchanged tab can skip the
-  // expensive half of its push entirely. See SIG_TAB.
-  const prevSigs = await loadSignatures(api, spreadsheetId)
-  const nextSigs = new Map<string, TabSignature>()
 
   const names = await loadPatientNames(branch)
   // Every tab's id, read once and reused by each writer below.
@@ -1942,6 +1994,10 @@ export async function syncBranch(branch: string, spreadsheetId: string, forceFul
   // last REBUILD rather than this run, so the six-hourly full reconcile is
   // measured from when the structure was actually last written.
   try {
+    // Stamped only when tabs actually pushed. A run that wrote nothing must
+    // not certify the sheet as current — that would hand the next run a
+    // licence to delete against a board this one never refreshed.
+    if (nextSigs.size) nextSigs.set(LAST_PUSH_KEY, { sig: 'push', at: Date.now() })
     await saveSignatures(api, spreadsheetId, nextSigs, tabs)
   } catch (e) {
     // A fingerprint that did not save means the next run rebuilds. Slow, not
@@ -1952,6 +2008,6 @@ export async function syncBranch(branch: string, spreadsheetId: string, forceFul
   report.ms = Date.now() - startedAt
   report.calls = report.pushed.reduce((n, p) => n + (p.calls ?? 0), 0)
   const rebuilt = report.pushed.filter(p => p.rebuilt).length
-  console.log(`[sheet-sync] ${branch} finished in ${report.ms}ms, ~${report.calls} write calls, ${rebuilt}/${report.pushed.length} tabs rebuilt, ${report.applied.length} applied, ${report.errors.length} errors`)
+  console.log(`[sheet-sync] ${branch} finished in ${report.ms}ms, ~${report.calls} write calls, ${rebuilt}/${report.pushed.length} tabs rebuilt, ${report.applied.length} applied, ${report.errors.length} errors${report.skippedPull ? `, PULL SKIPPED (${report.skippedPull})` : ''}`)
   return report
 }
