@@ -973,6 +973,13 @@ function InventoryInner() {
   // what that supplier supplies us (the item's Supplier in the inventory list),
   // and "Put all inventory under supplier" adds every one of them as a row.
   const [supReqAll, setSupReqAll] = useState(false)
+  // Bulk Qty to Request (Hannah 11/21: "also allow me to bulk set the Qty to Request").
+  const [supReqBulkQty, setSupReqBulkQty] = useState('')
+  function bulkSetSupReqQty(blanksOnly: boolean) {
+    const q = Math.round(Number(supReqBulkQty))
+    if (!Number.isFinite(q) || q < 1) return
+    setSupReqRows(rs => rs.map(r => (r.itemId && (!blanksOnly || !(Number(r.quantity) > 0)) ? { ...r, quantity: String(q) } : r)))
+  }
   const supReqItems = useMemo(
     () => (supReqSupplierId ? allItems.filter(it => it.supplierId === supReqSupplierId) : allItems),
     [allItems, supReqSupplierId],
@@ -1010,7 +1017,7 @@ function InventoryInner() {
 
   function openSupReqCreate() {
     setSupReqEditId(null); setSupReqSupplierId(''); setSupReqDate(new Date().toISOString().slice(0, 10))
-    setSupReqRemarks(''); setSupReqRows([{ itemId: '', quantity: '', remarks: '' }]); setSupReqAll(false); setError('')
+    setSupReqRemarks(''); setSupReqRows([{ itemId: '', quantity: '', remarks: '' }]); setSupReqAll(false); setSupReqBulkQty(''); setError('')
     setSupReqOpen(true)
   }
 
@@ -1018,7 +1025,7 @@ function InventoryInner() {
     setSupReqEditId(r.id); setSupReqSupplierId(r.supplier.id)
     setSupReqDate(String(r.requestDate).slice(0, 10)); setSupReqRemarks(r.remarks || '')
     setSupReqRows(r.items.map(i => ({ itemId: i.itemId, quantity: String(i.quantity), remarks: i.remarks || '' })))
-    setSupReqAll(false); setError(''); setSupReqOpen(true)
+    setSupReqAll(false); setSupReqBulkQty(''); setError(''); setSupReqOpen(true)
   }
 
   async function handleSupReqSubmit() {
@@ -4362,14 +4369,39 @@ setTimeout(()=>window.print(),500);
                   </span>
                 )}
               </label>
-              <span className="text-[11px]" style={{ color: 'var(--mid-gray)' }}>
-                {!supReqSupplierId
-                  ? 'Pick the supplier to list only the products they supply us.'
-                  : supReqItems.length
-                  ? 'Only this supplier’s products are listed. Rows left without a quantity aren’t requested.'
-                  : 'No product in the inventory list has this supplier yet — set it on the product first.'}
-              </span>
+              {(() => {
+                const withItem = supReqRows.filter(r => r.itemId)
+                const blanks = withItem.filter(r => !(Number(r.quantity) > 0)).length
+                const q = Math.round(Number(supReqBulkQty))
+                const okQty = Number.isFinite(q) && q >= 1
+                return (
+                  <div className="flex items-center gap-1.5 text-xs" style={{ color: 'var(--mid-gray)' }}>
+                    Qty to Request for all
+                    <input type="number" min={1} value={supReqBulkQty} onChange={e => setSupReqBulkQty(e.target.value)}
+                      onKeyDown={e => { if (e.key === 'Enter') bulkSetSupReqQty(false) }}
+                      aria-label="Quantity to set on the product rows"
+                      className="w-20 px-2 py-1.5 rounded-lg border text-xs text-right outline-none font-mono" style={{ borderColor: 'var(--light-gray)' }} />
+                    <button type="button" onClick={() => bulkSetSupReqQty(false)} disabled={!okQty || !withItem.length}
+                      title="Set this quantity on every product row"
+                      className="px-2.5 py-1.5 rounded-lg text-xs font-semibold text-white disabled:opacity-40" style={{ background: 'var(--teal)' }}>
+                      Set all {withItem.length ? <span className="font-mono">({withItem.length})</span> : ''}
+                    </button>
+                    <button type="button" onClick={() => bulkSetSupReqQty(true)} disabled={!okQty || !blanks}
+                      title="Only the rows that don't have a quantity yet"
+                      className="px-2.5 py-1.5 rounded-lg text-xs font-medium border disabled:opacity-40" style={{ borderColor: 'var(--teal)', color: 'var(--teal)' }}>
+                      Fill blanks {blanks ? <span className="font-mono">({blanks})</span> : ''}
+                    </button>
+                  </div>
+                )
+              })()}
             </div>
+            <p className="text-[11px] mb-2" style={{ color: 'var(--mid-gray)' }}>
+              {!supReqSupplierId
+                ? 'Pick the supplier to list only the products they supply us.'
+                : supReqItems.length
+                ? 'Only this supplier’s products are listed. Rows left without a quantity aren’t requested.'
+                : 'No product in the inventory list has this supplier yet — set it on the product first.'}
+            </p>
             <div className="rounded-xl border mb-2 max-h-[55vh] overflow-y-auto" style={{ borderColor: 'var(--light-gray)' }}>
               <table className="w-full text-sm">
                 <thead className="sticky top-0 z-10"><tr style={{ background: 'var(--off-white)', color: 'var(--charcoal)' }}>
